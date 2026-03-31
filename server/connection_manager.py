@@ -1,0 +1,72 @@
+import asyncio
+import logging
+from typing import Dict, Iterable, List, Tuple
+
+from fastapi import WebSocket
+
+LOGGER = logging.getLogger(__name__)
+
+
+class ConnectionManager:
+    def __init__(self) -> None:
+        self._connections: Dict[str, WebSocket] = {}
+        self._lock = asyncio.Lock()
+
+    async def connect(self, player_id: str, websocket: WebSocket) -> None:
+        await websocket.accept()
+        async with self._lock:
+            self._connections[player_id] = websocket
+
+    async def disconnect(self, player_id: str) -> None:
+        async with self._lock:
+            self._connections.pop(player_id, None)
+
+    async def send_to_player(self, player_id: str, payload: dict) -> None:
+        async with self._lock:
+            websocket = self._connections.get(player_id)
+        if websocket is None:
+            return
+        try:
+            await websocket.send_json(payload)
+        except Exception:
+            LOGGER.debug("Dropping dead websocket for player_id=%s", player_id)
+            await self._disconnect_if_current(player_id, websocket)
+
+    async def broadcast_to_players(
+        self, player_ids: Iterable[str], payload: dict
+    ) -> None:
+        targets: List[Tuple[str, WebSocket]] = []
+        async with self._lock:
+            for player_id in player_ids:
+                websocket = self._connections.get(player_id)
+                if websocket is not None:
+                    targets.append((player_id, websocket))
+
+        if not targets:
+            return
+
+        send_results = await asyncio.gather(
+            *(websocket.send_json(payload) for _, websocket in targets),
+            return_exceptions=True,
+        )
+
+        failed_targets = [
+            (player_id, websocket)
+            for (player_id, websocket), result in zip(targets, send_results)
+            if isinstance(result, Exception)
+        ]
+
+        for player_id, websocket in failed_targets:
+            LOGGER.debug(
+                "Dropping dead websocket during broadcast for player_id=%s",
+                player_id,
+            )
+            await self._disconnect_if_current(player_id, websocket)
+
+    async def _disconnect_if_current(
+        self, player_id: str, websocket: WebSocket
+    ) -> None:
+        async with self._lock:
+            current = self._connections.get(player_id)
+            if current is websocket:
+                self._connections.pop(player_id, None)
