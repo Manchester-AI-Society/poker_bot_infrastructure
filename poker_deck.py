@@ -16,4 +16,5 @@ class pokerDeck:
     def draw_card(self):
         """Draws a card from the shuffled deck"""
 
+        assert self.deck_list is not None
         return self.deck_list.pop()
