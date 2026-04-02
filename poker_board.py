@@ -19,3 +19,10 @@ class pokerBoard:
     def get_revealed_cards(self):
         """Returns a list of all the cards that have been revealed so far"""
         return self.cards[:self.revealed_cards]
+
+    def get_revealed_cards_str(self):
+        cards = self.get_revealed_cards()
+        card_strs = []
+        for card in cards:
+            card_strs.append(card.get_str())
+        return card_strs
