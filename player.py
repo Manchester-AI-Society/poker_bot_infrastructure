@@ -1,10 +1,11 @@
 from poker_card import pokerCard
 
 class player:
-    def __init__(self, current_balance):
+    def __init__(self, current_balance, player_id):
         """Initializes a player object with balance float current_balance in GBP"""
         
         self.cards = []
+        self.id = player_id
         self.current_balance = current_balance
         self.is_folded = False
     
