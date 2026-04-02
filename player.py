@@ -18,6 +18,7 @@ class player:
         """Removes the bet from the player balance"""
         assert self.current_balance >= bet
         self.current_balance -= bet
+    
         
         
 

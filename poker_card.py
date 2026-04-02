@@ -29,6 +29,6 @@ class pokerCard:
             return "black"
         return "red"
 
-    def get_card_string(self):
+    def get_str(self):
         return f"{self.card_suit}_{self.card_number}"
     
