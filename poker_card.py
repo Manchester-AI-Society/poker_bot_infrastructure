@@ -28,3 +28,7 @@ class pokerCard:
         if self.card_suit in ["spades", "clubs"]:
             return "black"
         return "red"
+
+    def get_card_string(self):
+        return f"{self.card_suit}_{self.card_number}"
+    
