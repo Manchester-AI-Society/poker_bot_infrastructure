@@ -20,19 +20,29 @@ python -m pip install -r server/requirements.txt
 
 3. Configure environment values in `.env` at the repository root.
 
-Default local values are already provided in `.env` and `exampleenv`.
-
-4. Optionally configure bot API keys:
+You can copy the sample values from `exampleenv`:
 
 ```bash
-export BOT_API_KEYS="bot1:key1,bot2:key2"
+cp exampleenv .env
 ```
 
-5. Optionally configure admin API keys:
+4. Run the server (optional if you use example scripts):
 
 ```bash
-export ADMIN_API_KEYS="admin:admin-dev-key"
+uvicorn server.run_poker_server:app --reload --host 0.0.0.0 --port 8000
 ```
+
+The app loads `.env` automatically via `python-dotenv` in both SDK and server startup.
+
+### Environment Variables
+
+Bot keys and admin keys are configured as comma-separated `id:key` pairs.
+
+- `BOT_API_KEYS` example: `dev-bot-1:dev-key-1,dev-bot-2:dev-key-2`
+- `ADMIN_API_KEYS` example: `admin:admin-dev-key`
+- `POKER_SERVER_URL` example: `http://127.0.0.1:8000`
+- `POKER_ADMIN_API_KEY` example: `admin-dev-key`
+- `POKER_ADMIN_TIMEOUT_SECONDS` example: `10`
 
 If `BOT_API_KEYS` is not set, default keys are:
 
@@ -40,15 +50,52 @@ If `BOT_API_KEYS` is not set, default keys are:
 - `dev-key-2` -> `dev-bot-2`
 - `dev-key-3` -> `dev-bot-3`
 
-6. Run the server:
+## Example Scripts
+
+Scripts in `example_scripts/` now auto-start the server if it is not running.
+This means you can run them directly without opening a second terminal.
+
+### Run One Game (Admin Key Override)
 
 ```bash
-uvicorn server.run_poker_server:app --reload --host 0.0.0.0 --port 8000
+python example_scripts/create_one_game_with_api_key_override.py
 ```
 
-You can also run any script in `example_scripts/` directly. These scripts now
-auto-start the server if it is not already running, so no second terminal is
-required for local development.
+### Run One Game (Admin Key from Config)
+
+```bash
+python example_scripts/create_one_game_with_api_key.py
+```
+
+### Run Multiple Games
+
+```bash
+python example_scripts/create_multiple_games_with_api_keys.py
+```
+
+### Validate Missing Admin Key Behavior
+
+```bash
+python example_scripts/create_one_game_without_api_key.py
+```
+
+### Run Mock Bot Game and Announce Winner
+
+```bash
+python example_scripts/mock_poker_bot_game_announce_winner.py
+```
+
+### Optional: override bot API keys in shell
+
+```bash
+export BOT_API_KEYS="bot1:key1,bot2:key2"
+```
+
+### Optional: override admin API keys in shell
+
+```bash
+export ADMIN_API_KEYS="admin:admin-dev-key"
+```
 
 ## HTTP API
 
