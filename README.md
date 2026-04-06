@@ -1,16 +1,24 @@
 # poker_bot_infrastructure
 
-This repository now includes a FastAPI poker competition server with real-time WebSocket events and a Python SDK client.
+This repository contains a Python server for running poker matches with FastAPI, WebSocket messaging, and uvicorn.
+
+The server is authoritative: game rules, game state, and state transitions are enforced on the server.
 
 ## Server Quick Start
 
-1. Install dependencies:
+1. Activate the existing virtual environment:
 
 ```bash
-python3 -m pip install -r server/requirements.txt
+source venv/bin/activate
 ```
 
-2. Optionally configure bot API keys:
+2. Install dependencies:
+
+```bash
+python -m pip install -r server/requirements.txt
+```
+
+3. Optionally configure bot API keys:
 
 ```bash
 export BOT_API_KEYS="bot1:key1,bot2:key2"
@@ -22,10 +30,10 @@ If `BOT_API_KEYS` is not set, default keys are:
 - `dev-key-2` -> `dev-bot-2`
 - `dev-key-3` -> `dev-bot-3`
 
-3. Run the server:
+4. Run the server:
 
 ```bash
-uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn server.run_poker_server:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## HTTP API
@@ -90,18 +98,3 @@ Server events:
 - `showdown`
 - `timeout`
 - `error`
-
-## SDK
-
-Use `server/sdk.py` as a base client implementation. It includes:
-
-- Connection/auth setup with `websockets`
-- Event routing (`on_turn`, `on_action`, `on_showdown`, `on_timeout`)
-- Helpers for legal actions, pot size, and stack sizes
-- Action helpers (`fold`, `check`, `call`, `bet`, `raise_to`)
-
-Example bot run:
-
-```bash
-python3 server/sdk.py
-```

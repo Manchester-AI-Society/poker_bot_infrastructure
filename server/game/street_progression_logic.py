@@ -2,13 +2,21 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from .deck import new_shuffled_deck
-from .evaluator import evaluate_best_hand
-from .models import MatchState, PlayerSeat
+from .game_domain_models import MatchState, PlayerSeat
+from .poker_hand_evaluator import evaluate_best_hand
+from .shuffled_deck_factory import new_shuffled_deck
 
 
 class GameStreetMixin:
     def _start_hand(self, match: MatchState) -> List[Dict[str, Any]]:
+        """Starts a new hand.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            List[Dict[str, Any]]: Collection produced by this function.
+        """
         match.status = "running"
         match.street = "preflop"
         match.pot = 0
@@ -67,6 +75,14 @@ class GameStreetMixin:
         return blind_events
 
     def _advance_street(self, match: MatchState) -> Optional[Dict[str, Any]]:
+        """Advances the game to the next street.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            Optional[Dict[str, Any]]: Computed result, or None when no result is available.
+        """
         for player in match.players:
             player.committed = 0
             player.acted = False
@@ -99,6 +115,14 @@ class GameStreetMixin:
         return None
 
     def _runout_and_showdown(self, match: MatchState) -> Dict[str, Any]:
+        """Runs the game out to the showdown.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            Dict[str, Any]: Mapping produced by this function.
+        """
         while match.street != "showdown":
             showdown = self._advance_street(match)
             if showdown is not None:
@@ -106,6 +130,14 @@ class GameStreetMixin:
         return self._settle_showdown(match)
 
     def _settle_fold_win(self, match: MatchState) -> Dict[str, Any]:
+        """Settles a fold win.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            Dict[str, Any]: Mapping produced by this function.
+        """
         winner = next(player for player in match.players if not player.folded)
         winnings = match.pot
         winner.stack += winnings
@@ -136,6 +168,14 @@ class GameStreetMixin:
         }
 
     def _settle_showdown(self, match: MatchState) -> Dict[str, Any]:
+        """Settles the showdown.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            Dict[str, Any]: Mapping produced by this function.
+        """
         contenders = [player for player in match.players if not player.folded]
         scored: List[Tuple[PlayerSeat, Tuple[int, Tuple[int, ...]], str]] = []
 
@@ -199,10 +239,27 @@ class GameStreetMixin:
         }
 
     def _deal_board(self, match: MatchState, count: int) -> None:
+        """Deals cards to the board.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            count (int): Numeric value for count.
+
+        Returns:
+            None: This function does not return a value.
+        """
         for _ in range(count):
             match.board.append(match.deck.pop())
 
     def _blind_positions(self, match: MatchState) -> Tuple[int, int, int]:
+        """Calculates the positions of the small blind, big blind, and first player to act.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            Tuple[int, int, int]: Tuple containing the computed results.
+        """
         count = len(match.players)
         dealer = match.dealer_index
 
@@ -218,4 +275,12 @@ class GameStreetMixin:
         return small_blind, big_blind, first_to_act
 
     def _first_to_act_postflop(self, match: MatchState) -> int:
+        """Calculates the position of the first player to act after the flop.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            int: Numeric result produced by this function.
+        """
         return (match.dealer_index + 1) % len(match.players)

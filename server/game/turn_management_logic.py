@@ -4,13 +4,21 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from .models import InvalidActionError, MatchState, MatchStateError
+from .game_domain_models import InvalidActionError, MatchState, MatchStateError
 
 LOGGER = logging.getLogger(__name__)
 
 
 class GameTurnMixin:
     async def start_match(self, match_id: str) -> None:
+        """Starts a new match.
+
+        Args:
+            match_id (str): Identifier for match.
+
+        Returns:
+            None: This function does not return a value.
+        """
         match = self.get_match(match_id)
 
         turn_player_id: Optional[str] = None
@@ -43,6 +51,19 @@ class GameTurnMixin:
         turn_id: Optional[int],
         from_timeout: bool = False,
     ) -> None:
+        """Submits an action for a player in the match.
+
+        Args:
+            match_id (str): Identifier for match.
+            player_id (str): Identifier for player.
+            action (str): Input value for action.
+            amount (Optional[int]): Numeric value for amount.
+            turn_id (Optional[int]): Identifier for turn.
+            from_timeout (bool): Input value for from timeout.
+
+        Returns:
+            None: This function does not return a value.
+        """
         match = self.get_match(match_id)
 
         timeout_event: Optional[Dict[str, Any]] = None
@@ -126,6 +147,14 @@ class GameTurnMixin:
     def _prepare_turn_event(
         self, match: MatchState
     ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+        """Prepares the event for a player's turn.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            Tuple[Optional[str], Optional[Dict[str, Any]]]: Tuple containing the computed results.
+        """
         if match.status != "running":
             return None, None
         if match.acting_index is None:
@@ -160,6 +189,16 @@ class GameTurnMixin:
     def _schedule_turn_timeout(
         self, match: MatchState, player_id: str, turn_id: int
     ) -> None:
+        """Schedules a timeout for a player's turn.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            player_id (str): Identifier for player.
+            turn_id (int): Identifier for turn.
+
+        Returns:
+            None: This function does not return a value.
+        """
         self._cancel_turn_timeout(match)
         match.turn_task = asyncio.create_task(
             self._timeout_task(
@@ -168,6 +207,14 @@ class GameTurnMixin:
         )
 
     def _cancel_turn_timeout(self, match: MatchState) -> None:
+        """Cancels the timeout for a player's turn.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            None: This function does not return a value.
+        """
         task = match.turn_task
         if task is not None and not task.done():
             task.cancel()
@@ -176,6 +223,17 @@ class GameTurnMixin:
     async def _timeout_task(
         self, match_id: str, player_id: str, turn_id: int, timeout_seconds: int
     ) -> None:
+        """Handles the timeout for a player's turn.
+
+        Args:
+            match_id (str): Identifier for match.
+            player_id (str): Identifier for player.
+            turn_id (int): Identifier for turn.
+            timeout_seconds (int): Input value for timeout seconds.
+
+        Returns:
+            None: This function does not return a value.
+        """
         try:
             await asyncio.sleep(timeout_seconds)
             match = self.get_match(match_id)

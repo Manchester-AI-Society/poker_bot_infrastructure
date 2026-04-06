@@ -6,6 +6,14 @@ from .cards import RANK_TO_VALUE
 
 
 def _straight_high(unique_ranks: List[int]) -> Optional[int]:
+    """Finds the highest card in a straight.
+
+    Args:
+        unique_ranks (List[int]): Input value for unique ranks.
+
+    Returns:
+        Optional[int]: Computed result, or None when no result is available.
+    """
     if len(unique_ranks) != 5:
         return None
 
@@ -20,6 +28,14 @@ def _straight_high(unique_ranks: List[int]) -> Optional[int]:
 def _evaluate_five_card_hand(
     cards: Iterable[str],
 ) -> Tuple[Tuple[int, Tuple[int, ...]], str]:
+    """Evaluates a five-card hand and returns its rank and name.
+
+    Args:
+        cards (Iterable[str]): Input value for cards.
+
+    Returns:
+        Tuple[Tuple[int, Tuple[int, ...]], str]: Tuple containing the computed results.
+    """
     ranks = [RANK_TO_VALUE[card[0]] for card in cards]
     suits = [card[1] for card in cards]
     rank_counter = Counter(ranks)
@@ -71,6 +87,14 @@ def _evaluate_five_card_hand(
 def evaluate_best_hand(
     cards: List[str],
 ) -> Tuple[Tuple[int, Tuple[int, ...]], str]:
+    """Evaluates the best five-card hand from a list of cards.
+
+    Args:
+        cards (List[str]): Input value for cards.
+
+    Returns:
+        Tuple[Tuple[int, Tuple[int, ...]], str]: Tuple containing the computed results.
+    """
     best_score: Optional[Tuple[int, Tuple[int, ...]]] = None
     best_name = "High Card"
 

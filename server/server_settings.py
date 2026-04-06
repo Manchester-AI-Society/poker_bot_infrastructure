@@ -9,10 +9,13 @@ DEFAULT_API_KEYS: Dict[str, str] = {
 
 
 def load_api_keys() -> Dict[str, str]:
-    """
-    Loads API keys from BOT_API_KEYS env var.
+    """This just loads the API keys.
 
-    Format: "bot_id:key,bot_id:key"
+    Args:
+        None: This function does not take external arguments.
+
+    Returns:
+        Dict[str, str]: Mapping produced by this function.
     """
 
     raw = os.getenv("BOT_API_KEYS", "").strip()

@@ -2,13 +2,22 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from .models import InvalidActionError, MatchState
+from .game_domain_models import InvalidActionError, MatchState
 
 
 class GameStateMixin:
     def _state_for_player(
         self, match: MatchState, viewer_id: Optional[str]
     ) -> Dict[str, Any]:
+        """Gets the state of the game for a specific player.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            viewer_id (Optional[str]): Identifier for viewer.
+
+        Returns:
+            Dict[str, Any]: Mapping produced by this function.
+        """
         players_state = []
         for player in match.players:
             entry: Dict[str, Any] = {
@@ -47,6 +56,15 @@ class GameStateMixin:
         return state
 
     def _player_index(self, match: MatchState, player_id: str) -> int:
+        """Gets the index of a player in the match.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            player_id (str): Identifier for player.
+
+        Returns:
+            int: Numeric result produced by this function.
+        """
         for index, player in enumerate(match.players):
             if player.player_id == player_id:
                 return index

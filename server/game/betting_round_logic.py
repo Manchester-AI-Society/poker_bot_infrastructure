@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
-from .models import InvalidActionError, MatchState
+from .game_domain_models import InvalidActionError, MatchState
 
 
 class GameBettingMixin:
@@ -13,6 +13,17 @@ class GameBettingMixin:
         action: str,
         amount: Optional[int],
     ) -> Tuple[str, Optional[int]]:
+        """Allows players to set a bet.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            actor_index (int): Numeric value for actor index.
+            action (str): Input value for action.
+            amount (Optional[int]): Numeric value for amount.
+
+        Returns:
+            Tuple[str, Optional[int]]: Tuple containing the computed results.
+        """
         player = match.players[actor_index]
         to_call = max(0, match.current_bet - player.committed)
         legal = self._legal_actions(match, actor_index)
@@ -100,6 +111,14 @@ class GameBettingMixin:
         return action, emitted_amount
 
     def _is_round_complete(self, match: MatchState) -> bool:
+        """Checks if the current betting round is complete.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            bool: Boolean status indicating whether the condition is met.
+        """
         for player in match.players:
             if player.folded or player.all_in:
                 continue
@@ -110,6 +129,15 @@ class GameBettingMixin:
         return True
 
     def _legal_actions(self, match: MatchState, actor_index: int) -> List[str]:
+        """Returns a list of legal actions for the specified player.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            actor_index (int): Numeric value for actor index.
+
+        Returns:
+            List[str]: Collection produced by this function.
+        """
         player = match.players[actor_index]
         to_call = max(0, match.current_bet - player.committed)
 
@@ -126,6 +154,15 @@ class GameBettingMixin:
         return actions
 
     def _min_raise_to(self, match: MatchState, actor_index: int) -> int:
+        """Returns the minimum amount a player can raise to.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            actor_index (int): Numeric value for actor index.
+
+        Returns:
+            int: Numeric result produced by this function.
+        """
         player = match.players[actor_index]
         to_call = max(0, match.current_bet - player.committed)
         if to_call == 0:
@@ -135,6 +172,16 @@ class GameBettingMixin:
     def _commit(
         self, match: MatchState, player_index: int, amount: int
     ) -> int:
+        """Commits chips to the pot.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            player_index (int): Numeric value for player index.
+            amount (int): Numeric value for amount.
+
+        Returns:
+            int: Numeric result produced by this function.
+        """
         player = match.players[player_index]
         actual = min(amount, player.stack)
         player.stack -= actual
@@ -147,6 +194,15 @@ class GameBettingMixin:
     def _next_eligible_player(
         self, match: MatchState, from_index: int
     ) -> Optional[int]:
+        """Returns the index of the next eligible player.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            from_index (int): Input value for from index.
+
+        Returns:
+            Optional[int]: Computed result, or None when no result is available.
+        """
         count = len(match.players)
         for offset in range(1, count):
             index = (from_index + offset) % count
@@ -158,6 +214,15 @@ class GameBettingMixin:
     def _next_eligible_from(
         self, match: MatchState, start_index: int
     ) -> Optional[int]:
+        """Returns the index of the next eligible player starting from a specific index.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            start_index (int): Input value for start index.
+
+        Returns:
+            Optional[int]: Computed result, or None when no result is available.
+        """
         count = len(match.players)
         for offset in range(count):
             index = (start_index + offset) % count
@@ -167,9 +232,25 @@ class GameBettingMixin:
         return None
 
     def _remaining_players(self, match: MatchState) -> int:
+        """Returns the number of players who have not folded.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            int: Numeric result produced by this function.
+        """
         return sum(1 for player in match.players if not player.folded)
 
     def _all_remaining_all_in(self, match: MatchState) -> bool:
+        """Checks if all remaining players are all-in.
+
+        Args:
+            match (MatchState): Match data used by this function.
+
+        Returns:
+            bool: Boolean status indicating whether the condition is met.
+        """
         active = [player for player in match.players if not player.folded]
         if len(active) <= 1:
             return False
@@ -178,6 +259,15 @@ class GameBettingMixin:
     def _reset_acted_flags_after_aggression(
         self, match: MatchState, aggressor_index: int
     ) -> None:
+        """Resets the 'acted' flags for all players after an aggression.
+
+        Args:
+            match (MatchState): Match data used by this function.
+            aggressor_index (int): Input value for aggressor index.
+
+        Returns:
+            None: This function does not return a value.
+        """
         for index, player in enumerate(match.players):
             if player.folded or player.all_in:
                 continue

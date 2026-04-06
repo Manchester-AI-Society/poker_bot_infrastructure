@@ -1,4 +1,4 @@
-from .models import (
+from .game_domain_models import (
     BroadcastCallback,
     DirectCallback,
     InvalidActionError,
@@ -7,7 +7,7 @@ from .models import (
     MatchStateError,
     PlayerSeat,
 )
-from .service import GameService
+from .poker_game_orchestrator import GameService
 
 __all__ = [
     "BroadcastCallback",
