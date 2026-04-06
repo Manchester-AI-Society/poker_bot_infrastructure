@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import HTTPException, status
 
-from server.server_settings import load_api_keys
+from server.server_settings import load_admin_api_keys, load_api_keys
 from server.websocket_connection_manager import ConnectionManager
 from server.game import GameService
 
@@ -30,7 +30,29 @@ def extract_token(
     return None
 
 
+def _resolve_identity(
+    token: Optional[str], key_mapping: dict, error_message: str
+) -> str:
+    """Resolves an identity from a key mapping.
+
+    Args:
+        token (Optional[str]): Candidate token extracted from the request.
+        key_mapping (dict): Mapping from API key to identity.
+        error_message (str): Error message for failed authentication.
+
+    Returns:
+        str: Identity mapped from the token.
+    """
+    if token is None or token not in key_mapping:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=error_message,
+        )
+    return key_mapping[token]
+
+
 api_keys = load_api_keys()
+admin_api_keys = load_admin_api_keys()
 connections = ConnectionManager()
 games = GameService()
 games.set_event_handlers(
@@ -53,9 +75,21 @@ def require_player_id(
         str: Player identifier mapped from a valid API key.
     """
     token = extract_token(authorization, query_api_key)
-    if token is None or token not in api_keys:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
-        )
-    return api_keys[token]
+    return _resolve_identity(token, api_keys, "Invalid API key")
+
+
+def require_admin_id(
+    authorization: Optional[str],
+    query_api_key: Optional[str],
+) -> str:
+    """Resolves and validates the admin id for privileged requests.
+
+    Args:
+        authorization (Optional[str]): Authorisation header value.
+        query_api_key (Optional[str]): API key supplied via header or query.
+
+    Returns:
+        str: Admin identifier mapped from a valid admin API key.
+    """
+    token = extract_token(authorization, query_api_key)
+    return _resolve_identity(token, admin_api_keys, "Invalid admin API key")

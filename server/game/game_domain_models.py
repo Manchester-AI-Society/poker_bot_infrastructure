@@ -65,3 +65,8 @@ class MatchState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     turn_task: Optional[asyncio.Task] = None
     created_at: float = field(default_factory=time.time)
+    paused_at: Optional[float] = None
+    paused_by: Optional[str] = None
+    pause_reason: Optional[str] = None
+    resumed_at: Optional[float] = None
+    admin_actions: List[Dict[str, Any]] = field(default_factory=list)

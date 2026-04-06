@@ -150,6 +150,57 @@ class GameServiceBase:
         match = self.get_match(match_id)
         return list(match.action_log)
 
+    def get_full_state_for_admin(self, match_id: str) -> Dict[str, Any]:
+        """Gets the full match state including all private cards.
+
+        Args:
+            match_id (str): Identifier for match.
+
+        Returns:
+            Dict[str, Any]: Full match state with private player data.
+        """
+        match = self.get_match(match_id)
+        players = [
+            {
+                "id": player.player_id,
+                "stack": player.stack,
+                "bet": player.committed,
+                "folded": player.folded,
+                "all_in": player.all_in,
+                "hole_cards": list(player.hole_cards),
+            }
+            for player in match.players
+        ]
+
+        return {
+            "match_id": match.match_id,
+            "players": players,
+            "pot": match.pot,
+            "board": list(match.board),
+            "street": match.street,
+            "status": match.status,
+            "dealer_index": match.dealer_index,
+            "acting_index": match.acting_index,
+            "turn_id": match.turn_id,
+            "event_log_limit": match.event_log_limit,
+            "paused_at": match.paused_at,
+            "paused_by": match.paused_by,
+            "pause_reason": match.pause_reason,
+            "resumed_at": match.resumed_at,
+        }
+
+    def get_admin_actions(self, match_id: str) -> List[Dict[str, Any]]:
+        """Gets the admin action history for a match.
+
+        Args:
+            match_id (str): Identifier for match.
+
+        Returns:
+            List[Dict[str, Any]]: Collection of admin actions recorded for the match.
+        """
+        match = self.get_match(match_id)
+        return list(match.admin_actions)
+
     def get_logs_page(
         self, match_id: str, *, offset: int = 0, limit: int = 100
     ) -> Dict[str, Any]:

@@ -3,6 +3,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 ActionType = Literal["fold", "check", "call", "bet", "raise", "raise_to"]
+EndMatchMode = Literal["terminate_as_is", "refund_committed"]
 
 
 class CreateMatchRequest(BaseModel):
@@ -19,3 +20,25 @@ class SubmitActionRequest(BaseModel):
     action: ActionType
     amount: Optional[int] = Field(default=None, ge=1)
     turn_id: Optional[int] = Field(default=None, ge=1)
+
+
+class PauseMatchRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class ResumeMatchRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class EndMatchRequest(BaseModel):
+    reason: Optional[str] = None
+    mode: EndMatchMode = "terminate_as_is"
+
+
+class CreatePlayerRequest(BaseModel):
+    player_id: str = Field(min_length=1)
+    api_key: Optional[str] = Field(default=None, min_length=8)
+
+
+class RotatePlayerKeyRequest(BaseModel):
+    api_key: Optional[str] = Field(default=None, min_length=8)

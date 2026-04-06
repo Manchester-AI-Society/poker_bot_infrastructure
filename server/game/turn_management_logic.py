@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from .game_domain_models import InvalidActionError, MatchState, MatchStateError
@@ -143,6 +144,186 @@ class GameTurnMixin:
             self._schedule_turn_timeout(
                 match, turn_player_id, turn_event["turn_id"]
             )
+
+    async def pause_match(
+        self, match_id: str, admin_id: str, reason: Optional[str]
+    ) -> Dict[str, Any]:
+        """Pauses a running match by admin command.
+
+        Args:
+            match_id (str): Identifier for match.
+            admin_id (str): Identifier for admin.
+            reason (Optional[str]): Optional reason for pausing the match.
+
+        Returns:
+            Dict[str, Any]: Mapping containing pause command results.
+        """
+        match = self.get_match(match_id)
+        paused_at = 0.0
+
+        async with match.lock:
+            if match.status != "running":
+                raise MatchStateError("Only running matches can be paused")
+
+            self._cancel_turn_timeout(match)
+            match.status = "paused"
+            paused_at = time.time()
+            match.paused_at = paused_at
+            match.paused_by = admin_id
+            match.pause_reason = reason
+            match.admin_actions.append(
+                {
+                    "timestamp": paused_at,
+                    "admin_id": admin_id,
+                    "action": "pause",
+                    "reason": reason,
+                }
+            )
+            self._log_event(
+                match,
+                "admin_pause",
+                {"admin_id": admin_id, "reason": reason},
+            )
+
+        event = {
+            "type": "match_paused",
+            "match_id": match_id,
+            "admin_id": admin_id,
+            "reason": reason,
+        }
+        await self._broadcast_match_event(match, event)
+        return event
+
+    async def resume_match(
+        self, match_id: str, admin_id: str, reason: Optional[str]
+    ) -> Dict[str, Any]:
+        """Resumes a paused match by admin command.
+
+        Args:
+            match_id (str): Identifier for match.
+            admin_id (str): Identifier for admin.
+            reason (Optional[str]): Optional reason for resuming the match.
+
+        Returns:
+            Dict[str, Any]: Mapping containing resume command results.
+        """
+        match = self.get_match(match_id)
+        turn_player_id: Optional[str] = None
+        turn_event: Optional[Dict[str, Any]] = None
+        resumed_at = 0.0
+
+        async with match.lock:
+            if match.status != "paused":
+                raise MatchStateError("Only paused matches can be resumed")
+
+            match.status = "running"
+            resumed_at = time.time()
+            match.resumed_at = resumed_at
+            match.admin_actions.append(
+                {
+                    "timestamp": resumed_at,
+                    "admin_id": admin_id,
+                    "action": "resume",
+                    "reason": reason,
+                }
+            )
+            self._log_event(
+                match,
+                "admin_resume",
+                {"admin_id": admin_id, "reason": reason},
+            )
+
+            if match.acting_index is not None:
+                turn_player_id, turn_event = self._prepare_turn_event(match)
+
+        event = {
+            "type": "match_resumed",
+            "match_id": match_id,
+            "admin_id": admin_id,
+            "reason": reason,
+        }
+        await self._broadcast_match_event(match, event)
+
+        if turn_player_id and turn_event:
+            await self._send_turn_event(turn_player_id, turn_event)
+            self._schedule_turn_timeout(
+                match, turn_player_id, turn_event["turn_id"]
+            )
+
+        return event
+
+    async def end_match(
+        self,
+        match_id: str,
+        admin_id: str,
+        reason: Optional[str],
+        mode: str,
+    ) -> Dict[str, Any]:
+        """Ends an active match by admin command.
+
+        Args:
+            match_id (str): Identifier for match.
+            admin_id (str): Identifier for admin.
+            reason (Optional[str]): Optional reason for ending the match.
+            mode (str): End strategy mode for stack handling.
+
+        Returns:
+            Dict[str, Any]: Mapping containing end command results.
+        """
+        match = self.get_match(match_id)
+        ended_at = 0.0
+
+        async with match.lock:
+            if match.status not in {"running", "paused", "waiting"}:
+                raise MatchStateError("Only active matches can be ended")
+
+            self._cancel_turn_timeout(match)
+            if mode == "refund_committed":
+                for player in match.players:
+                    if player.committed > 0:
+                        player.stack += player.committed
+                        match.pot -= player.committed
+                        player.committed = 0
+                match.pot = max(0, match.pot)
+
+            match.status = "finished"
+            match.street = "admin_ended"
+            match.acting_index = None
+            ended_at = time.time()
+            match.admin_actions.append(
+                {
+                    "timestamp": ended_at,
+                    "admin_id": admin_id,
+                    "action": "end",
+                    "reason": reason,
+                    "mode": mode,
+                }
+            )
+            self._log_event(
+                match,
+                "admin_end",
+                {"admin_id": admin_id, "reason": reason, "mode": mode},
+            )
+
+        results = [
+            {
+                "player_id": player.player_id,
+                "stack": player.stack,
+                "committed": player.committed,
+            }
+            for player in match.players
+        ]
+
+        event = {
+            "type": "match_ended",
+            "match_id": match_id,
+            "admin_id": admin_id,
+            "reason": reason,
+            "mode": mode,
+            "results": results,
+        }
+        await self._broadcast_match_event(match, event)
+        return event
 
     def _prepare_turn_event(
         self, match: MatchState

@@ -18,10 +18,20 @@ source venv/bin/activate
 python -m pip install -r server/requirements.txt
 ```
 
-3. Optionally configure bot API keys:
+3. Configure environment values in `.env` at the repository root.
+
+Default local values are already provided in `.env` and `exampleenv`.
+
+4. Optionally configure bot API keys:
 
 ```bash
 export BOT_API_KEYS="bot1:key1,bot2:key2"
+```
+
+5. Optionally configure admin API keys:
+
+```bash
+export ADMIN_API_KEYS="admin:admin-dev-key"
 ```
 
 If `BOT_API_KEYS` is not set, default keys are:
@@ -30,11 +40,15 @@ If `BOT_API_KEYS` is not set, default keys are:
 - `dev-key-2` -> `dev-bot-2`
 - `dev-key-3` -> `dev-bot-3`
 
-4. Run the server:
+6. Run the server:
 
 ```bash
 uvicorn server.run_poker_server:app --reload --host 0.0.0.0 --port 8000
 ```
+
+You can also run any script in `example_scripts/` directly. These scripts now
+auto-start the server if it is not already running, so no second terminal is
+required for local development.
 
 ## HTTP API
 
@@ -47,6 +61,15 @@ uvicorn server.run_poker_server:app --reload --host 0.0.0.0 --port 8000
 - `GET /v1/matches/{match_id}/events`
 - `POST /v1/matches/{match_id}/actions`
 - `POST /v1/matches/{match_id}/actions/self`
+- `POST /v1/matches/{match_id}/pause` (admin)
+- `POST /v1/matches/{match_id}/resume` (admin)
+- `POST /v1/matches/{match_id}/end` (admin)
+- `GET /v1/matches/{match_id}/full-state` (admin)
+- `GET /v1/matches/{match_id}/admin-actions` (admin)
+- `POST /v1/admin/players` (admin)
+- `GET /v1/admin/players` (admin)
+- `DELETE /v1/admin/players/{player_id}` (admin)
+- `POST /v1/admin/players/{player_id}/rotate-key` (admin)
 
 ### Create Match Example
 
@@ -98,3 +121,84 @@ Server events:
 - `showdown`
 - `timeout`
 - `error`
+
+## Running Multiple Matches Concurrently
+
+You can run multiple poker matches at the same time on a single server instance.
+
+How this works:
+
+- Each match has a unique `match_id` and separate state.
+- Players submit actions with a `match_id`, so actions are routed to the correct match.
+- Match mutations are guarded by a per-match lock, so two matches can progress independently.
+
+Typical flow:
+
+1. Create several matches with `POST /v1/matches`.
+2. Start each one with `POST /v1/matches/{match_id}/start`.
+3. Have bots submit actions against the specific `match_id` they are playing.
+
+## Admin SDK (Standalone)
+
+The admin SDK is separated from server code in its own root folder:
+
+- `admin_sdk/`
+
+This keeps admin automation independent from server internals. The SDK talks to the server over HTTP only.
+
+### Admin SDK Quick Start
+
+```python
+from admin_sdk import AdminSDKClient, AdminSDKConfiguration
+from admin_sdk.models import EndMatchOptions, MatchCreationOptions
+
+config = AdminSDKConfiguration(
+	base_url="http://127.0.0.1:8000",
+	admin_api_key="admin-dev-key",
+)
+client = AdminSDKClient(config)
+
+create_result = client.create_match(
+	MatchCreationOptions(
+		player_ids=["dev-bot-1", "dev-bot-2"],
+		number_of_bots_allowed=2,
+		starting_stack=1000,
+		small_blind=10,
+		big_blind=20,
+		turn_timeout_seconds=15,
+		event_log_limit=2000,
+	),
+)
+match_id = create_result["match_id"]
+
+client.start_match(match_id)
+client.pause_match(match_id, reason="manual review")
+client.resume_match(match_id, reason="review completed")
+client.end_match(match_id, EndMatchOptions(reason="admin stop", mode="terminate_as_is"))
+```
+
+### Required Admin Options
+
+The admin SDK supports the required options:
+
+1. `number_of_bots_allowed`
+2. `api_key_being_used` (optional per-call override when invoking SDK methods)
+
+### Suggested Admin-Only Controls
+
+The following controls are implemented or recommended for admin use only:
+
+1. Match lifecycle commands: start, pause, resume, end.
+2. Full private state inspection with all hole cards.
+3. Player provisioning and API key lifecycle management.
+4. Admin action history for operational audits.
+5. End modes:
+- `terminate_as_is`
+- `refund_committed`
+
+Recommended future additions:
+
+1. Rate-limiting for admin commands.
+2. Max match duration with auto-end policy.
+3. Persistent key storage and key expiry policies.
+4. Multi-instance coordination with shared state storage.
