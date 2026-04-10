@@ -12,13 +12,12 @@ class pokerGame:
 
         # Game data
         self.players = players
-        self.current_pot = 0
+        self.pot = 0
         self.curr_street = "preflop"
+        self.turn_index = 0
 
         # Street data
         self.call_amount = 0
-        self.turn_index = 0
-        self.remaining_players = len(self.players)
 
         # Blind amount data
         self.small_blind_amount = small_blind_amount
@@ -59,16 +58,11 @@ class pokerGame:
         self.play_turn()
  
     def play_turn(self):
-        """
-        Recursive function that has the current player play a turn, and calls the next player.
-        
-        """
+        """Recursive function that has the current player play a turn, and calls the next player."""
         
         curr_player = self._get_curr_player()
 
         # Base case conditions
-        if self.remaining_players == 1:
-            return self._end_game()
         if not curr_player.can_play_turn():
             return
 
@@ -76,6 +70,17 @@ class pokerGame:
         game_state_dict = self._get_game_state_dict()
         player_move = curr_player.play_turn(game_state_dict)
         self._register_player_move(player_move)
+
+        # Updates the self.pot parameter
+        amount_bet = player_move[2]
+        self.pot += amount_bet
+
+        # Updates the self.call_amount parameter
+        self.call_amount = max(self.call_amount, curr_player.curr_bet_amount)
+
+        # Plays the next turn
+        self._increment_turn_index()
+        self.play_turn()
 
     def _register_player_move(self, player_move):
         """Helper function to register a player move in the appropriate register"""
@@ -105,14 +110,21 @@ class pokerGame:
         self._increment_turn_index()
     
     
-    def _increment_turn_index(self):
+    def _increment_turn_index(self, recursion_depth = 1):
         """Helper function to increase self.turn_index"""
+
+        # There is only one player in the game
+        if recursion_depth == len(self.players):
+            self._end_game()
+
+        # Incremenets the turn_index mod len(players)
         self.turn_index += 1
         self.turn_index %= len(self.players)
 
+        # Recurses through the list if the current player is inactive
         curr_player = self.players[self.turn_index]
         if curr_player.is_folded or curr_player.is_all_in:
-            self._increment_turn_index()
+            self._increment_turn_index(recursion_depth=recursion_depth+1)
     
     def _get_curr_player(self):
         """Helper function to get the player at index self.turn_index"""
