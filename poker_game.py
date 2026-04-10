@@ -1,5 +1,4 @@
 from player import player
-from poker_card import pokerCard
 from poker_deck import pokerDeck
 from poker_board import pokerBoard
 
@@ -27,15 +26,6 @@ class pokerGame:
         self.deck = pokerDeck()
         self.board = pokerBoard()
 
-<<<<<<< HEAD
-        # Game / Betting round data
-        self.current_pot = 0 # Total money on the board
-        self.amount_to_call = 0 # Maximum amount a player has bet this round
-        self.current_round = "preflop" # Current betting round
-        self.turn_index = 0 # The player's whose turn it is to play 
-
-=======
->>>>>>> server-logic
         # Game state data
         self.preflop_moves = []
         self.flop_moves = []
