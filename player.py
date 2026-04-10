@@ -131,6 +131,11 @@ class player:
         """Plays the forced blind at the beginning of the street"""
         self._make_bet(blind_amount)
 
+    def reset_street(self):
+        """Resets the street specific data."""
+        self.has_moved = False
+        self.curr_bet_amount = 0
+
     def _make_bet(self, bet):
         """Removes the bet from the player balance"""
         assert self.curr_balance >= bet
@@ -142,13 +147,6 @@ class player:
         # Checks if player is all in
         if self.curr_balance == 0:
             self.is_all_in = True
-    
-    def _reset_street(self):
-        """Resets the street specific data."""
-
-        self.is_folded = False
-        self.has_moved = False
-        self.curr_bet_amount = 0
     
     def _run_model_inference(self, game_state_dict):
         """

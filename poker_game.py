@@ -50,13 +50,64 @@ class pokerGame:
             self.board.add_card(new_card)
     
     def preflop(self):
-        """Runs the preflop turn of the game."""
+        """Runs the preflop street of the game."""
 
-        self._play_blind(self.big_blind_amount) # Plays big blind
-        self._play_blind(self.small_blind_amount) # Plays small blind
+        # Plays blinds
+        self._play_blind(self.small_blind_amount) # Small blind
+        self._play_blind(self.big_blind_amount) # Big blind
 
+        # Distributes the cards to the players and the board
+        self.distribute_cards()
+
+        # All players take their turns
         self.play_turn()
- 
+
+        # Initiates the flop street
+        self._reset_street_data()
+        self.curr_street = "flop"
+        self.flop()
+    
+    def flop(self):
+        """Runs the flop street of the game"""
+
+        # Reveals three cards from the board
+        for _ in range(3):
+            self.board.reveal_card()
+
+        # All players take their turns
+        self.play_turn()
+
+        # Initiates the turn street
+        self._reset_street_data()
+        self.curr_street = "turn"
+        self.turn()
+    
+    def turn(self):
+        """Runs the turn street of the game"""
+
+        # Reveals one card from the board
+        self.board.reveal_card()
+
+        # All players take their turns
+        self.play_turn()
+
+        # Initiates the river street
+        self._reset_street_data()
+        self.curr_street = "river"
+        self.turn()
+    
+    def river(self):
+        """Runs the river street of the game"""
+
+        # Reveals the final card
+        self.board.reveal_card()
+
+        # All players take their turns
+        self.play_turn()
+
+        # Ends the game
+        self._end_game()
+
     def play_turn(self):
         """Recursive function that has the current player play a turn, and calls the next player."""
         
@@ -92,6 +143,18 @@ class pokerGame:
         }[self.curr_street]
         curr_registry.append(player_move)
 
+    def _reset_street_data(self):
+        """Resets the street data of the players and the global game state"""
+
+        # Resets the data
+        for player in self.players:
+            player.reset_street()
+        self.call_amount = 0
+
+        # Rests turn_index to first player after the dealer (turn_index = 0)
+        self.turn_index = 0
+        self._increment_turn_index()
+    
     def _play_blind(self, blind_amount):
         """Current player plays a small blind"""
 
@@ -108,7 +171,6 @@ class pokerGame:
         curr_player.play_blind(self.small_blind_amount)
 
         self._increment_turn_index()
-    
     
     def _increment_turn_index(self, recursion_depth = 1):
         """Helper function to increase self.turn_index"""
@@ -145,3 +207,7 @@ class pokerGame:
             "turn_moves": self.turn_moves,
             "river_moves": self.river_moves
         }
+
+    def _end_game(self):
+        """Sanskriti please work on this"""
+        pass
