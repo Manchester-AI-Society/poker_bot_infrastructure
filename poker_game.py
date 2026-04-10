@@ -197,9 +197,9 @@ class pokerGame:
         board_cards_str = self.board.get_revealed_cards_str()
 
         return {
-            "current_round": self.current_round,
+            "current_round": self.curr_street,
             "call_amount": self.call_amount,
-            "current_pot": self.current_pot,
+            "current_pot": self.pot,
             "revealed_cards": board_cards_str,
             "preflop_moves": self.preflop_moves,
             "flop_moves": self.flop_moves,
