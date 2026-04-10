@@ -2,7 +2,6 @@ from player import player
 from poker_card import pokerCard
 from poker_deck import pokerDeck
 from poker_board import pokerBoard
-from game_state import gameState
 
 # Example player initialization (4 players with 30 pounds)
 players = [player(30.0, player_id) for player_id in range(4)]
@@ -24,11 +23,11 @@ class pokerGame:
         self.deck = pokerDeck()
         self.board = pokerBoard()
 
-        # Game data
-        self.current_pot = 0
-        self.amount_to_call = 0
-        self.current_round = "preflop"
-        self.turn_index = 0
+        # Game / Betting round data
+        self.current_pot = 0 # Total money on the board
+        self.amount_to_call = 0 # Maximum amount a player has bet this round
+        self.current_round = "preflop" # Current betting round
+        self.turn_index = 0 # The player's whose turn it is to play 
 
         # Game state data
         self.preflop_moves = []
