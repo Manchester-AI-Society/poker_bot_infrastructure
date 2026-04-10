@@ -10,9 +10,14 @@ class pokerGame:
 
     def __init__(self, players : list[player], big_blind_amount : float, small_blind_amount : float):
 
-        # Player data
+        # Game data
         self.players = players
-        self.current_player_bids = [0 for _ in self.players]
+        self.current_pot = 0
+        self.curr_street = "preflop"
+
+        # Street data
+        self.call_amount = 0
+        self.turn_index = 0
         self.remaining_players = len(self.players)
 
         # Blind amount data
@@ -23,32 +28,11 @@ class pokerGame:
         self.deck = pokerDeck()
         self.board = pokerBoard()
 
-        # Game data
-        self.current_pot = 0
-        self.amount_to_call = 0
-        self.current_round = "preflop"
-        self.turn_index = 0
-
         # Game state data
         self.preflop_moves = []
         self.flop_moves = []
         self.turn_moves = []
         self.river_moves = []
-
-    def get_game_state_dict(self):
-        """Returns the game state as a dictionary"""
-
-        board_cards_str = self.board.get_revealed_cards_str()
-
-        return {
-            "current_round": self.current_round,
-            "current_pit": self.current_pot,
-            "revealed_cards": board_cards_str,
-            "preflop_moves": self.preflop_moves,
-            "flop_moves": self.flop_moves,
-            "turn_moves": self.turn_moves,
-            "river_moves": self.river_moves
-        }
 
     def distribute_cards(self):
         """Distributes two cards to every player, and 5 to the board (unrevealed)"""
@@ -69,31 +53,83 @@ class pokerGame:
     def preflop(self):
         """Runs the preflop turn of the game."""
 
-        self._play_small_blind()
-        self._play_big_blind()
+        self._play_blind(self.big_blind_amount) # Plays big blind
+        self._play_blind(self.small_blind_amount) # Plays small blind
 
-    def reset_turn(self):
-        self.turn_bid_list = [0 for _ in range]
+        self.play_turn()
+ 
+    def play_turn(self):
+        """
+        Recursive function that has the current player play a turn, and calls the next player.
+        
+        """
+        
+        curr_player = self._get_curr_player()
 
-    def _play_small_blind(self):
+        # Base case conditions
+        if self.remaining_players == 1:
+            return self._end_game()
+        if not curr_player.can_play_turn():
+            return
+
+        # Player takes their turn
+        game_state_dict = self._get_game_state_dict()
+        player_move = curr_player.play_turn(game_state_dict)
+        self._register_player_move(player_move)
+
+    def _register_player_move(self, player_move):
+        """Helper function to register a player move in the appropriate register"""
+        curr_registry = {
+            "preflop": self.preflop_moves,
+            "flop": self.flop_moves,
+            "turn": self.turn_moves,
+            "river": self.river_moves
+        }[self.curr_street]
+        curr_registry.append(player_move)
+
+    def _play_blind(self, blind_amount):
         """Current player plays a small blind"""
-        small_blind_player = self.players[self.turn_index]
-        self.turn_bid_list[self.turn_index] += self.small_blind_amount
+
+        # Fetches player information
+        curr_player = self.players[self.turn_index]
+        player_id = curr_player.player_id
+
+        # Logs the move
+        move = (player_id, "blind", blind_amount)
+        self.preflop_moves.append(move)
+        
+        # Plays the blind
         self.pot += self.small_blind_amount
-        small_blind_player.make_bet(self.small_blind_amount)
-        self._next_turn()
+        curr_player.play_blind(self.small_blind_amount)
+
+        self._increment_turn_index()
     
-    def _play_big_blind(self):
-        """Current player plays a big blind"""
-        big_blind_player = self.players[self.turn_index]
-        self.pot += self.big_blind_amount
-        big_blind_player.make_bet(self.big_blind_amount)
-        self._next_turn()
     
-    def _next_turn(self):
+    def _increment_turn_index(self):
         """Helper function to increase self.turn_index"""
         self.turn_index += 1
         self.turn_index %= len(self.players)
 
-        if self.players[self.turn_index].is_folded:
-            self._next_turn()
+        curr_player = self.players[self.turn_index]
+        if curr_player.is_folded or curr_player.is_all_in:
+            self._increment_turn_index()
+    
+    def _get_curr_player(self):
+        """Helper function to get the player at index self.turn_index"""
+        return self.players[self.turn_index]
+    
+    def _get_game_state_dict(self):
+        """Returns the game state as a dictionary"""
+
+        board_cards_str = self.board.get_revealed_cards_str()
+
+        return {
+            "current_round": self.current_round,
+            "call_amount": self.call_amount,
+            "current_pot": self.current_pot,
+            "revealed_cards": board_cards_str,
+            "preflop_moves": self.preflop_moves,
+            "flop_moves": self.flop_moves,
+            "turn_moves": self.turn_moves,
+            "river_moves": self.river_moves
+        }
