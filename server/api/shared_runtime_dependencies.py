@@ -4,9 +4,9 @@ from typing import Optional
 
 from fastapi import HTTPException, status
 
+from game import GameService
 from server.server_settings import load_admin_api_keys, load_api_keys
 from server.websocket_connection_manager import ConnectionManager
-from server.game import GameService
 
 
 def extract_token(

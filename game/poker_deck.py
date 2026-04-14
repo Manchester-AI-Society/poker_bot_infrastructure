@@ -1,5 +1,6 @@
-from poker_card import pokerCard
 import random
+
+from .poker_card import pokerCard
 
 class pokerDeck:
     def __init__(self):
@@ -15,6 +16,6 @@ class pokerDeck:
     
     def draw_card(self):
         """Draws a card from the shuffled deck"""
-
-        assert self.deck_list is not None
+        if not self.deck_list:
+            raise RuntimeError("Cannot draw from an empty deck")
         return self.deck_list.pop()

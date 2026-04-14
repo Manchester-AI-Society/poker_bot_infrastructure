@@ -1,4 +1,4 @@
-from poker_card import pokerCard
+from .poker_card import pokerCard
 
 class player:
     def __init__(self, curr_balance, player_id):
@@ -17,7 +17,7 @@ class player:
     
     def add_card(self, new_card : pokerCard):
         """Adds a card to the player hand"""
-        assert len(self.cards) <= 2
+        assert len(self.cards) < 2
         self.cards.append(new_card)
 
     def can_play_turn(self, call_amount):
@@ -106,7 +106,7 @@ class player:
         
     def call_bet(self, call_amount):
         """Bets what is needed to stay in the game"""
-        assert call_amount > self.curr_bet_amount
+        assert call_amount >= self.curr_bet_amount
         amount_to_bet = call_amount - self.curr_bet_amount
         self._make_bet(amount_to_bet)
         return amount_to_bet
@@ -117,8 +117,8 @@ class player:
         return 0
 
     def check(self, call_amount):
-        """Checks the current turn. Only valid if call_amount is zero"""
-        assert call_amount == 0
+        """Checks the current turn. Only valid if no extra chips are required."""
+        assert call_amount == self.curr_bet_amount
         return 0
 
     def all_in(self):
@@ -176,4 +176,9 @@ class player:
                 ("raise", raise_amount)
                 ("all_in", -1)
         """
-        pass
+        call_amount = game_state_dict["call_amount"]
+        if call_amount > self.curr_bet_amount:
+            if self.curr_balance + self.curr_bet_amount <= call_amount:
+                return ("all_in", -1)
+            return ("call", -1)
+        return ("check", -1)

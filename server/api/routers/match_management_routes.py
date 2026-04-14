@@ -9,7 +9,7 @@ from server.api.shared_runtime_dependencies import (
     require_admin_id,
     require_player_id,
 )
-from server.game import InvalidActionError, MatchNotFoundError, MatchStateError
+from game import InvalidActionError, MatchNotFoundError, MatchStateError
 from server.api_request_models import (
     CreateMatchRequest,
     EndMatchRequest,
