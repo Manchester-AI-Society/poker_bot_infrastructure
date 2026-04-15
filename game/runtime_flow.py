@@ -22,6 +22,7 @@ class RuntimeFlowCoordinator:
         showdown: ShowdownResolver,
         log_event: LogEventCallback,
     ) -> None:
+        """Initialises flow coordination dependencies for runtime progression."""
         self._action_engine = action_engine
         self._state_projection = state_projection
         self._showdown = showdown
@@ -30,6 +31,7 @@ class RuntimeFlowCoordinator:
     def prepare_turn_event(
         self, runtime: MatchRuntime
     ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+        """Builds the next turn event payload for the active player."""
         if runtime.status != "running":
             return None, None
 
@@ -69,6 +71,7 @@ class RuntimeFlowCoordinator:
     def advance_and_settle_if_ready(
         self, runtime: MatchRuntime
     ) -> Optional[Dict[str, Any]]:
+        """Advances streets and resolves showdown when rounds are complete."""
         if self._action_engine.remaining_players(runtime) == 1:
             showdown = self._showdown.settle_fold_win(runtime)
             self._log_event(runtime, "showdown", {"results": showdown["results"]})
@@ -112,6 +115,7 @@ class RuntimeFlowCoordinator:
         return None
 
     def current_actor_index(self, runtime: MatchRuntime) -> Optional[int]:
+        """Returns the current eligible actor index for the runtime."""
         if not runtime.players:
             return None
 
@@ -127,6 +131,7 @@ class RuntimeFlowCoordinator:
         return next_index
 
     def build_blind_events(self, runtime: MatchRuntime) -> List[Dict[str, Any]]:
+        """Builds action events for posted blinds at hand start."""
         if len(runtime.engine.preflop_moves) < 2:
             return []
 

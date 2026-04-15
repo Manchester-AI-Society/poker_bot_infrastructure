@@ -10,6 +10,7 @@ HandResult = Tuple[HandScore, str]
 
 
 def _straight_high(unique_ranks: List[int]) -> Optional[int]:
+    """Returns the high card of a five-card straight when present."""
     if len(unique_ranks) != 5:
         return None
 
@@ -22,6 +23,7 @@ def _straight_high(unique_ranks: List[int]) -> Optional[int]:
 
 
 def _analyze(cards: Iterable[str]):
+    """Builds reusable rank and suit analysis for a five-card hand."""
     ranks = [RANK_TO_VALUE[c[0]] for c in cards]
     suits = [c[1] for c in cards]
 
@@ -40,31 +42,37 @@ def _analyze(cards: Iterable[str]):
 # ---- Hand evaluators (each returns tiebreak tuple or None) ---- #
 
 def _straight_flush(data):
+    """Returns straight-flush tiebreak data when the hand qualifies."""
     if data["is_flush"] and data["straight_high"] is not None:
         return (data["straight_high"],)
 
 
 def _four_kind(data):
+    """Returns four-of-a-kind tiebreak data when the hand qualifies."""
     if data["counts"] == [4, 1]:
         return (data["groups"][0][0], data["groups"][1][0])
 
 
 def _full_house(data):
+    """Returns full-house tiebreak data when the hand qualifies."""
     if data["counts"] == [3, 2]:
         return (data["groups"][0][0], data["groups"][1][0])
 
 
 def _flush(data):
+    """Returns flush tiebreak data when the hand qualifies."""
     if data["is_flush"]:
         return tuple(sorted(data["ranks"], reverse=True))
 
 
 def _straight(data):
+    """Returns straight tiebreak data when the hand qualifies."""
     if data["straight_high"] is not None:
         return (data["straight_high"],)
 
 
 def _three_kind(data):
+    """Returns three-of-a-kind tiebreak data when the hand qualifies."""
     if data["counts"] == [3, 1, 1]:
         triple = data["groups"][0][0]
         kickers = sorted([g[0] for g in data["groups"][1:]], reverse=True)
@@ -72,6 +80,7 @@ def _three_kind(data):
 
 
 def _two_pair(data):
+    """Returns two-pair tiebreak data when the hand qualifies."""
     if data["counts"] == [2, 2, 1]:
         pairs = sorted([g[0] for g in data["groups"][:2]], reverse=True)
         kicker = data["groups"][2][0]
@@ -79,6 +88,7 @@ def _two_pair(data):
 
 
 def _one_pair(data):
+    """Returns one-pair tiebreak data when the hand qualifies."""
     if data["counts"] == [2, 1, 1, 1]:
         pair = data["groups"][0][0]
         kickers = sorted([g[0] for g in data["groups"][1:]], reverse=True)
@@ -86,6 +96,7 @@ def _one_pair(data):
 
 
 def _high_card(data):
+    """Returns high-card tiebreak data for the hand."""
     return tuple(sorted(data["ranks"], reverse=True))
 
 
@@ -105,6 +116,7 @@ HAND_RULES: List[Tuple[int, str, Callable]] = [
 
 
 def _evaluate_five_card_hand(cards: Iterable[str]) -> HandResult:
+    """Evaluates a five-card hand and returns score plus hand name."""
     data = _analyze(cards)
 
     for rank_value, name, fn in HAND_RULES:
@@ -116,6 +128,7 @@ def _evaluate_five_card_hand(cards: Iterable[str]) -> HandResult:
 
 
 def evaluate_best_hand(cards: List[str]) -> HandResult:
+    """Evaluates the strongest five-card hand from available cards."""
     best_score: Optional[HandScore] = None
     best_name = "High Card"
 

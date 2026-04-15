@@ -12,6 +12,7 @@ class ActionEngine:
     def legal_actions(
         self, runtime: MatchRuntime, actor_index: int
     ) -> list[str]:
+        """Returns the legal actions for the acting player."""
         seat = runtime.players[actor_index]
         to_call = max(0, runtime.engine.call_amount - seat.curr_bet_amount)
 
@@ -28,6 +29,7 @@ class ActionEngine:
         return actions
 
     def min_raise_to(self, runtime: MatchRuntime, actor_index: int) -> int:
+        """Calculates the minimum allowed raise target."""
         seat = runtime.players[actor_index]
         to_call = max(0, runtime.engine.call_amount - seat.curr_bet_amount)
 
@@ -48,6 +50,7 @@ class ActionEngine:
         action: str,
         amount: Optional[int],
     ) -> Tuple[str, Optional[int]]:
+        """Validates and applies an action for the acting player."""
         seat = runtime.players[actor_index]
         to_call = max(0, runtime.engine.call_amount - seat.curr_bet_amount)
         legal = self.legal_actions(runtime, actor_index)
@@ -80,6 +83,7 @@ class ActionEngine:
         to_call: int,
         amount: Optional[int],
     ) -> Optional[int]:
+        """Applies a fold action for the acting player."""
         seat.fold()
         seat.has_moved = True
         return None
@@ -92,6 +96,7 @@ class ActionEngine:
         to_call: int,
         amount: Optional[int],
     ) -> Optional[int]:
+        """Applies a check action for the acting player."""
         if to_call != 0:
             raise InvalidActionError("Cannot check when facing a bet")
         seat.check(runtime.engine.call_amount)
@@ -106,6 +111,7 @@ class ActionEngine:
         to_call: int,
         amount: Optional[int],
     ) -> Optional[int]:
+        """Applies a call action for the acting player."""
         if to_call <= 0:
             raise InvalidActionError("Cannot call when no call amount is due")
         if to_call >= seat.curr_balance:
@@ -124,6 +130,7 @@ class ActionEngine:
         to_call: int,
         amount: Optional[int],
     ) -> Optional[int]:
+        """Applies a bet action for the acting player."""
         if amount is None:
             raise InvalidActionError("Bet requires an amount")
         if runtime.engine.call_amount != 0:
@@ -156,6 +163,7 @@ class ActionEngine:
         to_call: int,
         amount: Optional[int],
     ) -> Optional[int]:
+        """Applies a raise-to action for the acting player."""
         if amount is None:
             raise InvalidActionError("raise_to requires an amount")
         min_raise_to = self.min_raise_to(runtime, actor_index)
@@ -184,6 +192,7 @@ class ActionEngine:
     def next_eligible_player(
         self, runtime: MatchRuntime, start_index: int
     ) -> Optional[int]:
+        """Finds the next player who can still act."""
         count = len(runtime.players)
         for offset in range(count):
             index = (start_index + offset) % count
@@ -193,9 +202,11 @@ class ActionEngine:
         return None
 
     def remaining_players(self, runtime: MatchRuntime) -> int:
+        """Returns the number of players who have not folded."""
         return sum(1 for seat in runtime.players if not seat.is_folded)
 
     def all_remaining_all_in(self, runtime: MatchRuntime) -> bool:
+        """Returns whether all non-folded players are all-in."""
         active = [seat for seat in runtime.players if not seat.is_folded]
         if len(active) <= 1:
             return False
@@ -204,6 +215,7 @@ class ActionEngine:
     def reset_acted_flags_after_aggression(
         self, runtime: MatchRuntime, aggressor_index: int
     ) -> None:
+        """Resets action flags after a bet or raise."""
         for index, seat in enumerate(runtime.players):
             if seat.is_folded or seat.is_all_in:
                 continue
@@ -216,6 +228,7 @@ class ActionEngine:
         action: str,
         emitted_amount: Optional[int],
     ) -> None:
+        """Appends an action record to the current street registry."""
         move = (player_id, action, emitted_amount or 0)
         street = runtime.engine.curr_street
         registry = getattr(runtime.engine, f"{street}_moves", None)

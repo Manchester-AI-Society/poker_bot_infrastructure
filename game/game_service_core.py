@@ -30,6 +30,7 @@ class GameService:
     """core game service with async server integration."""
 
     def __init__(self) -> None:
+        """Initialises the game service and runtime collaborators."""
         self._matches: Dict[str, MatchRuntime] = {}
         self._broadcast_cb: Optional[BroadcastCallback] = None
         self._direct_cb: Optional[DirectCallback] = None
@@ -55,10 +56,12 @@ class GameService:
         broadcast_cb: BroadcastCallback,
         direct_cb: DirectCallback,
     ) -> None:
+        """Registers broadcast and direct event callbacks."""
         self._broadcast_cb = broadcast_cb
         self._direct_cb = direct_cb
 
     def create_match(self, request: CreateMatchRequest) -> MatchRuntime:
+        """Creates and stores a new match runtime from a request."""
         if len(request.player_ids) < 2:
             raise MatchStateError("At least 2 players are required")
         if len(set(request.player_ids)) != len(request.player_ids):
@@ -90,6 +93,7 @@ class GameService:
         return runtime
 
     def list_matches(self) -> List[Dict[str, Any]]:
+        """Returns summary metadata for all active matches."""
         return [
             {
                 "match_id": runtime.match_id,
@@ -101,6 +105,7 @@ class GameService:
         ]
 
     def get_match(self, match_id: str) -> MatchRuntime:
+        """Returns a match runtime by identifier."""
         runtime = self._matches.get(match_id)
         if runtime is None:
             raise MatchNotFoundError(match_id)
@@ -109,6 +114,7 @@ class GameService:
     def get_public_state(
         self, match_id: str, viewer_id: Optional[str] = None
     ) -> Dict[str, Any]:
+        """Builds the public state payload for a match viewer."""
         runtime = self.get_match(match_id)
         actor_index = self._runtime_flow.current_actor_index(runtime)
         return self._state_projection.build_public_state(
@@ -118,12 +124,14 @@ class GameService:
         )
 
     def get_logs(self, match_id: str) -> List[Dict[str, Any]]:
+        """Returns the full in-memory event log for a match."""
         runtime = self.get_match(match_id)
         return list(runtime.action_log)
 
     def get_logs_page(
         self, match_id: str, *, offset: int = 0, limit: int = 100
     ) -> Dict[str, Any]:
+        """Returns a paginated slice of the event log for a match."""
         runtime = self.get_match(match_id)
 
         safe_offset = max(0, offset)
@@ -142,15 +150,18 @@ class GameService:
         }
 
     def get_full_state_for_admin(self, match_id: str) -> Dict[str, Any]:
+        """Builds the full administrative state payload for a match."""
         runtime = self.get_match(match_id)
         actor_index = self._runtime_flow.current_actor_index(runtime)
         return self._state_projection.build_admin_state(runtime, actor_index)
 
     def get_admin_actions(self, match_id: str) -> List[Dict[str, Any]]:
+        """Returns the audit trail of admin actions for a match."""
         runtime = self.get_match(match_id)
         return list(runtime.admin_actions)
 
     async def start_match(self, match_id: str) -> None:
+        """Starts a waiting match and emits initial turn events."""
         runtime = self.get_match(match_id)
 
         turn_player_id: Optional[str] = None
@@ -186,6 +197,7 @@ class GameService:
         turn_id: Optional[int],
         from_timeout: bool = False,
     ) -> None:
+        """Validates and applies a player action for the current turn."""
         runtime = self.get_match(match_id)
 
         timeout_event: Optional[Dict[str, Any]] = None
@@ -272,6 +284,7 @@ class GameService:
     async def pause_match(
         self, match_id: str, admin_id: str, reason: Optional[str]
     ) -> Dict[str, Any]:
+        """Pauses a running match by administrative command."""
         runtime = self.get_match(match_id)
 
         async with runtime.lock:
@@ -310,6 +323,7 @@ class GameService:
     async def resume_match(
         self, match_id: str, admin_id: str, reason: Optional[str]
     ) -> Dict[str, Any]:
+        """Resumes a paused match and schedules the next turn."""
         runtime = self.get_match(match_id)
         turn_player_id: Optional[str] = None
         turn_event: Optional[Dict[str, Any]] = None
@@ -358,6 +372,7 @@ class GameService:
         reason: Optional[str],
         mode: str,
     ) -> Dict[str, Any]:
+        """Ends an active match and broadcasts final results."""
         runtime = self.get_match(match_id)
 
         async with runtime.lock:
@@ -416,6 +431,7 @@ class GameService:
     async def _broadcast_match_event(
         self, runtime: MatchRuntime, event: Dict[str, Any]
     ) -> None:
+        """Broadcasts an event to all players in a match."""
         if self._broadcast_cb is None:
             return
         await self._broadcast_cb(
@@ -424,6 +440,7 @@ class GameService:
         )
 
     async def _send_turn_event(self, player_id: str, event: Dict[str, Any]) -> None:
+        """Sends a direct turn event to a single player."""
         if self._direct_cb is None:
             return
         await self._direct_cb(player_id, event)
@@ -434,6 +451,7 @@ class GameService:
         event_type: str,
         payload: Dict[str, Any],
     ) -> None:
+        """Appends a timestamped event entry to the match log."""
         runtime.action_log.append(
             {
                 "timestamp": time.time(),

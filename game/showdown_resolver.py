@@ -12,6 +12,7 @@ class ShowdownResolver:
     """Resolves fold wins and showdown payouts for runtime."""
 
     def settle_fold_win(self, runtime: MatchRuntime) -> Dict[str, Any]:
+        """Awards the full pot when all but one player have folded."""
         winner = next(seat for seat in runtime.players if not seat.is_folded)
         winnings = runtime.engine.pot
         winner.curr_balance += winnings
@@ -38,6 +39,7 @@ class ShowdownResolver:
         }
 
     def settle_showdown(self, runtime: MatchRuntime) -> Dict[str, Any]:
+        """Evaluates remaining hands and distributes showdown payouts."""
         while runtime.engine.board.revealed_cards < len(runtime.engine.board.cards):
             runtime.engine.board.reveal_card()
 

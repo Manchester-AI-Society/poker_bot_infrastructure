@@ -11,6 +11,7 @@ class StateProjection:
     """Builds API state payloads from runtime state."""
 
     def __init__(self, action_engine: ActionEngine) -> None:
+        """Initialises state projection with action rules access."""
         self._action_engine = action_engine
 
     def build_public_state(
@@ -19,6 +20,7 @@ class StateProjection:
         viewer_id: Optional[str],
         current_actor_index: Optional[int],
     ) -> Dict[str, Any]:
+        """Builds a public state payload for a player viewer."""
         players_state = []
         for seat in runtime.players:
             entry: Dict[str, Any] = {
@@ -63,6 +65,7 @@ class StateProjection:
         runtime: MatchRuntime,
         current_actor_index: Optional[int],
     ) -> Dict[str, Any]:
+        """Builds a full administrative state payload for a match."""
         players = [
             {
                 "id": seat.player_id,

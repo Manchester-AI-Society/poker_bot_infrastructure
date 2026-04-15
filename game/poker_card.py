@@ -59,6 +59,7 @@ class pokerCard:
         return "red"
 
     def get_str(self):
+        """Returns the card suit and rank in internal string form."""
         return f"{self.card_suit}_{self.card_number}"
 
 

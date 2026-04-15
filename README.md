@@ -1,244 +1,218 @@
-# poker_bot_infrastructure
+# Poker Bot Infrastructure
 
-This repository contains a Python server for running poker matches with FastAPI, WebSocket messaging, and uvicorn.
+## Project Title & Overview
+`poker_bot_infrastructure` is an authoritative no limits Texas Hold'em poker match server.
 
-The server is authoritative: game rules, game state, and state transitions are enforced on the server.
+It lets you:
+- create and start poker matches,
+- receive turn events in real time,
+- submit legal player actions,
+- inspect match state and logs,
+- run admin operations through a standalone Python SDK.
 
-## Server Quick Start
+The server is authoritative, which means game rules and state transitions are validated on the server, not trusted from clients.
 
-1. Activate the existing virtual environment:
+## Short Description
+This project runs multiplayer poker games for bots or client applications. It manages cards, blinds, betting rounds, turn order, timeouts, and showdown settlement, then exposes all of this through HTTP and WebSocket APIs.
+
+## Game Logic / How It Works
+
+### Core Rules and Mechanics
+- Game type: no-limit Texas Hold'em style hand flow.
+- Minimum players per match: 2.
+- Blinds: small blind and big blind are posted automatically at hand start.
+- Streets: `preflop -> flop -> turn -> river -> showdown`.
+- Legal actions are validated per turn:
+	- `fold`
+	- `check` (only when no chips are needed to call)
+	- `call`
+	- `bet` (when no current bet exists)
+	- `raise_to` (raise to a total target amount)
+- Turn timeout: if a player does not act in time, the server auto-submits `check` when possible, otherwise `fold`.
+
+### Gameplay Flow (Step by Step)
+1. An admin creates a match with player IDs and blind/stack settings.
+2. The server creates a runtime and deals two hole cards per player.
+3. Small blind and big blind are posted automatically.
+4. The server emits whose turn it is, including legal actions and raise bounds.
+5. Players submit actions via HTTP or WebSocket.
+6. The action engine validates and applies each action, updating pot, call amount, and action history.
+7. When all pending actions are settled for a street, the game advances to the next street and reveals board cards.
+8. The process repeats until only one player remains (others folded) or showdown is reached.
+9. Showdown evaluates best hands and pays out the pot.
+
+### Win/Loss and Payout Conditions
+- Fold win: if all but one player fold, the remaining player wins the entire pot.
+- Showdown win: best evaluated hand wins.
+- Ties: pot is split equally across tied winners; any chip remainder is distributed one chip at a time to winners by ranking order.
+- Match status changes to `finished` after payout.
+
+## Project Structure / How to Read the Code
+
+### High-Level Layout
+- `server/`: FastAPI app, route handlers, auth helpers, websocket connection manager.
+- `game/`: core poker runtime, rule enforcement, action validation, state projection.
+- `admin_sdk/`: standalone Python SDK for admin automation over HTTP.
+- `example_scripts/`: runnable scripts that demonstrate match creation and lifecycle flows.
+
+### Where the Game Logic Lives
+Core game behaviour is in `game/`. If you are new to the codebase, start here in this order:
+1. `game/game_service_core.py`
+2. `game/runtime_flow.py`
+3. `game/action_engine.py`
+4. `game/showdown_resolver.py`
+5. `game/poker_game.py`
+
+### Key Modules and Responsibilities
+- `game/game_service_core.py`
+	- `GameService`: orchestrates match lifecycle (`create`, `start`, `submit_action`, `pause`, `resume`, `end`), logging, and event dispatch.
+- `game/match_runtime.py`
+	- `MatchRuntime`: in-memory state container for one active match.
+- `game/poker_game.py`
+	- `pokerGame`: hand engine (blinds, dealing, street progression, per-street action state).
+- `game/action_engine.py`
+	- `ActionEngine`: legal action calculation and action application (`bet`, `call`, `raise_to`, etc.).
+- `game/runtime_flow.py`
+	- `RuntimeFlowCoordinator`: turn event preparation, street advancement, showdown trigger logic.
+- `game/showdown_resolver.py`
+	- `ShowdownResolver`: fold-win and showdown payout settlement.
+- `game/state_projection.py`
+	- `StateProjection`: builds public and admin state payloads for API responses.
+- `game/turn_timeout_manager.py`
+	- `TurnTimeoutManager`: schedules and handles per-turn timeouts.
+- `server/api/fastapi_application.py`
+	- creates FastAPI app and wires routers.
+- `server/api/routers/`
+	- HTTP and WebSocket endpoints.
+- `admin_sdk/admin_client.py`
+	- `AdminSDKClient`: Python client wrapper for admin API calls.
+
+## How to Run the Project
+
+### 1. Prerequisites
+- Python 3.11+
+- `pip`
+
+### 2. Set Up Environment
+From repository root:
 
 ```bash
 source venv/bin/activate
 ```
 
-2. Install dependencies:
+If you prefer creating a new environment instead:
 
 ```bash
-python -m pip install -r server/requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-3. Configure environment values in `.env` at the repository root.
+### 3. Install Dependencies
+```bash
+python -m pip install -r requirements.txt
+```
 
-You can copy the sample values from `exampleenv`:
+### 4. Configure Environment Variables
+Create `.env` from the provided sample:
 
 ```bash
 cp exampleenv .env
 ```
 
-4. Run the server (optional if you use example scripts):
+Important variables:
+- `POKER_SERVER_URL` (for SDK/scripts)
+- `POKER_ADMIN_API_KEY`
+- `ADMIN_API_KEYS` (`id:key` pairs)
+- `BOT_API_KEYS` (`id:key` pairs)
+- `POKER_ADMIN_TIMEOUT_SECONDS`
 
+### 5. Start the Server
 ```bash
 uvicorn server.run_poker_server:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The app loads `.env` automatically via `python-dotenv` in both SDK and server startup.
-
-### Environment Variables
-
-Bot keys and admin keys are configured as comma-separated `id:key` pairs.
-
-- `BOT_API_KEYS` example: `dev-bot-1:dev-key-1,dev-bot-2:dev-key-2`
-- `ADMIN_API_KEYS` example: `admin:admin-dev-key`
-- `POKER_SERVER_URL` example: `http://127.0.0.1:8000`
-- `POKER_ADMIN_API_KEY` example: `admin-dev-key`
-- `POKER_ADMIN_TIMEOUT_SECONDS` example: `10`
-
-If `BOT_API_KEYS` is not set, default keys are:
-
-- `dev-key-1` -> `dev-bot-1`
-- `dev-key-2` -> `dev-bot-2`
-- `dev-key-3` -> `dev-bot-3`
-
-## Example Scripts
-
-Scripts in `example_scripts/` now auto-start the server if it is not running.
-This means you can run them directly without opening a second terminal.
-
-### Run One Game (Admin Key Override)
+Health check:
 
 ```bash
-python example_scripts/create_one_game_with_api_key_override.py
+curl http://127.0.0.1:8000/health
 ```
 
-### Run One Game (Admin Key from Config)
+## How to Play / Run a Game
+
+### Option A: Run an Example Script (Fastest)
+Scripts auto-start the server if needed.
 
 ```bash
 python example_scripts/create_one_game_with_api_key.py
-```
-
-### Run Multiple Games
-
-```bash
 python example_scripts/create_multiple_games_with_api_keys.py
-```
-
-### Validate Missing Admin Key Behavior
-
-```bash
-python example_scripts/create_one_game_without_api_key.py
-```
-
-### Run Mock Bot Game and Announce Winner
-
-```bash
 python example_scripts/mock_poker_bot_game_announce_winner.py
 ```
 
-### Optional: override bot API keys in shell
+### Option B: Manual API Flow (Step by Step)
+
+1. Create a match (admin key required):
 
 ```bash
-export BOT_API_KEYS="bot1:key1,bot2:key2"
-```
-
-### Optional: override admin API keys in shell
-
-```bash
-export ADMIN_API_KEYS="admin:admin-dev-key"
-```
-
-## HTTP API
-
-- `GET /health`
-- `GET /v1/bots`
-- `GET /v1/matches`
-- `POST /v1/matches`
-- `POST /v1/matches/{match_id}/start`
-- `GET /v1/matches/{match_id}`
-- `GET /v1/matches/{match_id}/events`
-- `POST /v1/matches/{match_id}/actions`
-- `POST /v1/matches/{match_id}/actions/self`
-- `POST /v1/matches/{match_id}/pause` (admin)
-- `POST /v1/matches/{match_id}/resume` (admin)
-- `POST /v1/matches/{match_id}/end` (admin)
-- `GET /v1/matches/{match_id}/full-state` (admin)
-- `GET /v1/matches/{match_id}/admin-actions` (admin)
-- `POST /v1/admin/players` (admin)
-- `GET /v1/admin/players` (admin)
-- `DELETE /v1/admin/players/{player_id}` (admin)
-- `POST /v1/admin/players/{player_id}/rotate-key` (admin)
-
-### Create Match Example
-
-```bash
-curl -X POST http://localhost:8000/v1/matches \
+curl -X POST http://127.0.0.1:8000/v1/matches \
+	-H "X-Admin-Key: admin-dev-key" \
 	-H "Content-Type: application/json" \
 	-d '{
 		"player_ids": ["dev-bot-1", "dev-bot-2"],
 		"starting_stack": 1000,
 		"small_blind": 10,
 		"big_blind": 20,
-		"turn_timeout_seconds": 15
+		"turn_timeout_seconds": 15,
+		"event_log_limit": 2000
 	}'
 ```
 
-### Start Match Example
+2. Start the match:
 
 ```bash
-curl -X POST http://localhost:8000/v1/matches/<MATCH_ID>/start
+curl -X POST http://127.0.0.1:8000/v1/matches/<MATCH_ID>/start \
+	-H "X-Admin-Key: admin-dev-key"
 ```
 
-## WebSocket API
+3. Fetch state for a player (shows legal actions for that player when it is their turn):
 
-Endpoint:
+```bash
+curl "http://127.0.0.1:8000/v1/matches/<MATCH_ID>?viewer_id=dev-bot-1"
+```
 
-- `ws://localhost:8000/v1/ws`
+4. Submit an authenticated player action:
 
-Authentication:
+```bash
+curl -X POST http://127.0.0.1:8000/v1/matches/<MATCH_ID>/actions/self \
+	-H "X-API-Key: dev-key-1" \
+	-H "Content-Type: application/json" \
+	-d '{"action": "check", "turn_id": 1}'
+```
 
-- `Authorization: Bearer <api_key>` header, or
-- `?api_key=<api_key>` query param
+Example raise:
 
-Client action message:
+```bash
+curl -X POST http://127.0.0.1:8000/v1/matches/<MATCH_ID>/actions/self \
+	-H "X-API-Key: dev-key-1" \
+	-H "Content-Type: application/json" \
+	-d '{"action": "raise_to", "amount": 60, "turn_id": 3}'
+```
+
+5. Read event history:
+
+```bash
+curl "http://127.0.0.1:8000/v1/matches/<MATCH_ID>/events?offset=0&limit=100"
+```
+
+### Optional: Real-Time Play with WebSocket
+- Endpoint: `ws://127.0.0.1:8000/v1/ws`
+- Authenticate with `Authorization: Bearer <api_key>` or `?api_key=<api_key>`.
+- Send action messages like:
 
 ```json
 {
 	"type": "action",
-	"match_id": "abc123",
+	"match_id": "<MATCH_ID>",
 	"turn_id": 2,
 	"action": "check"
 }
 ```
-
-Server events:
-
-- `connected`
-- `your_turn`
-- `action`
-- `showdown`
-- `timeout`
-- `error`
-
-## Running Multiple Matches Concurrently
-
-You can run multiple poker matches at the same time on a single server instance.
-
-How this works:
-
-- Each match has a unique `match_id` and separate state.
-- Players submit actions with a `match_id`, so actions are routed to the correct match.
-- Match mutations are guarded by a per-match lock, so two matches can progress independently.
-
-Typical flow:
-
-1. Create several matches with `POST /v1/matches`.
-2. Start each one with `POST /v1/matches/{match_id}/start`.
-3. Have bots submit actions against the specific `match_id` they are playing.
-
-## Admin SDK (Standalone)
-
-The admin SDK is separated from server code in its own root folder:
-
-- `admin_sdk/`
-
-This keeps admin automation independent from server internals. The SDK talks to the server over HTTP only.
-
-### Admin SDK Quick Start
-
-```python
-from admin_sdk import AdminSDKClient, AdminSDKConfiguration
-from admin_sdk.models import EndMatchOptions, MatchCreationOptions
-
-config = AdminSDKConfiguration(
-	base_url="http://127.0.0.1:8000",
-	admin_api_key="admin-dev-key",
-)
-client = AdminSDKClient(config)
-
-create_result = client.create_match(
-	MatchCreationOptions(
-		player_ids=["dev-bot-1", "dev-bot-2"],
-		number_of_bots_allowed=2,
-		starting_stack=1000,
-		small_blind=10,
-		big_blind=20,
-		turn_timeout_seconds=15,
-		event_log_limit=2000,
-	),
-)
-match_id = create_result["match_id"]
-
-client.start_match(match_id)
-client.pause_match(match_id, reason="manual review")
-client.resume_match(match_id, reason="review completed")
-client.end_match(match_id, EndMatchOptions(reason="admin stop", mode="terminate_as_is"))
-```
-
-### Required Admin Options
-
-The admin SDK supports the required options:
-
-1. `number_of_bots_allowed`
-2. `api_key_being_used` (optional per-call override when invoking SDK methods)
-
-### Suggested Admin-Only Controls
-
-The following controls are implemented or recommended for admin use only:
-
-1. Match lifecycle commands: start, pause, resume, end.
-2. Full private state inspection with all hole cards.
-3. Player provisioning and API key lifecycle management.
-4. Admin action history for operational audits.
-5. End modes:
-- `terminate_as_is`
-- `refund_committed`

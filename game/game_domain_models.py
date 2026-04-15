@@ -38,6 +38,7 @@ class PlayerSeat:
         acted: bool = False,
         actor: Optional[player] = None,
     ) -> None:
+        """Initializes per-seat state for a player in a match."""
         self.player_id = player_id
         self.stack = stack
         self.hole_cards = list(hole_cards) if hole_cards is not None else []
@@ -82,6 +83,7 @@ class MatchState:
         end_reason: Optional[str] = None,
         updated_at: Optional[float] = None,
     ) -> None:
+        """Initializes mutable match state and runtime metadata."""
         self.match_id = match_id
         self.players = players
         self.small_blind = small_blind
@@ -118,10 +120,12 @@ class MatchState:
 
     @property
     def current_player_index(self) -> Optional[int]:
+        """Returns the index of the current acting player."""
         return self.acting_index
 
     @property
     def current_player_id(self) -> Optional[str]:
+        """Returns the player id for the current acting seat."""
         if self.acting_index is None:
             return None
         if self.acting_index < 0:

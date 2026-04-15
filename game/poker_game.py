@@ -14,6 +14,7 @@ class pokerGame:
         big_blind_amount: float,
         small_blind_amount: float,
     ):
+        """Initialises a game engine for a single poker hand."""
         if len(players) < 2:
             raise ValueError("At least two players are required")
         if small_blind_amount >= big_blind_amount:
@@ -82,6 +83,7 @@ class pokerGame:
         self._reset_street_data(next_street=next_street)
 
     def run_hand(self):
+        """Runs a full hand from blinds through showdown."""
         self.start_hand()
         self._play_round_until_settled()
         while self.curr_street != "showdown":
@@ -99,6 +101,7 @@ class pokerGame:
         self.board.add_cards(self.deck.draw_cards(5))
 
     def preflop(self):
+        """Runs the preflop stage using the legacy flow."""
         self._play_blind(self.small_blind_amount)
         self._play_blind(self.big_blind_amount)
         self.distribute_cards()
@@ -106,21 +109,25 @@ class pokerGame:
         self._reset_street_data(next_street="flop")
 
     def flop(self):
+        """Runs the flop stage using the legacy flow."""
         self.board.reveal_cards(3)
         self._play_round_until_settled()
         self._reset_street_data(next_street="turn")
 
     def turn(self):
+        """Runs the turn stage using the legacy flow."""
         self.board.reveal_cards(1)
         self._play_round_until_settled()
         self._reset_street_data(next_street="river")
 
     def river(self):
+        """Runs the river stage using the legacy flow."""
         self.board.reveal_cards(1)
         self._play_round_until_settled()
         self._end_game()
 
     def _play_round_until_settled(self):
+        """Processes player actions until the betting round is complete."""
         while True:
             curr_player = self._get_curr_player()
             if curr_player.is_folded or curr_player.is_all_in:
@@ -149,12 +156,14 @@ class pokerGame:
                 return
 
     def _round_has_pending_actions(self):
+        """Checks whether any active player still has a pending action."""
         active = [actor for actor in self.players if not actor.is_folded and not actor.is_all_in]
         if len(active) <= 1:
             return False
         return any(actor.can_play_turn(self.call_amount) for actor in active)
 
     def _register_player_move(self, player_move):
+        """Records a player move in the current street history."""
         current_registry = {
             "preflop": self.preflop_moves,
             "flop": self.flop_moves,
@@ -164,6 +173,7 @@ class pokerGame:
         current_registry.append(player_move)
 
     def _reset_street_data(self, next_street):
+        """Resets per-street state and advances to the next street."""
         for actor in self.players:
             actor.reset_street()
         self.call_amount = 0
@@ -171,6 +181,7 @@ class pokerGame:
         self.curr_street = next_street
 
     def _play_blind(self, blind_amount):
+        """Applies a forced blind and updates the pot state."""
         current_player = self.players[self.turn_index]
         move = (current_player.player_id, "blind", blind_amount)
         self.preflop_moves.append(move)
@@ -182,12 +193,15 @@ class pokerGame:
         self._increment_turn_index()
 
     def _increment_turn_index(self):
+        """Advances the turn index to the next seat."""
         self.turn_index = (self.turn_index + 1) % len(self.players)
 
     def _get_curr_player(self):
+        """Returns the player whose turn index is active."""
         return self.players[self.turn_index]
 
     def _get_game_state_dict(self):
+        """Builds the game-state payload passed to player inference."""
         return {
             "current_round": self.curr_street,
             "call_amount": self.call_amount,
@@ -200,5 +214,6 @@ class pokerGame:
         }
 
     def _end_game(self):
+        """Marks the current hand as finished at showdown."""
         self.curr_street = "showdown"
 

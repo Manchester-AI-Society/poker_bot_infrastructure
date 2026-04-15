@@ -22,6 +22,7 @@ class TurnTimeoutManager:
         submit_action: SubmitActionCallback,
         logger: Logger,
     ) -> None:
+        """Initialises timeout scheduling dependencies."""
         self._action_engine = action_engine
         self._get_match = get_match
         self._submit_action = submit_action
@@ -33,6 +34,7 @@ class TurnTimeoutManager:
         player_id: str,
         turn_id: int,
     ) -> None:
+        """Schedules a timeout task for the current turn."""
         self.cancel(runtime)
         runtime.turn_task = asyncio.create_task(
             self._timeout_task(
@@ -44,6 +46,7 @@ class TurnTimeoutManager:
         )
 
     def cancel(self, runtime: MatchRuntime) -> None:
+        """Cancels any active timeout task for the runtime."""
         task = runtime.turn_task
         if task is not None and not task.done():
             task.cancel()
@@ -56,6 +59,7 @@ class TurnTimeoutManager:
         turn_id: int,
         timeout_seconds: int,
     ) -> None:
+        """Executes fallback action submission when a turn times out."""
         try:
             await asyncio.sleep(timeout_seconds)
             runtime = self._get_match(match_id)

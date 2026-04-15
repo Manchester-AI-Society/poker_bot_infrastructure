@@ -2,7 +2,7 @@ from .poker_card import pokerCard
 
 class pokerBoard:
     def __init__(self):
-        """Initializes an empty decks with no cards."""
+        """Initialises an empty decks with no cards."""
         self.cards = []
         self.revealed_cards = 0
     
@@ -34,6 +34,7 @@ class pokerBoard:
         return self.cards[:self.revealed_cards]
 
     def get_revealed_cards_str(self):
+        """Returns revealed board cards as string identifiers."""
         cards = self.get_revealed_cards()
         card_strs = []
         for card in cards:

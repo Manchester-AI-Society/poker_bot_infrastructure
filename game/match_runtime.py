@@ -36,15 +36,18 @@ class MatchRuntime:
     action_log: Deque[Dict[str, Any]] = field(init=False)
 
     def __post_init__(self) -> None:
+        """Initialises derived runtime values after dataclass construction."""
         self.action_log = deque(maxlen=self.event_log_limit)
         if self.min_raise_size <= 0:
             self.min_raise_size = int(self.engine.big_blind_amount)
 
     @property
     def players(self) -> List[player]:
+        """Returns the current player objects from the engine."""
         return self.engine.players
 
     def player_index(self, player_id: str) -> int:
+        """Returns the seat index for a given player id."""
         for index, seat in enumerate(self.players):
             if seat.player_id == player_id:
                 return index
