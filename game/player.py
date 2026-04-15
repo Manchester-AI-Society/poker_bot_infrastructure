@@ -1,4 +1,4 @@
-from poker_card import pokerCard
+from .poker_card import pokerCard
 
 class player:
     def __init__(self, curr_balance, player_id):
@@ -17,7 +17,7 @@ class player:
     
     def add_card(self, new_card : pokerCard):
         """Adds a card to the player hand"""
-        assert len(self.cards) <= 2
+        assert len(self.cards) < 2
         self.cards.append(new_card)
 
     def can_play_turn(self, call_amount):
@@ -106,7 +106,7 @@ class player:
         
     def call_bet(self, call_amount):
         """Bets what is needed to stay in the game"""
-        assert call_amount > self.curr_bet_amount
+        assert call_amount >= self.curr_bet_amount
         amount_to_bet = call_amount - self.curr_bet_amount
         self._make_bet(amount_to_bet)
         return amount_to_bet
@@ -117,8 +117,8 @@ class player:
         return 0
 
     def check(self, call_amount):
-        """Checks the current turn. Only valid if call_amount is zero"""
-        assert call_amount == 0
+        """Checks the current turn. Only valid if no extra chips are required."""
+        assert call_amount == self.curr_bet_amount
         return 0
 
     def all_in(self):
@@ -131,10 +131,25 @@ class player:
         """Plays the forced blind at the beginning of the street"""
         self._make_bet(blind_amount)
 
+    def commit_chips(self, amount):
+        """Commits an explicit chip amount to the current street."""
+        if amount < 0:
+            raise ValueError("amount must be non-negative")
+        self._make_bet(amount)
+        return amount
+
     def reset_street(self):
         """Resets the street specific data."""
         self.has_moved = False
         self.curr_bet_amount = 0
+
+    def reset_for_new_hand(self):
+        """Resets hand-scoped state while preserving player identity and balance."""
+        self.cards = []
+        self.is_folded = False
+        self.has_moved = False
+        self.curr_bet_amount = 0
+        self.is_all_in = self.curr_balance == 0
 
     def _make_bet(self, bet):
         """Removes the bet from the player balance"""
@@ -176,4 +191,9 @@ class player:
                 ("raise", raise_amount)
                 ("all_in", -1)
         """
-        pass
+        call_amount = game_state_dict["call_amount"]
+        if call_amount > self.curr_bet_amount:
+            if self.curr_balance + self.curr_bet_amount <= call_amount:
+                return ("all_in", -1)
+            return ("call", -1)
+        return ("check", -1)

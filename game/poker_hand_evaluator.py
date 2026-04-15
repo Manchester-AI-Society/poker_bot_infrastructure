@@ -1,101 +1,122 @@
 from collections import Counter
 from itertools import combinations
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple, Callable
 
-from .cards import RANK_TO_VALUE
+from .poker_card import RANK_TO_VALUE
+
+
+HandScore = Tuple[int, Tuple[int, ...]]
+HandResult = Tuple[HandScore, str]
 
 
 def _straight_high(unique_ranks: List[int]) -> Optional[int]:
-    """Finds the highest card in a straight.
-
-    Args:
-        unique_ranks (List[int]): Input value for unique ranks.
-
-    Returns:
-        Optional[int]: Computed result, or None when no result is available.
-    """
     if len(unique_ranks) != 5:
         return None
 
     ordered = sorted(unique_ranks)
     if ordered == [2, 3, 4, 5, 14]:
         return 5
-    if ordered[-1] - ordered[0] == 4 and len(set(ordered)) == 5:
+    if ordered[-1] - ordered[0] == 4:
         return ordered[-1]
     return None
 
 
-def _evaluate_five_card_hand(
-    cards: Iterable[str],
-) -> Tuple[Tuple[int, Tuple[int, ...]], str]:
-    """Evaluates a five-card hand and returns its rank and name.
+def _analyze(cards: Iterable[str]):
+    ranks = [RANK_TO_VALUE[c[0]] for c in cards]
+    suits = [c[1] for c in cards]
 
-    Args:
-        cards (Iterable[str]): Input value for cards.
+    counter = Counter(ranks)
+    groups = sorted(counter.items(), key=lambda x: (x[1], x[0]), reverse=True)
 
-    Returns:
-        Tuple[Tuple[int, Tuple[int, ...]], str]: Tuple containing the computed results.
-    """
-    ranks = [RANK_TO_VALUE[card[0]] for card in cards]
-    suits = [card[1] for card in cards]
-    rank_counter = Counter(ranks)
-
-    counts = sorted(rank_counter.values(), reverse=True)
-    groups = sorted(
-        rank_counter.items(), key=lambda item: (item[1], item[0]), reverse=True
-    )
-    is_flush = len(set(suits)) == 1
-    straight_high = _straight_high(list(rank_counter.keys()))
-
-    if is_flush and straight_high is not None:
-        return (8, (straight_high,)), "Straight Flush"
-
-    if counts == [4, 1]:
-        four_rank = groups[0][0]
-        kicker = groups[1][0]
-        return (7, (four_rank, kicker)), "Four of a Kind"
-
-    if counts == [3, 2]:
-        return (6, (groups[0][0], groups[1][0])), "Full House"
-
-    if is_flush:
-        return (5, tuple(sorted(ranks, reverse=True))), "Flush"
-
-    if straight_high is not None:
-        return (4, (straight_high,)), "Straight"
-
-    if counts == [3, 1, 1]:
-        triple = groups[0][0]
-        kickers = sorted([groups[1][0], groups[2][0]], reverse=True)
-        return (3, (triple, *kickers)), "Three of a Kind"
-
-    if counts == [2, 2, 1]:
-        pair_ranks = sorted([groups[0][0], groups[1][0]], reverse=True)
-        kicker = groups[2][0]
-        return (2, (pair_ranks[0], pair_ranks[1], kicker)), "Two Pair"
-
-    if counts == [2, 1, 1, 1]:
-        pair_rank = groups[0][0]
-        kickers = sorted(
-            [groups[1][0], groups[2][0], groups[3][0]], reverse=True
-        )
-        return (1, (pair_rank, *kickers)), "One Pair"
-
-    return (0, tuple(sorted(ranks, reverse=True))), "High Card"
+    return {
+        "ranks": ranks,
+        "groups": groups,
+        "counts": sorted(counter.values(), reverse=True),
+        "is_flush": len(set(suits)) == 1,
+        "straight_high": _straight_high(list(counter.keys())),
+    }
 
 
-def evaluate_best_hand(
-    cards: List[str],
-) -> Tuple[Tuple[int, Tuple[int, ...]], str]:
-    """Evaluates the best five-card hand from a list of cards.
+# ---- Hand evaluators (each returns tiebreak tuple or None) ---- #
 
-    Args:
-        cards (List[str]): Input value for cards.
+def _straight_flush(data):
+    if data["is_flush"] and data["straight_high"] is not None:
+        return (data["straight_high"],)
 
-    Returns:
-        Tuple[Tuple[int, Tuple[int, ...]], str]: Tuple containing the computed results.
-    """
-    best_score: Optional[Tuple[int, Tuple[int, ...]]] = None
+
+def _four_kind(data):
+    if data["counts"] == [4, 1]:
+        return (data["groups"][0][0], data["groups"][1][0])
+
+
+def _full_house(data):
+    if data["counts"] == [3, 2]:
+        return (data["groups"][0][0], data["groups"][1][0])
+
+
+def _flush(data):
+    if data["is_flush"]:
+        return tuple(sorted(data["ranks"], reverse=True))
+
+
+def _straight(data):
+    if data["straight_high"] is not None:
+        return (data["straight_high"],)
+
+
+def _three_kind(data):
+    if data["counts"] == [3, 1, 1]:
+        triple = data["groups"][0][0]
+        kickers = sorted([g[0] for g in data["groups"][1:]], reverse=True)
+        return (triple, *kickers)
+
+
+def _two_pair(data):
+    if data["counts"] == [2, 2, 1]:
+        pairs = sorted([g[0] for g in data["groups"][:2]], reverse=True)
+        kicker = data["groups"][2][0]
+        return (*pairs, kicker)
+
+
+def _one_pair(data):
+    if data["counts"] == [2, 1, 1, 1]:
+        pair = data["groups"][0][0]
+        kickers = sorted([g[0] for g in data["groups"][1:]], reverse=True)
+        return (pair, *kickers)
+
+
+def _high_card(data):
+    return tuple(sorted(data["ranks"], reverse=True))
+
+
+# ---- Rule table (ordered by strength) ---- #
+
+HAND_RULES: List[Tuple[int, str, Callable]] = [
+    (8, "Straight Flush", _straight_flush),
+    (7, "Four of a Kind", _four_kind),
+    (6, "Full House", _full_house),
+    (5, "Flush", _flush),
+    (4, "Straight", _straight),
+    (3, "Three of a Kind", _three_kind),
+    (2, "Two Pair", _two_pair),
+    (1, "One Pair", _one_pair),
+    (0, "High Card", _high_card),
+]
+
+
+def _evaluate_five_card_hand(cards: Iterable[str]) -> HandResult:
+    data = _analyze(cards)
+
+    for rank_value, name, fn in HAND_RULES:
+        tiebreak = fn(data)
+        if tiebreak is not None:
+            return (rank_value, tiebreak), name
+
+    raise RuntimeError("Unreachable")
+
+
+def evaluate_best_hand(cards: List[str]) -> HandResult:
+    best_score: Optional[HandScore] = None
     best_name = "High Card"
 
     for combo in combinations(cards, 5):
@@ -104,6 +125,4 @@ def evaluate_best_hand(
             best_score = score
             best_name = name
 
-    if best_score is None:
-        return (0, tuple()), best_name
-    return best_score, best_name
+    return (best_score or (0, tuple())), best_name
