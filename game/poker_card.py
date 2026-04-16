@@ -1,5 +1,5 @@
 class pokerCard:
-    def __init__(self, card_number:int, card_suit:str):
+    def __init__(self, card_number: int, card_suit: str):
         """
         Creates a new poker card object.
         
@@ -21,14 +21,13 @@ class pokerCard:
 
         self.card_number = card_number
         self.card_suit = card_suit
-    
+
     def get_card_colour(self):
         """Returns the colour of the current card as a string ["black", "red"]"""
-        
+
         if self.card_suit in ["spades", "clubs"]:
             return "black"
         return "red"
 
     def get_str(self):
         return f"{self.card_suit}_{self.card_number}"
-    

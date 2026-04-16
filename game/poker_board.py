@@ -1,4 +1,4 @@
-from poker_card import pokerCard
+from .poker_card import pokerCard
 
 class pokerBoard:
     def __init__(self):
@@ -6,14 +6,14 @@ class pokerBoard:
         self.cards = []
         self.revealed_cards = 0
     
-    def add_card(self, card : pokerCard):
+    def add_card(self, card: pokerCard):
         """Adds a card to the deck"""
         assert len(self.cards) < 5
         self.cards.append(card)
     
     def reveal_card(self):
         """Increases number of revealed cards by one"""
-        assert self.revealed_cards <= len(self.cards)
+        assert self.revealed_cards < len(self.cards)
         self.revealed_cards += 1
     
     def get_revealed_cards(self):

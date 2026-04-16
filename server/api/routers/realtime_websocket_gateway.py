@@ -9,7 +9,7 @@ from server.api.shared_runtime_dependencies import (
     games,
     require_player_id,
 )
-from server.game import InvalidActionError, MatchNotFoundError, MatchStateError
+from game import InvalidActionError, MatchNotFoundError, MatchStateError
 
 
 router = APIRouter(tags=["websocket"])

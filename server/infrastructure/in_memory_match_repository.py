@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-from server.game.game_domain_models import MatchState
+from game.game_domain_models import MatchState
 
 
 class InMemoryMatchRepository:

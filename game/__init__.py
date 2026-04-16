@@ -7,7 +7,7 @@ from .game_domain_models import (
     MatchStateError,
     PlayerSeat,
 )
-from .poker_game_orchestrator import GameService
+from .game_service import GameService
 
 __all__ = [
     "BroadcastCallback",
