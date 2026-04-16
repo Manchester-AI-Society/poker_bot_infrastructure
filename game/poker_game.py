@@ -6,7 +6,8 @@ from poker_board import pokerBoard
 players = [player(30.0, player_id) for player_id in range(4)]
 
 class pokerGame:
-
+    """Main game class running the poker logic"""
+    
     def __init__(self, players : list[player], big_blind_amount : float, small_blind_amount : float):
 
         # Game data
