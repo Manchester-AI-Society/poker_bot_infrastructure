@@ -1,158 +1,212 @@
-from __future__ import annotations
+from player import player
+from poker_deck import pokerDeck
+from poker_board import pokerBoard
 
-from .player import player
-from .poker_board import pokerBoard
-from .poker_deck import pokerDeck
-
+# Example player initialization (4 players with 30 pounds)
+players = [player(30.0, player_id) for player_id in range(4)]
 
 class pokerGame:
-    """Lightweight standalone poker hand runner built on game primitives."""
 
-    def __init__(
-        self,
-        players: list[player],
-        big_blind_amount: float,
-        small_blind_amount: float,
-    ):
-        if len(players) < 2:
-            raise ValueError("At least two players are required")
-        if small_blind_amount >= big_blind_amount:
-            raise ValueError("big_blind_amount must be greater than small_blind_amount")
+    def __init__(self, players : list[player], big_blind_amount : float, small_blind_amount : float):
 
+        # Game data
         self.players = players
         self.pot = 0
         self.curr_street = "preflop"
         self.turn_index = 0
+
+        # Street data
         self.call_amount = 0
 
+        # Blind amount data
         self.small_blind_amount = small_blind_amount
         self.big_blind_amount = big_blind_amount
 
+        # Card data
         self.deck = pokerDeck()
         self.board = pokerBoard()
 
+        # Game state data
         self.preflop_moves = []
         self.flop_moves = []
         self.turn_moves = []
         self.river_moves = []
 
-    def run_hand(self):
-        self.preflop()
-        self.flop()
-        self.turn()
-        self.river()
-
     def distribute_cards(self):
-        """Distributes two cards to every player, and five to the board (unrevealed)."""
-        for actor in self.players:
-            actor.add_card(self.deck.draw_card())
-            actor.add_card(self.deck.draw_card())
+        """Distributes two cards to every player, and 5 to the board (unrevealed)"""
 
+        # Distributes player cards
+        for player in self.players:
+            new_card1 = self.deck.draw_card()
+            new_card2 = self.deck.draw_card()
+
+            player.add_card(new_card1)
+            player.add_card(new_card2)
+        
+        # Distributes board cards
         for _ in range(5):
-            self.board.add_card(self.deck.draw_card())
-
+            new_card = self.deck.draw_card()
+            self.board.add_card(new_card)
+    
     def preflop(self):
-        self._play_blind(self.small_blind_amount)
-        self._play_blind(self.big_blind_amount)
-        self.distribute_cards()
-        self._play_round_until_settled()
-        self._reset_street_data(next_street="flop")
+        """Runs the preflop street of the game."""
 
+        # Plays blinds
+        self._play_blind(self.small_blind_amount) # Small blind
+        self._play_blind(self.big_blind_amount) # Big blind
+
+        # Distributes the cards to the players and the board
+        self.distribute_cards()
+
+        # All players take their turns
+        self.play_turn()
+
+        # Initiates the flop street
+        self._reset_street_data()
+        self.curr_street = "flop"
+        self.flop()
+    
     def flop(self):
+        """Runs the flop street of the game"""
+
+        # Reveals three cards from the board
         for _ in range(3):
             self.board.reveal_card()
-        self._play_round_until_settled()
-        self._reset_street_data(next_street="turn")
 
+        # All players take their turns
+        self.play_turn()
+
+        # Initiates the turn street
+        self._reset_street_data()
+        self.curr_street = "turn"
+        self.turn()
+    
     def turn(self):
-        self.board.reveal_card()
-        self._play_round_until_settled()
-        self._reset_street_data(next_street="river")
+        """Runs the turn street of the game"""
 
-    def river(self):
+        # Reveals one card from the board
         self.board.reveal_card()
-        self._play_round_until_settled()
+
+        # All players take their turns
+        self.play_turn()
+
+        # Initiates the river street
+        self._reset_street_data()
+        self.curr_street = "river"
+        self.turn()
+    
+    def river(self):
+        """Runs the river street of the game"""
+
+        # Reveals the final card
+        self.board.reveal_card()
+
+        # All players take their turns
+        self.play_turn()
+
+        # Ends the game
         self._end_game()
 
-    def _play_round_until_settled(self):
-        while True:
-            curr_player = self._get_curr_player()
-            if curr_player.is_folded or curr_player.is_all_in:
-                self._increment_turn_index()
-                if not self._round_has_pending_actions():
-                    return
-                continue
+    def play_turn(self):
+        """Recursive function that has the current player play a turn, and calls the next player."""
+        
+        curr_player = self._get_curr_player()
 
-            if not curr_player.can_play_turn(self.call_amount):
-                if not self._round_has_pending_actions():
-                    return
-                self._increment_turn_index()
-                continue
+        # Base case conditions
+        if not curr_player.can_play_turn():
+            return
 
-            game_state_dict = self._get_game_state_dict()
-            player_move = curr_player.play_turn(game_state_dict)
-            self._register_player_move(player_move)
+        # Player takes their turn
+        game_state_dict = self._get_game_state_dict()
+        player_move = curr_player.play_turn(game_state_dict)
+        self._register_player_move(player_move)
 
-            amount_bet = player_move[2]
-            self.pot += amount_bet
-            self.call_amount = max(self.call_amount, curr_player.curr_bet_amount)
-            curr_player.has_moved = True
+        # Updates the self.pot parameter
+        amount_bet = player_move[2]
+        self.pot += amount_bet
 
-            self._increment_turn_index()
-            if not self._round_has_pending_actions():
-                return
+        # Updates the self.call_amount parameter
+        self.call_amount = max(self.call_amount, curr_player.curr_bet_amount)
 
-    def _round_has_pending_actions(self):
-        active = [actor for actor in self.players if not actor.is_folded and not actor.is_all_in]
-        if len(active) <= 1:
-            return False
-        return any(actor.can_play_turn(self.call_amount) for actor in active)
+        # Plays the next turn
+        self._increment_turn_index()
+        self.play_turn()
 
     def _register_player_move(self, player_move):
-        current_registry = {
+        """Helper function to register a player move in the appropriate register"""
+        curr_registry = {
             "preflop": self.preflop_moves,
             "flop": self.flop_moves,
             "turn": self.turn_moves,
-            "river": self.river_moves,
+            "river": self.river_moves
         }[self.curr_street]
-        current_registry.append(player_move)
+        curr_registry.append(player_move)
 
-    def _reset_street_data(self, next_street):
-        for actor in self.players:
-            actor.reset_street()
+    def _reset_street_data(self):
+        """Resets the street data of the players and the global game state"""
+
+        # Resets the data
+        for player in self.players:
+            player.reset_street()
         self.call_amount = 0
+
+        # Rests turn_index to first player after the dealer (turn_index = 0)
         self.turn_index = 0
-        self.curr_street = next_street
-
+        self._increment_turn_index()
+    
     def _play_blind(self, blind_amount):
-        current_player = self.players[self.turn_index]
-        move = (current_player.player_id, "blind", blind_amount)
-        self.preflop_moves.append(move)
+        """Current player plays a small blind"""
 
-        self.pot += blind_amount
-        current_player.play_blind(blind_amount)
-        self.call_amount = max(self.call_amount, current_player.curr_bet_amount)
+        # Fetches player information
+        curr_player = self.players[self.turn_index]
+        player_id = curr_player.player_id
+
+        # Logs the move
+        move = (player_id, "blind", blind_amount)
+        self.preflop_moves.append(move)
+        
+        # Plays the blind
+        self.pot += self.small_blind_amount
+        curr_player.play_blind(self.small_blind_amount)
 
         self._increment_turn_index()
+    
+    def _increment_turn_index(self, recursion_depth = 1):
+        """Helper function to increase self.turn_index"""
 
-    def _increment_turn_index(self):
-        self.turn_index = (self.turn_index + 1) % len(self.players)
+        # There is only one player in the game
+        if recursion_depth == len(self.players):
+            self._end_game()
 
+        # Incremenets the turn_index mod len(players)
+        self.turn_index += 1
+        self.turn_index %= len(self.players)
+
+        # Recurses through the list if the current player is inactive
+        curr_player = self.players[self.turn_index]
+        if curr_player.is_folded or curr_player.is_all_in:
+            self._increment_turn_index(recursion_depth=recursion_depth+1)
+    
     def _get_curr_player(self):
+        """Helper function to get the player at index self.turn_index"""
         return self.players[self.turn_index]
-
+    
     def _get_game_state_dict(self):
+        """Returns the game state as a dictionary"""
+
+        board_cards_str = self.board.get_revealed_cards_str()
+
         return {
             "current_round": self.curr_street,
             "call_amount": self.call_amount,
             "current_pot": self.pot,
-            "revealed_cards": self.board.get_revealed_cards_str(),
+            "revealed_cards": board_cards_str,
             "preflop_moves": self.preflop_moves,
             "flop_moves": self.flop_moves,
             "turn_moves": self.turn_moves,
-            "river_moves": self.river_moves,
+            "river_moves": self.river_moves
         }
 
     def _end_game(self):
-        self.curr_street = "showdown"
-
+        """Sanskriti please work on this"""
+        pass
