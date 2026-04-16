@@ -242,3 +242,10 @@ The following controls are implemented or recommended for admin use only:
 5. End modes:
 - `terminate_as_is`
 - `refund_committed`
+
+Recommended future additions:
+
+1. Rate-limiting for admin commands.
+2. Max match duration with auto-end policy.
+3. Persistent key storage and key expiry policies.
+4. Multi-instance coordination with shared state storage.
