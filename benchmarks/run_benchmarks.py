@@ -16,16 +16,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from game.action_engine import ActionEngine
+from game.action_engine import legal_actions, min_raise_to
 from game.game_service_core import GameService
 from game.match_runtime import MatchRuntime
 from game.player import Player
 from game.poker_game import PokerGame
 from game.poker_hand_evaluator import evaluate_best_hand
-from game.runtime_flow import RuntimeFlowCoordinator
-from game.showdown_resolver import ShowdownResolver
-from game.state_projection import StateProjection
-from server.api_request_models import CreateMatchRequest
+from game.runtime_flow import current_actor_index
+from game.state_projection import build_public_state
 from server.websocket_connection_manager import ConnectionManager
 
 SyncBenchFn = Callable[[], None]
@@ -132,24 +130,6 @@ def _create_runtime(
     )
 
 
-def _build_noop_runtime_flow() -> RuntimeFlowCoordinator:
-    action_engine = ActionEngine()
-    state_projection = StateProjection(action_engine)
-    showdown = ShowdownResolver()
-
-    def _noop_log_event(
-        _runtime: MatchRuntime, _kind: str, _payload: Dict[str, Any]
-    ) -> None:
-        return None
-
-    return RuntimeFlowCoordinator(
-        action_engine=action_engine,
-        state_projection=state_projection,
-        showdown=showdown,
-        log_event=_noop_log_event,
-    )
-
-
 def _deck_codes() -> List[str]:
     ranks = "23456789TJQKA"
     suits = "SHDC"
@@ -174,9 +154,11 @@ class _FakeWebSocket:
 
 
 async def _benchmark_service_lifecycle_once(
-    service: GameService, request: CreateMatchRequest
+    service: GameService, player_ids: List[str]
 ) -> int:
-    runtime = service.create_match(request)
+    runtime = service.create_match(
+        player_ids=player_ids, turn_timeout_seconds=120, event_log_limit=3000
+    )
     await service.start_match(runtime.match_id)
     actions_taken = 0
 
@@ -212,13 +194,12 @@ async def _benchmark_service_lifecycle_once(
 def benchmark_action_engine_rules(
     iterations: int, warmup: int
 ) -> BenchmarkResult:
-    action_engine = ActionEngine()
     runtime = _create_runtime()
     actor_index = runtime.engine.turn_index
 
     def _run() -> None:
-        action_engine.legal_actions(runtime, actor_index)
-        action_engine.min_raise_to(runtime, actor_index)
+        legal_actions(runtime, actor_index)
+        min_raise_to(runtime, actor_index)
 
     return _time_sync(
         name="action_engine_rules",
@@ -232,18 +213,15 @@ def benchmark_action_engine_rules(
 def benchmark_state_projection(
     iterations: int, warmup: int
 ) -> BenchmarkResult:
-    action_engine = ActionEngine()
-    projection = StateProjection(action_engine)
     runtime = _create_runtime()
-    flow = _build_noop_runtime_flow()
-    actor_index = flow.current_actor_index(runtime)
+    actor_index = current_actor_index(runtime)
     if actor_index is None:
         viewer_id = None
     else:
         viewer_id = runtime.players[actor_index].player_id
 
     def _run() -> None:
-        projection.build_public_state(runtime, viewer_id, actor_index)
+        build_public_state(runtime, viewer_id, actor_index)
 
     return _time_sync(
         name="state_projection_public",
@@ -282,10 +260,8 @@ def benchmark_log_pagination(
 ) -> BenchmarkResult:
     service = GameService()
     runtime = service.create_match(
-        CreateMatchRequest(
-            player_ids=["p1", "p2", "p3", "p4"],
-            event_log_limit=max(log_events + 100, 1000),
-        )
+        player_ids=["p1", "p2", "p3", "p4"],
+        event_log_limit=max(log_events + 100, 1000),
     )
 
     for event_id in range(log_events):
@@ -340,17 +316,13 @@ async def benchmark_service_lifecycle(
         direct_cb=_noop_direct,
     )
 
-    request = CreateMatchRequest(
-        player_ids=["p1", "p2", "p3", "p4", "p5", "p6"],
-        turn_timeout_seconds=120,
-        event_log_limit=3000,
-    )
+    player_ids = ["p1", "p2", "p3", "p4", "p5", "p6"]
 
     action_counts: List[int] = []
 
     async def _run() -> None:
         action_count = await _benchmark_service_lifecycle_once(
-            service, request
+            service, player_ids
         )
         action_counts.append(action_count)
 

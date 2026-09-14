@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-poker-bot = "player_sdk.run_bot:main"
+poker-bot = "player_sdk._run:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]

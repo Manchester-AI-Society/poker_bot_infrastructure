@@ -51,7 +51,14 @@ async def create_match(
     require_admin_id(authorization, x_admin_key)
 
     try:
-        match = games.create_match(request)
+        match = games.create_match(
+            player_ids=request.player_ids,
+            starting_stack=request.starting_stack,
+            small_blind=request.small_blind,
+            big_blind=request.big_blind,
+            turn_timeout_seconds=request.turn_timeout_seconds,
+            event_log_limit=request.event_log_limit,
+        )
     except MatchStateError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)

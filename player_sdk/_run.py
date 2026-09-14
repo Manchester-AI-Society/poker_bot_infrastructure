@@ -280,7 +280,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         None: This function does not return a value.
     """
     parser = argparse.ArgumentParser(
-        prog="python -m player_sdk.run_bot",
+        prog="python -m player_sdk",
         description="Run a PokerBot subclass against a live match.",
     )
     parser.add_argument("bot_file", help="Path to a .py file defining a bot")

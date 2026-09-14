@@ -4,7 +4,7 @@ import asyncio
 from logging import Logger
 from typing import Awaitable, Callable
 
-from .action_engine import ActionEngine
+from .action_engine import legal_actions
 from .match_runtime import MatchRuntime
 
 GetMatchCallback = Callable[[str], MatchRuntime]
@@ -17,13 +17,11 @@ class TurnTimeoutManager:
     def __init__(
         self,
         *,
-        action_engine: ActionEngine,
         get_match: GetMatchCallback,
         submit_action: SubmitActionCallback,
         logger: Logger,
     ) -> None:
         """Initialises timeout scheduling dependencies."""
-        self._action_engine = action_engine
         self._get_match = get_match
         self._submit_action = submit_action
         self._logger = logger
@@ -64,10 +62,8 @@ class TurnTimeoutManager:
             await asyncio.sleep(timeout_seconds)
             runtime = self._get_match(match_id)
             actor_index = runtime.player_index(player_id)
-            legal_actions = self._action_engine.legal_actions(
-                runtime, actor_index
-            )
-            fallback_action = "check" if "check" in legal_actions else "fold"
+            actions = legal_actions(runtime, actor_index)
+            fallback_action = "check" if "check" in actions else "fold"
             await self._submit_action(
                 match_id=match_id,
                 player_id=player_id,

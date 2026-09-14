@@ -5,9 +5,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-from server.api_request_models import CreateMatchRequest
-
-from .action_engine import ActionEngine
+from .action_engine import apply_action, next_eligible_player
 from .game_domain_models import (
     BroadcastCallback,
     DirectCallback,
@@ -18,9 +16,13 @@ from .game_domain_models import (
 from .match_runtime import MatchRuntime
 from .player import Player
 from .poker_game import PokerGame
-from .runtime_flow import RuntimeFlowCoordinator
-from .showdown_resolver import ShowdownResolver
-from .state_projection import StateProjection
+from .runtime_flow import (
+    advance_and_settle_if_ready,
+    build_blind_events,
+    current_actor_index,
+    prepare_turn_event,
+)
+from .state_projection import build_admin_state, build_public_state
 from .turn_timeout_manager import TurnTimeoutManager
 
 LOGGER = logging.getLogger(__name__)
@@ -30,21 +32,11 @@ class GameService:
     """core game service with async server integration."""
 
     def __init__(self) -> None:
-        """Initialises the game service and runtime collaborators."""
+        """Initialises the game service and timeout scheduling."""
         self._matches: Dict[str, MatchRuntime] = {}
         self._broadcast_cb: Optional[BroadcastCallback] = None
         self._direct_cb: Optional[DirectCallback] = None
-        self._action_engine = ActionEngine()
-        self._state_projection = StateProjection(self._action_engine)
-        self._showdown = ShowdownResolver()
-        self._runtime_flow = RuntimeFlowCoordinator(
-            action_engine=self._action_engine,
-            state_projection=self._state_projection,
-            showdown=self._showdown,
-            log_event=self._log_event,
-        )
         self._timeout_manager = TurnTimeoutManager(
-            action_engine=self._action_engine,
             get_match=self.get_match,
             submit_action=self.submit_action,
             logger=LOGGER,
@@ -60,38 +52,45 @@ class GameService:
         self._broadcast_cb = broadcast_cb
         self._direct_cb = direct_cb
 
-    def create_match(self, request: CreateMatchRequest) -> MatchRuntime:
-        """Creates and stores a new match runtime from a request."""
-        if len(request.player_ids) < 2:
+    def create_match(
+        self,
+        *,
+        player_ids: List[str],
+        starting_stack: int = 1000,
+        small_blind: int = 10,
+        big_blind: int = 20,
+        turn_timeout_seconds: int = 15,
+        event_log_limit: int = 2000,
+    ) -> MatchRuntime:
+        """Creates and stores a new match runtime."""
+        if len(player_ids) < 2:
             raise MatchStateError("At least 2 players are required")
-        if len(set(request.player_ids)) != len(request.player_ids):
+        if len(set(player_ids)) != len(player_ids):
             raise MatchStateError("Duplicate player ids are not allowed")
-        if request.small_blind >= request.big_blind:
+        if small_blind >= big_blind:
             raise MatchStateError("big_blind must be larger than small_blind")
 
         seats = [
-            Player(curr_balance=request.starting_stack, player_id=player_id)
-            for player_id in request.player_ids
+            Player(curr_balance=starting_stack, player_id=player_id)
+            for player_id in player_ids
         ]
 
         engine = PokerGame(
             players=seats,
-            big_blind_amount=request.big_blind,
-            small_blind_amount=request.small_blind,
+            big_blind_amount=big_blind,
+            small_blind_amount=small_blind,
         )
 
         match_id = uuid.uuid4().hex[:12]
         runtime = MatchRuntime(
             match_id=match_id,
             engine=engine,
-            turn_timeout_seconds=request.turn_timeout_seconds,
-            event_log_limit=request.event_log_limit,
+            turn_timeout_seconds=turn_timeout_seconds,
+            event_log_limit=event_log_limit,
         )
 
         self._matches[match_id] = runtime
-        self._log_event(
-            runtime, "match_created", {"player_ids": request.player_ids}
-        )
+        self._log_event(runtime, "match_created", {"player_ids": player_ids})
         return runtime
 
     def list_matches(self) -> List[Dict[str, Any]]:
@@ -118,8 +117,8 @@ class GameService:
     ) -> Dict[str, Any]:
         """Builds the public state payload for a match viewer."""
         runtime = self.get_match(match_id)
-        actor_index = self._runtime_flow.current_actor_index(runtime)
-        return self._state_projection.build_public_state(
+        actor_index = current_actor_index(runtime)
+        return build_public_state(
             runtime,
             viewer_id,
             actor_index,
@@ -154,8 +153,8 @@ class GameService:
     def get_full_state_for_admin(self, match_id: str) -> Dict[str, Any]:
         """Builds the full administrative state payload for a match."""
         runtime = self.get_match(match_id)
-        actor_index = self._runtime_flow.current_actor_index(runtime)
-        return self._state_projection.build_admin_state(runtime, actor_index)
+        actor_index = current_actor_index(runtime)
+        return build_admin_state(runtime, actor_index)
 
     def get_admin_actions(self, match_id: str) -> List[Dict[str, Any]]:
         """Returns the audit trail of admin actions for a match."""
@@ -177,11 +176,11 @@ class GameService:
             runtime.engine.start_hand()
             runtime.status = "running"
             runtime.updated_at = time.time()
-            blind_events = self._runtime_flow.build_blind_events(runtime)
+            blind_events = build_blind_events(runtime)
             self._log_event(runtime, "hand_started", {})
 
-            turn_player_id, turn_event = self._runtime_flow.prepare_turn_event(
-                runtime
+            turn_player_id, turn_event = prepare_turn_event(
+                runtime, self._log_event
             )
 
         for event in blind_events:
@@ -217,7 +216,7 @@ class GameService:
                 raise MatchStateError("Match is not running")
 
             actor_index = runtime.player_index(player_id)
-            current_index = self._runtime_flow.current_actor_index(runtime)
+            current_index = current_actor_index(runtime)
             if current_index is None or current_index != actor_index:
                 raise InvalidActionError("It is not your turn")
 
@@ -238,7 +237,7 @@ class GameService:
                 self._timeout_manager.cancel(runtime)
 
             normalised_action = "raise_to" if action == "raise" else action
-            action_name, emitted_amount = self._action_engine.apply_action(
+            action_name, emitted_amount = apply_action(
                 runtime,
                 actor_index,
                 normalised_action,
@@ -266,18 +265,18 @@ class GameService:
                 },
             )
 
-            showdown_event = self._runtime_flow.advance_and_settle_if_ready(
-                runtime
+            showdown_event = advance_and_settle_if_ready(
+                runtime, self._log_event
             )
             if showdown_event is None and runtime.status == "running":
-                next_index = self._action_engine.next_eligible_player(
+                next_index = next_eligible_player(
                     runtime,
                     actor_index + 1,
                 )
                 if next_index is not None:
                     runtime.engine.turn_index = next_index
-                turn_player_id, turn_event = (
-                    self._runtime_flow.prepare_turn_event(runtime)
+                turn_player_id, turn_event = prepare_turn_event(
+                    runtime, self._log_event
                 )
 
         if timeout_event:
@@ -361,8 +360,8 @@ class GameService:
                 {"admin_id": admin_id, "reason": reason},
             )
 
-            turn_player_id, turn_event = self._runtime_flow.prepare_turn_event(
-                runtime
+            turn_player_id, turn_event = prepare_turn_event(
+                runtime, self._log_event
             )
 
         event = {
