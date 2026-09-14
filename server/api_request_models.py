@@ -16,7 +16,6 @@ class CreateMatchRequest(BaseModel):
 
 
 class SubmitActionRequest(BaseModel):
-    player_id: Optional[str] = None
     action: ActionType
     amount: Optional[int] = Field(default=None, ge=1)
     turn_id: Optional[int] = Field(default=None, ge=1)

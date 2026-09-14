@@ -143,45 +143,6 @@ async def get_match_events(
     return {"match_id": match_id, **payload}
 
 
-@router.post("/matches/{match_id}/actions")
-async def submit_action_http(
-    match_id: str, request: SubmitActionRequest
-) -> dict:
-    """Submits an action on behalf of a player id in the request body.
-
-    Args:
-        match_id (str): Match identifier.
-        request (SubmitActionRequest): Action payload.
-
-    Returns:
-        dict: Mapping indicating whether submission succeeded.
-    """
-    if not request.player_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="player_id is required",
-        )
-
-    try:
-        await games.submit_action(
-            match_id=match_id,
-            player_id=request.player_id,
-            action=request.action,
-            amount=request.amount,
-            turn_id=request.turn_id,
-        )
-    except MatchNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Match not found"
-        ) from exc
-    except (MatchStateError, InvalidActionError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
-
-    return {"ok": True}
-
-
 @router.post("/matches/{match_id}/pause")
 async def pause_match(
     match_id: str,

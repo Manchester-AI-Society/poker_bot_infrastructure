@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from player_sdk import PlayerSDKAuthError
 from player_sdk.bot_interface import PokerBot
 from player_sdk.client import PokerEngineClient, translate_action
 from player_sdk.models import Action, GameState
@@ -108,6 +109,66 @@ class TestSendActionGuards:
         )[1]
         client.send_action(Action.fold(), game_state=make_state())
         assert captured["headers"]["X-API-Key"] == "key"
+
+    def test_send_action_without_api_key_raises(self):
+        client = make_client(api_key=None)
+        with pytest.raises(PlayerSDKAuthError):
+            client.send_action(Action.call(), game_state=make_state())
+
+
+class TestHistoryFromEvents:
+    FLAT_EVENTS = [
+        {
+            "timestamp": 1.0,
+            "type": "turn_started",
+            "player_id": "p1",
+            "turn_id": 1,
+        },
+        {
+            "timestamp": 2.0,
+            "type": "action",
+            "player_id": "p1",
+            "action": "call",
+            "amount": 10,
+            "street": "preflop",
+            "pot": 30,
+        },
+        {
+            "timestamp": 3.0,
+            "type": "action",
+            "player_id": "p2",
+            "action": "check",
+            "amount": None,
+            "street": "flop",
+            "pot": 30,
+        },
+        {"timestamp": 4.0, "type": "street_advanced", "street": "turn"},
+    ]
+
+    def test_parses_flat_action_events(self):
+        client = make_client()
+        history = client._history_from_events(self.FLAT_EVENTS)
+        assert history == [
+            {
+                "player_id": "p1",
+                "action": "call",
+                "amount": 10,
+                "street": "preflop",
+                "timestamp": 2.0,
+            },
+            {
+                "player_id": "p2",
+                "action": "check",
+                "amount": None,
+                "street": "flop",
+                "timestamp": 3.0,
+            },
+        ]
+
+    def test_non_list_events_return_empty(self):
+        client = make_client()
+        assert client._history_from_events(None) == []
+        assert client._history_from_events({"type": "action"}) == []
 
 
 class TestMaybeActGuards:

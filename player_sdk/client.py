@@ -228,16 +228,13 @@ class PokerEngineClient:
         if state.turn_id is not None and state.turn_id >= 1:
             body["turn_id"] = state.turn_id
 
-        headers: Dict[str, str] = {}
+        if not self.api_key:
+            raise PlayerSDKAuthError(
+                "An API key is required to submit actions;"
+                " pass api_key to PokerEngineClient or connect(api_key=...)."
+            )
+        headers: Dict[str, str] = {"X-API-Key": self.api_key}
         route = f"/v1/matches/{self.match_id}/actions/self"
-        if self.api_key:
-            headers["X-API-Key"] = self.api_key
-        else:
-            # Fallback route used when no API key is available.
-            self.resolve_identity()
-            route = f"/v1/matches/{self.match_id}/actions"
-            body["player_id"] = self.player_id
-
         return self._request("POST", route, payload=body, headers=headers)
 
     def run_once(self, history_limit: int = 200) -> Optional[Dict[str, Any]]:
@@ -319,6 +316,7 @@ class PokerEngineClient:
         )
 
     def _history_from_events(self, events: Any) -> list[dict]:
+        """Builds action history rows from the flat match event log."""
         if not isinstance(events, list):
             return []
 
@@ -328,15 +326,12 @@ class PokerEngineClient:
                 continue
             if row.get("type") != "action":
                 continue
-            payload = row.get("payload")
-            if not isinstance(payload, Mapping):
-                continue
             history.append(
                 {
-                    "player_id": payload.get("player_id"),
-                    "action": payload.get("action"),
-                    "amount": payload.get("amount"),
-                    "street": payload.get("street"),
+                    "player_id": row.get("player_id"),
+                    "action": row.get("action"),
+                    "amount": row.get("amount"),
+                    "street": row.get("street"),
                     "timestamp": row.get("timestamp"),
                 }
             )
