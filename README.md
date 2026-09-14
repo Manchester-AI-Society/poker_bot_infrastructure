@@ -9,7 +9,7 @@ An authoritative **no-limit Texas Hold'em match server** for running poker games
 
 ![Demo GIF](docs/demo.gif)
 
-*A full hand played by three demo bots on the match server (all hole cards shown). To capture a new hand and regenerate the GIF: `python examples/visualisation/capture_demo_hand.py && python examples/visualisation/render_demo_gif.py`.*
+*A full hand played by three demo bots on the match server (all hole cards shown). To capture a new hand and regenerate the GIF: `python examples/visualisation/capture_demo_hand.py && python examples/visualisation/render_demo_gif.py` (GIF rendering additionally needs [Pillow](https://python-pillow.org): `pip install pillow`).*
 
 ## The 30-Second Version
 
@@ -61,10 +61,11 @@ flowchart LR
     end
 
     subgraph Engine["Game Engine (game/)"]
-        E1["ActionEngine<br/>legal actions & raise bounds"]
-        E2["PokerGame<br/>blinds, streets, dealing"]
-        E3["ShowdownResolver<br/>hand eval & payouts"]
-        E4["TurnTimeoutManager<br/>auto check/fold"]
+        E1["action_engine<br/>legal actions & raise bounds"]
+        E2["poker_game<br/>blinds, streets, dealing"]
+        E3["showdown_resolver<br/>hand eval & payouts"]
+        E4["turn_timeout_manager<br/>auto check/fold"]
+        E5["runtime_flow<br/>turn & street coordination"]
     end
 
     A --> R
@@ -75,6 +76,7 @@ flowchart LR
     S --> E2
     S --> E3
     S --> E4
+    S --> E5
 ```
 
 ## Why This Exists
@@ -222,6 +224,12 @@ POKER_SERVER_URL=http://host:8000 POKER_API_KEY=dev-key-1 \
   poker-bot my_bot.py
 ```
 
+From a checkout you can also run the same CLI as a module, no install needed:
+
+```bash
+POKER_API_KEY=dev-key-1 python -m player_sdk my_bot.py
+```
+
 Flags: `--transport {auto,ws,http}`, `--api-key`, `--server-url`, `--match-id`, `--poll-interval`. The bot file must define exactly one `PokerBot` subclass with a no-argument constructor.
 
 ### 5. Test your bot locally (one call)
@@ -313,10 +321,11 @@ pytest tests/test_ws_runner.py -v
 ```
 
 The suite covers config resolution order, action validation and
-translation, parser payload tolerance, websocket message handling
-(fake socket, no server needed), the `play()` dispatch and fallback
-logic, and end-to-end matches played both through the local harness
-and over the websocket transport with `play()`.
+translation, parser payload tolerance, action-history parsing from the
+server event log, authenticated action submission, websocket message
+handling (fake socket, no server needed), the `play()` dispatch and
+fallback logic, and end-to-end matches played both through the local
+harness and over the websocket transport with `play()`.
 
 ## Troubleshooting
 
@@ -325,6 +334,7 @@ and over the websocket transport with `play()`.
 | `ValueError: The api_key option must be set…` | No key in kwargs, env, or `.env` — pass `api_key=…` or set `POKER_API_KEY` |
 | `PlayerSDKError: Could not reach server` | Server down or wrong `server_url` — check `curl <server>/health` |
 | `PlayerSDKAuthError: Invalid API key` (or websocket close 4401) | Key not in the server's `BOT_API_KEYS` |
+| `PlayerSDKAuthError: An API key is required to submit actions` | Submitting actions over HTTP without a key is no longer allowed — pass `api_key` to `play()`/the client |
 | `Player belongs to multiple matches` | Set `match_id` (or `POKER_MATCH_ID`) explicitly when using the CLI or `run_bot()` |
 | `Websocket unavailable …; using HTTP polling instead` | The server accepted HTTP but rejected the WS upgrade — everything still works, this is informational |
 | Bot folded without acting | Turn timer (`turn_timeout_seconds`) expired; make `act()` return faster or raise the match timeout |
