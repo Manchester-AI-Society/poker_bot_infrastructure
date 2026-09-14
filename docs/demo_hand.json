@@ -1,0 +1,920 @@
+{
+  "meta": {
+    "match_id": "4c7e3db69413",
+    "player_ids": [
+      "demo-1cd0db-1",
+      "demo-1cd0db-2",
+      "demo-1cd0db-3"
+    ],
+    "starting_stack": 1000,
+    "small_blind": 10,
+    "big_blind": 20,
+    "sb_id": "demo-1cd0db-1",
+    "bb_id": "demo-1cd0db-2",
+    "dealer_index": 2,
+    "captured_at": "2026-09-13T22:46:16.341539+00:00"
+  },
+  "frames": [
+    {
+      "street": "preflop",
+      "board": [],
+      "pot": 30,
+      "status": "running",
+      "acting_index": 2,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 990,
+          "bet": 10,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 980,
+          "bet": 20,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 1000,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-1",
+          "action": "post_small_blind",
+          "amount": 10
+        },
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-2",
+          "action": "post_big_blind",
+          "amount": 20
+        }
+      ]
+    },
+    {
+      "street": "preflop",
+      "board": [],
+      "pot": 50,
+      "status": "running",
+      "acting_index": 0,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 990,
+          "bet": 10,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 980,
+          "bet": 20,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 980,
+          "bet": 20,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-3",
+          "action": "call",
+          "amount": 20,
+          "street": "preflop",
+          "pot": 50
+        }
+      ]
+    },
+    {
+      "street": "preflop",
+      "board": [],
+      "pot": 140,
+      "status": "running",
+      "acting_index": 1,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 900,
+          "bet": 100,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 980,
+          "bet": 20,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 980,
+          "bet": 20,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-1",
+          "action": "raise_to",
+          "amount": 100,
+          "street": "preflop",
+          "pot": 140
+        }
+      ]
+    },
+    {
+      "street": "preflop",
+      "board": [],
+      "pot": 220,
+      "status": "running",
+      "acting_index": 2,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 900,
+          "bet": 100,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 900,
+          "bet": 100,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 980,
+          "bet": 20,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-2",
+          "action": "call",
+          "amount": 80,
+          "street": "preflop",
+          "pot": 220
+        }
+      ]
+    },
+    {
+      "street": "flop",
+      "board": [
+        "6D",
+        "JD",
+        "5S"
+      ],
+      "pot": 300,
+      "status": "running",
+      "acting_index": 0,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 900,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 900,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 900,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-3",
+          "action": "call",
+          "amount": 80,
+          "street": "preflop",
+          "pot": 300
+        },
+        {
+          "type": "street_advanced",
+          "street": "flop",
+          "board": [
+            "6D",
+            "JD",
+            "5S"
+          ]
+        }
+      ]
+    },
+    {
+      "street": "flop",
+      "board": [
+        "6D",
+        "JD",
+        "5S"
+      ],
+      "pot": 360,
+      "status": "running",
+      "acting_index": 1,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 840,
+          "bet": 60,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 900,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 900,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-1",
+          "action": "bet",
+          "amount": 60,
+          "street": "flop",
+          "pot": 360
+        }
+      ]
+    },
+    {
+      "street": "flop",
+      "board": [
+        "6D",
+        "JD",
+        "5S"
+      ],
+      "pot": 420,
+      "status": "running",
+      "acting_index": 2,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 840,
+          "bet": 60,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 840,
+          "bet": 60,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 900,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-2",
+          "action": "call",
+          "amount": 60,
+          "street": "flop",
+          "pot": 420
+        }
+      ]
+    },
+    {
+      "street": "turn",
+      "board": [
+        "6D",
+        "JD",
+        "5S",
+        "AC"
+      ],
+      "pot": 480,
+      "status": "running",
+      "acting_index": 0,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 840,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 840,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 840,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-3",
+          "action": "call",
+          "amount": 60,
+          "street": "flop",
+          "pot": 480
+        },
+        {
+          "type": "street_advanced",
+          "street": "turn",
+          "board": [
+            "6D",
+            "JD",
+            "5S",
+            "AC"
+          ]
+        }
+      ]
+    },
+    {
+      "street": "turn",
+      "board": [
+        "6D",
+        "JD",
+        "5S",
+        "AC"
+      ],
+      "pot": 480,
+      "status": "running",
+      "acting_index": 1,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 840,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 840,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 840,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-1",
+          "action": "check",
+          "amount": null,
+          "street": "turn",
+          "pot": 480
+        }
+      ]
+    },
+    {
+      "street": "turn",
+      "board": [
+        "6D",
+        "JD",
+        "5S",
+        "AC"
+      ],
+      "pot": 540,
+      "status": "running",
+      "acting_index": 2,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 840,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 780,
+          "bet": 60,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 840,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-2",
+          "action": "bet",
+          "amount": 60,
+          "street": "turn",
+          "pot": 540
+        }
+      ]
+    },
+    {
+      "street": "turn",
+      "board": [
+        "6D",
+        "JD",
+        "5S",
+        "AC"
+      ],
+      "pot": 600,
+      "status": "running",
+      "acting_index": 0,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 840,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 780,
+          "bet": 60,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 780,
+          "bet": 60,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-3",
+          "action": "call",
+          "amount": 60,
+          "street": "turn",
+          "pot": 600
+        }
+      ]
+    },
+    {
+      "street": "river",
+      "board": [
+        "6D",
+        "JD",
+        "5S",
+        "AC",
+        "JS"
+      ],
+      "pot": 660,
+      "status": "running",
+      "acting_index": 1,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-1",
+          "action": "call",
+          "amount": 60,
+          "street": "turn",
+          "pot": 660
+        },
+        {
+          "type": "street_advanced",
+          "street": "river",
+          "board": [
+            "6D",
+            "JD",
+            "5S",
+            "AC",
+            "JS"
+          ]
+        }
+      ]
+    },
+    {
+      "street": "river",
+      "board": [
+        "6D",
+        "JD",
+        "5S",
+        "AC",
+        "JS"
+      ],
+      "pot": 660,
+      "status": "running",
+      "acting_index": 2,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-2",
+          "action": "check",
+          "amount": null,
+          "street": "river",
+          "pot": 660
+        }
+      ]
+    },
+    {
+      "street": "river",
+      "board": [
+        "6D",
+        "JD",
+        "5S",
+        "AC",
+        "JS"
+      ],
+      "pot": 660,
+      "status": "running",
+      "acting_index": 0,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-3",
+          "action": "check",
+          "amount": null,
+          "street": "river",
+          "pot": 660
+        }
+      ]
+    },
+    {
+      "street": "showdown",
+      "board": [
+        "6D",
+        "JD",
+        "5S",
+        "AC",
+        "JS"
+      ],
+      "pot": 0,
+      "status": "finished",
+      "acting_index": 0,
+      "players": [
+        {
+          "id": "demo-1cd0db-1",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "3C",
+            "9D"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-2",
+          "stack": 1440,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "AH",
+            "3H"
+          ]
+        },
+        {
+          "id": "demo-1cd0db-3",
+          "stack": 780,
+          "bet": 0,
+          "folded": false,
+          "all_in": false,
+          "hole_cards": [
+            "2H",
+            "8D"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "action",
+          "player_id": "demo-1cd0db-1",
+          "action": "check",
+          "amount": null,
+          "street": "river",
+          "pot": 660
+        },
+        {
+          "type": "street_advanced",
+          "street": "showdown",
+          "board": [
+            "6D",
+            "JD",
+            "5S",
+            "AC",
+            "JS"
+          ]
+        },
+        {
+          "type": "showdown",
+          "results": [
+            {
+              "player_id": "demo-1cd0db-2",
+              "hand": "Two Pair",
+              "winnings": 660
+            },
+            {
+              "player_id": "demo-1cd0db-1",
+              "hand": "One Pair",
+              "winnings": 0
+            },
+            {
+              "player_id": "demo-1cd0db-3",
+              "hand": "One Pair",
+              "winnings": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

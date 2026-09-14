@@ -4,12 +4,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query, status
 
+from game import InvalidActionError, MatchNotFoundError, MatchStateError
 from server.api.shared_runtime_dependencies import (
     games,
     require_admin_id,
     require_player_id,
 )
-from game import InvalidActionError, MatchNotFoundError, MatchStateError
 from server.api_request_models import (
     CreateMatchRequest,
     EndMatchRequest,
@@ -17,7 +17,6 @@ from server.api_request_models import (
     ResumeMatchRequest,
     SubmitActionRequest,
 )
-
 
 router = APIRouter(prefix="/v1", tags=["matches"])
 
@@ -104,7 +103,7 @@ async def get_match_state(
 
     Args:
         match_id (str): Match identifier.
-        viewer_id (Optional[str]): Optional player identifier for private view data.
+        viewer_id (Optional[str]): Optional viewer for private data.
 
     Returns:
         dict: Mapping containing the current match state.

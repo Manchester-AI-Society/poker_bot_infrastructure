@@ -2,15 +2,20 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
 
+from game import InvalidActionError, MatchNotFoundError, MatchStateError
 from server.api.shared_runtime_dependencies import (
     connections,
     games,
     require_player_id,
 )
-from game import InvalidActionError, MatchNotFoundError, MatchStateError
-
 
 router = APIRouter(tags=["websocket"])
 
@@ -49,7 +54,9 @@ async def websocket_gateway(
                     player_id,
                     {
                         "type": "error",
-                        "error": "Unsupported message type. Expected 'action'.",
+                        "error": (
+                            "Unsupported message type. Expected 'action'."
+                        ),
                     },
                 )
                 continue

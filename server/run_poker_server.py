@@ -1,8 +1,8 @@
 from dotenv import load_dotenv
 
-load_dotenv()
+from server.api.fastapi_application import app  # noqa: F401 (uvicorn target)
 
-from server.api.fastapi_application import app
+load_dotenv()
 
 
 if __name__ == "__main__":

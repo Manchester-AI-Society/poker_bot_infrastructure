@@ -29,7 +29,7 @@ class AdminSDKClient:
 
         Args:
             options (MatchCreationOptions): Match creation options.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
@@ -63,7 +63,7 @@ class AdminSDKClient:
 
         Args:
             match_id (str): Match identifier.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
@@ -86,7 +86,7 @@ class AdminSDKClient:
         Args:
             match_id (str): Match identifier.
             reason (Optional[str]): Optional pause reason.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
@@ -109,7 +109,7 @@ class AdminSDKClient:
         Args:
             match_id (str): Match identifier.
             reason (Optional[str]): Optional resume reason.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
@@ -132,7 +132,7 @@ class AdminSDKClient:
         Args:
             match_id (str): Match identifier.
             options (Optional[EndMatchOptions]): End options payload.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
@@ -153,7 +153,7 @@ class AdminSDKClient:
 
         Args:
             match_id (str): Match identifier.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing full private match state.
@@ -172,7 +172,7 @@ class AdminSDKClient:
 
         Args:
             match_id (str): Match identifier.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing admin action entries.
@@ -195,7 +195,7 @@ class AdminSDKClient:
         Args:
             player_id (str): Player identifier.
             api_key (Optional[str]): Optional explicit API key to assign.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing player creation results.
@@ -214,7 +214,7 @@ class AdminSDKClient:
         """Lists all players and their API keys.
 
         Args:
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing player and key data.
@@ -233,7 +233,7 @@ class AdminSDKClient:
 
         Args:
             player_id (str): Player identifier.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing deletion results.
@@ -256,7 +256,7 @@ class AdminSDKClient:
         Args:
             player_id (str): Player identifier.
             api_key (Optional[str]): Optional explicit replacement key.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing key rotation results.

@@ -1,3 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poker-player-sdk"
+version = "0.1.0"
+description = "Player SDK for poker bot infrastructure: write a bot, call play(), done."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Manchester AI Society" }]
+license = { text = "MIT" }
+dependencies = [
+    "python-dotenv>=1.0",
+    "websockets>=13",
+]
+
+[project.scripts]
+poker-bot = "player_sdk.run_bot:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+include = ["player_sdk*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: end-to-end tests that start a local match server",
+]
+
 [tool.ruff]
 line-length = 79
 target-version = "py311"
@@ -5,6 +37,11 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# Scripts bootstrap sys.path before importing repo packages.
+"examples/*" = ["E402"]
+"benchmarks/*" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -9,7 +9,7 @@ LOGGER = logging.getLogger(__name__)
 
 class ConnectionManager:
     def __init__(self) -> None:
-        """Initializes the connection manager.
+        """Initialises the connection manager.
 
         Args:
             None: This function does not take external arguments.

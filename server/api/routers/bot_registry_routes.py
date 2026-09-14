@@ -5,9 +5,15 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Header
 
-from server.api.shared_runtime_dependencies import api_keys, require_admin_id
-from server.api_request_models import CreatePlayerRequest, RotatePlayerKeyRequest
-
+from server.api.shared_runtime_dependencies import (
+    api_keys,
+    require_admin_id,
+    require_player_id,
+)
+from server.api_request_models import (
+    CreatePlayerRequest,
+    RotatePlayerKeyRequest,
+)
 
 router = APIRouter(prefix="/v1", tags=["bots"])
 
@@ -23,6 +29,24 @@ async def list_bots() -> dict:
         dict: Mapping containing the available bot identifiers.
     """
     return {"bots": list(api_keys.values())}
+
+
+@router.get("/me")
+async def whoami(
+    authorization: Optional[str] = Header(default=None),
+    x_api_key: Optional[str] = Header(default=None),
+) -> dict:
+    """Resolves the calling player's identity from their API key.
+
+    Args:
+        authorization (Optional[str]): Optional Bearer authorisation header.
+        x_api_key (Optional[str]): Optional API key header value.
+
+    Returns:
+        dict: Mapping containing the resolved player identifier.
+    """
+    player_id = require_player_id(authorization, x_api_key)
+    return {"player_id": player_id}
 
 
 @router.post("/admin/players")
@@ -48,7 +72,11 @@ async def create_player(
 
     api_key = request.api_key or secrets.token_urlsafe(24)
     api_keys[api_key] = request.player_id
-    return {"player_id": request.player_id, "api_key": api_key, "created": True}
+    return {
+        "player_id": request.player_id,
+        "api_key": api_key,
+        "created": True,
+    }
 
 
 @router.get("/admin/players")
@@ -91,7 +119,9 @@ async def delete_player(
     """
     require_admin_id(authorization, x_admin_key)
 
-    revoked_keys = [key for key, value in api_keys.items() if value == player_id]
+    revoked_keys = [
+        key for key, value in api_keys.items() if value == player_id
+    ]
     for key in revoked_keys:
         del api_keys[key]
 
