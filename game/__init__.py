@@ -3,9 +3,7 @@ from .game_domain_models import (
     DirectCallback,
     InvalidActionError,
     MatchNotFoundError,
-    MatchState,
     MatchStateError,
-    PlayerSeat,
 )
 from .game_service_core import GameService
 
@@ -15,7 +13,5 @@ __all__ = [
     "GameService",
     "InvalidActionError",
     "MatchNotFoundError",
-    "MatchState",
     "MatchStateError",
-    "PlayerSeat",
 ]

@@ -276,8 +276,6 @@ created = client.create_match(
         big_blind=20,
         turn_timeout_seconds=15,
         event_log_limit=2000,
-        table_label="single-table",
-        tournament_round="round-1",
     )
 )
 client.start_match(created["match_id"])

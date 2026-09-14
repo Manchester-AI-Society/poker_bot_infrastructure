@@ -47,8 +47,6 @@ def create_match(admin: AdminSDKClient) -> str:
             big_blind=20,
             turn_timeout_seconds=15,
             event_log_limit=2000,
-            table_label="pytest",
-            tournament_round="integration",
         )
     )
     return str(created["match_id"])
