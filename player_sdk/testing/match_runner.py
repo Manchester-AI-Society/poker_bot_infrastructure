@@ -136,7 +136,7 @@ def play_local_match(
             time.sleep(max(0.0, poll_interval_seconds))
             continue
 
-        _act_for_player(
+        act_for_player(
             base_url,
             match_id,
             current_player_id,
@@ -160,7 +160,7 @@ def play_local_match(
     return _build_result(match_id, state, verbose=verbose)
 
 
-def _act_for_player(
+def act_for_player(
     base_url: str,
     match_id: str,
     player_id: str,
@@ -168,7 +168,11 @@ def _act_for_player(
     bot: PokerBot,
     parser: GameStateParser,
 ) -> None:
-    """Fetches the viewer state and submits the bot's chosen action."""
+    """Fetches the viewer state and submits the bot's chosen action.
+
+    Silently skips stale or superseded turns (e.g. when a timeout was
+    already applied server-side).
+    """
     from urllib.parse import quote
 
     viewer_query = f"viewer_id={quote(player_id)}"
@@ -198,7 +202,7 @@ def _act_for_player(
     engine_action, amount = translate_action(action, game_state)
     body: Dict[str, object] = {"action": engine_action}
     if amount is not None:
-        body["amount"] = amount
+        body["amount"] = int(amount)
     if game_state.turn_id is not None:
         body["turn_id"] = game_state.turn_id
 

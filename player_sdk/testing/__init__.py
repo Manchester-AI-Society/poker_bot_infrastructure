@@ -7,10 +7,11 @@ CLI) to join a real game.
 """
 
 from .local_server import ensure_server_running
-from .match_runner import MatchResult, play_local_match
+from .match_runner import MatchResult, act_for_player, play_local_match
 
 __all__ = [
     "MatchResult",
+    "act_for_player",
     "ensure_server_running",
     "play_local_match",
 ]

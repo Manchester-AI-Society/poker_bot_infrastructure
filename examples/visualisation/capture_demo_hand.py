@@ -21,7 +21,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
-from urllib.parse import quote
 from uuid import uuid4
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -30,11 +29,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from admin_sdk import AdminSDKClient, AdminSDKConfiguration
 from admin_sdk.models import MatchCreationOptions
-from player_sdk._http import PlayerSDKBadRequestError, http_json
+from player_sdk._http import http_json
 from player_sdk.bot_interface import PokerBot
-from player_sdk.client import translate_action
 from player_sdk.models import Action, GameState
 from player_sdk.parser import GameStateParser
+from player_sdk.testing import act_for_player
 from player_sdk.testing.local_server import ensure_server_running
 
 SIGNIFICANT_EVENT_TYPES = ("action", "street_advanced", "showdown")
@@ -102,55 +101,6 @@ def _build_frame(
         "players": players,
         "events": significant,
     }
-
-
-def _act_for_player(
-    base_url: str,
-    match_id: str,
-    player_id: str,
-    api_key: str,
-    bot: PokerBot,
-    parser: GameStateParser,
-) -> None:
-    """Fetches the viewer state and submits the bot's chosen action."""
-    viewer_query = f"viewer_id={quote(player_id)}"
-    payload = http_json(
-        base_url, "GET", f"/v1/matches/{match_id}?{viewer_query}"
-    )
-    state_payload = payload.get("state", {})
-    legal_actions = state_payload.get("legal_actions") or []
-    if not legal_actions:
-        return
-
-    players = state_payload.get("players", [])
-    hero_index = next(
-        (
-            index
-            for index, player in enumerate(players)
-            if isinstance(player, Mapping) and player.get("id") == player_id
-        ),
-        None,
-    )
-    game_state = parser.parse(payload, hero_index=hero_index)
-
-    action = bot.act(game_state)
-    engine_action, amount = translate_action(action, game_state)
-    body: Dict[str, Any] = {"action": engine_action}
-    if amount is not None:
-        body["amount"] = int(amount)
-    if game_state.turn_id is not None:
-        body["turn_id"] = game_state.turn_id
-
-    try:
-        http_json(
-            base_url,
-            "POST",
-            f"/v1/matches/{match_id}/actions/self",
-            payload=body,
-            headers={"X-API-Key": api_key},
-        )
-    except PlayerSDKBadRequestError:
-        pass
 
 
 def _synthesise_blind_events(
@@ -241,7 +191,7 @@ def _capture_hand(
             time.sleep(poll_interval_seconds)
             continue
 
-        _act_for_player(
+        act_for_player(
             base_url,
             match_id,
             current_player_id,

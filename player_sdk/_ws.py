@@ -11,7 +11,7 @@ from ._http import (
     PlayerSDKError,
 )
 from .bot_interface import PokerBot
-from .client import PokerEngineClient, translate_action
+from .client import PokerEngineClient, find_player_index, translate_action
 from .models import Action, GameState
 
 try:
@@ -229,16 +229,11 @@ class RealtimeBotRunner:
     def _discover_seat(self, raw_state: Mapping[str, Any]) -> None:
         if self.client.player_index is not None:
             return
-        players = raw_state.get("players")
-        if not isinstance(players, list):
-            return
-        for index, player in enumerate(players):
-            if (
-                isinstance(player, Mapping)
-                and str(player.get("id")) == self.client.player_id
-            ):
-                self.client.player_index = index
-                return
+        index = find_player_index(
+            raw_state.get("players"), self.client.player_id
+        )
+        if index is not None:
+            self.client.player_index = index
 
     def _websocket_url(self) -> str:
         parsed = urllib.parse.urlparse(self.client.base_url)

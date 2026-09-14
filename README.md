@@ -131,7 +131,7 @@ The `exampleenv` file ships dev keys (`admin-dev-key`, `dev-key-1` … `dev-key-
 python examples/bots/testing/run_local_test_match.py
 
 # B) The remote flow: create a match, then connect bots to it
-python examples/admin/create_one_game_with_api_key.py   # prints the match_id
+python examples/admin/admin_flows.py single       # prints the match_id
 POKER_API_KEY=dev-key-1 POKER_MATCH_ID=<match-id> \
   python examples/bots/remote/run_remote_bot.py
 # (optionally, a second bot in a third terminal)
@@ -281,7 +281,7 @@ created = client.create_match(
 client.start_match(created["match_id"])
 ```
 
-More examples in [`examples/admin/`](examples/admin): creating several matches, per-request key overrides, and auth-failure demos.
+More examples in [`examples/admin/admin_flows.py`](examples/admin/admin_flows.py): creating several matches (`multi`), per-request key overrides (`single --key-override`), and an auth-failure demo (`no-key`).
 
 ### Raw REST (no SDK)
 
