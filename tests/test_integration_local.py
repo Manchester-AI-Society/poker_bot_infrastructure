@@ -37,31 +37,61 @@ def admin(server_url) -> AdminSDKClient:
     return AdminSDKClient(AdminSDKConfiguration.from_environment())
 
 
-def create_match(admin: AdminSDKClient) -> str:
+def create_match(
+    admin: AdminSDKClient,
+    *,
+    starting_stack: int = 200,
+    max_hands: int | None = None,
+) -> str:
     created = admin.create_match(
         MatchCreationOptions(
             player_ids=["dev-bot-1", "dev-bot-2"],
             number_of_bots_allowed=2,
-            starting_stack=1000,
+            starting_stack=starting_stack,
             small_blind=10,
             big_blind=20,
             turn_timeout_seconds=15,
-            event_log_limit=2000,
+            event_log_limit=5000,
+            max_hands=max_hands,
         )
     )
     return str(created["match_id"])
 
 
 class TestLocalMatchHarness:
-    def test_two_bots_play_to_completion(self):
+    def test_two_bots_play_to_bust_out(self):
         result = play_local_match(
             [ExampleConservativeBot(), ExampleConservativeBot()],
+            starting_stack=200,
             turn_timeout_seconds=8,
             max_duration_seconds=120,
         )
         assert result.status == "finished"
         assert result.winner_id is not None
-        assert sum(result.final_stacks.values()) == 2000
+        assert sum(result.final_stacks.values()) == 400
+        assert max(result.final_stacks.values()) == 400
+
+    def test_max_hands_caps_the_match(self, server_url, admin):
+        result = play_local_match(
+            [ExampleConservativeBot(), ExampleConservativeBot()],
+            starting_stack=500,
+            turn_timeout_seconds=8,
+            max_hands=3,
+            max_duration_seconds=120,
+            verbose=False,
+        )
+        assert result.status == "finished"
+        assert sum(result.final_stacks.values()) == 1000
+
+        state = admin.get_full_match_state(result.match_id)["state"]
+        events = admin._transport.request_json(
+            "GET",
+            f"/v1/matches/{result.match_id}/events?offset=0&limit=1000",
+        )["events"]
+        hand_starts = [e for e in events if e["type"] == "hand_started"]
+        assert state["hand_number"] == 3
+        assert len(hand_starts) == 3
+        assert state["end_reason"] == "hand_limit"
 
 
 class TestPlayOverWebsocket:
@@ -90,10 +120,15 @@ class TestPlayOverWebsocket:
         for thread in threads:
             thread.start()
 
-        admin.start_match(match_id)
+        # Starting before the bots connect arms the match; the deal
+        # happens automatically once both websockets are live, so the
+        # first turn never races a cold-starting bot. (If both bots
+        # managed to connect first, the start deals immediately.)
+        started = admin.start_match(match_id)
+        assert started["status"] in {"waiting", "running"}
 
         for thread in threads:
-            thread.join(timeout=120)
+            thread.join(timeout=180)
         assert not errors, f"bot threads failed: {errors}"
 
         for api_key, state in results.items():
@@ -106,4 +141,10 @@ class TestPlayOverWebsocket:
             for state in results.values()
             for player_id, stack in zip(state.player_ids, state.stack_sizes)
         }
-        assert sum(stacks.values()) == 2000
+        assert sum(stacks.values()) == 400
+        assert max(stacks.values()) == 400
+
+        # A bust-out match must have played more than one hand.
+        state = admin.get_full_match_state(match_id)["state"]
+        assert state["hand_number"] >= 2
+        assert state["end_reason"] == "opponents_eliminated"

@@ -88,6 +88,8 @@ It stands out because it is batteries-included — a complete hand engine, admin
 ## Key Features
 
 - **Authoritative no-limit Texas Hold'em engine** — blinds, `preflop → flop → turn → river → showdown`, side-pot-free settlement with split-pot chip distribution
+- **Multi-hand matches** — matches play hand after hand (with a rotating dealer button and blind-skipping for eliminated players) until one player owns every chip, or until an optional `max_hands` cap is reached
+- **Auto-start readiness gate** — `start_match` arms the match; dealing begins automatically once every player's websocket is live, so the first turn never races a cold-starting bot (`force` start or `wait_for_players=False` for HTTP-only setups)
 - **Strict action validation** — only legal actions (`fold`, `check`, `call`, `bet`, `raise_to`) with server-computed raise bounds are accepted
 - **Turn timeouts** — players who stall are auto-checked, or auto-folded when checking is illegal
 - **HTTP + WebSocket APIs** — poll match state or receive turn events in real time at `ws://…/v1/ws`
@@ -269,6 +271,10 @@ python examples/bots/testing/run_local_test_match.py
 
 ### Admin SDK
 
+A match is a **sequence of hands played until one player owns every chip** (or
+until an optional `max_hands` cap). The dealer button rotates each hand and
+eliminated players are skipped.
+
 ```python
 from admin_sdk import AdminSDKClient, AdminSDKConfiguration
 from admin_sdk.models import MatchCreationOptions
@@ -284,10 +290,19 @@ created = client.create_match(
         big_blind=20,
         turn_timeout_seconds=15,
         event_log_limit=2000,
+        max_hands=None,           # None = play to bust-out
+        wait_for_players=True,    # arm: deal once all websockets are live
     )
 )
 client.start_match(created["match_id"])
 ```
+
+With `wait_for_players=True` (the default), `start_match` **arms** the match:
+it returns `{"status": "waiting", "armed": true}` and the first hand is dealt
+automatically the moment every listed player has a live websocket — the first
+turn never races a bot that is still starting up. Pass `force=True` to
+`start_match` (or `wait_for_players=False` at creation) to deal immediately,
+which is what HTTP-only setups and the local test harness do.
 
 More examples in [`examples/admin/admin_flows.py`](examples/admin/admin_flows.py): creating several matches (`multi`), per-request key overrides (`single --key-override`), and an auth-failure demo (`no-key`).
 
@@ -324,8 +339,14 @@ The suite covers config resolution order, action validation and
 translation, parser payload tolerance, action-history parsing from the
 server event log, authenticated action submission, websocket message
 handling (fake socket, no server needed), the `play()` dispatch and
-fallback logic, and end-to-end matches played both through the local
-harness and over the websocket transport with `play()`.
+fallback logic, multi-hand progression and the start-readiness gate,
+and end-to-end matches played both through the local harness and over
+the websocket transport with `play()`.
+
+**Version note:** the websocket protocol pairs the server and SDK from
+the same checkout. A new server with a pre-multi-hand SDK would make
+those older bots exit at the first hand's showdown — upgrade both
+together.
 
 ## Troubleshooting
 

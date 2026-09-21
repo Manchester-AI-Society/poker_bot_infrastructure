@@ -22,7 +22,7 @@ try:
 except ImportError:  # pragma: no cover - depends on install
     _WEBSOCKETS_AVAILABLE = False
 
-_TERMINAL_EVENTS = frozenset({"showdown", "match_ended"})
+_TERMINAL_EVENTS = frozenset({"match_ended"})
 _TERMINAL_STATUSES = frozenset({"finished"})
 _MAX_BACKOFF_SECONDS = 10.0
 _IDLE_CHECK_SECONDS = 5.0
@@ -148,6 +148,8 @@ class RealtimeBotRunner:
                     return state
             elif kind in _TERMINAL_EVENTS:
                 return self._final_state()
+            elif kind == "showdown":
+                self._report_hand_result(message)
             elif kind == "error":
                 self._warn(f"server: {message.get('error')}")
             elif kind == "timeout" and self.verbose:
@@ -189,6 +191,21 @@ class RealtimeBotRunner:
             outgoing["turn_id"] = state.turn_id
         websocket.send(json.dumps(outgoing))
         return None
+
+    def _report_hand_result(self, message: Mapping[str, Any]) -> None:
+        """Prints a per-hand settlement summary when verbose."""
+        if not self.verbose:
+            return
+        results = message.get("results")
+        if not isinstance(results, list):
+            return
+        winners = [
+            str(entry.get("player_id"))
+            for entry in results
+            if isinstance(entry, dict) and entry.get("winnings")
+        ]
+        if winners:
+            print(f"[player_sdk] Hand settled; pot to {', '.join(winners)}")
 
     def _recover_missed_events(self) -> Optional[GameState]:
         try:

@@ -13,6 +13,8 @@ class MatchCreationOptions:
     big_blind: int = 20
     turn_timeout_seconds: int = 15
     event_log_limit: int = 2000
+    max_hands: Optional[int] = None
+    wait_for_players: bool = True
 
 
 @dataclass

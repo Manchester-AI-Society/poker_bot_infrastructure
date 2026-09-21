@@ -92,7 +92,7 @@ def advance_and_settle_if_ready(
             log_event(runtime, "showdown", {"results": showdown["results"]})
             return showdown
 
-        next_index = next_eligible_player(runtime, 0)
+        next_index = next_eligible_player(runtime, runtime.engine.turn_index)
         if next_index is None:
             showdown = settle_showdown(runtime)
             log_event(runtime, "showdown", {"results": showdown["results"]})
@@ -120,6 +120,120 @@ def current_actor_index(runtime: MatchRuntime) -> Optional[int]:
         return None
     runtime.engine.turn_index = next_index
     return next_index
+
+
+def eliminate_busted_players(
+    runtime: MatchRuntime, log_event: LogEventCallback
+) -> List[str]:
+    """Removes chip-less players from the upcoming hand.
+
+    Eliminated seats are marked folded so every existing eligibility
+    and contender check (which keys on ``is_folded``) keeps working
+    without special cases.
+    """
+    eliminated: List[str] = []
+    for seat in runtime.players:
+        if seat.curr_balance > 0:
+            continue
+        seat.is_folded = True
+        if not seat.is_eliminated:
+            seat.is_eliminated = True
+            eliminated.append(seat.player_id)
+    for player_id in eliminated:
+        log_event(
+            runtime,
+            "player_eliminated",
+            {"player_id": player_id},
+        )
+    return eliminated
+
+
+def begin_next_hand(
+    runtime: MatchRuntime, log_event: LogEventCallback
+) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[Dict[str, Any]]]:
+    """Starts the next hand and prepares its first turn event.
+
+    Returns (broadcast_events, turn_player_id, turn_event).
+    """
+    runtime.min_raise_size = int(runtime.engine.big_blind_amount)
+    runtime.engine.start_hand()
+    # Busted seats are folded AFTER the hand reset (which clears
+    # is_folded) so every eligibility and contender check keeps
+    # excluding them for the rest of the match.
+    eliminated = eliminate_busted_players(runtime, log_event)
+    log_event(
+        runtime,
+        "hand_started",
+        {
+            "hand_number": runtime.engine.hand_number,
+            "dealer_index": runtime.engine.dealer_index,
+            "eliminated": eliminated,
+        },
+    )
+    blind_events = build_blind_events(runtime)
+    turn_player_id, turn_event = prepare_turn_event(runtime, log_event)
+    return blind_events, turn_player_id, turn_event
+
+
+def resolve_match_progression(
+    runtime: MatchRuntime, log_event: LogEventCallback
+) -> Tuple[
+    Optional[Dict[str, Any]],
+    List[Dict[str, Any]],
+    Optional[str],
+    Optional[Dict[str, Any]],
+]:
+    """Decides what follows a settled hand: match end or a new deal.
+
+    Returns (match_ended_event, broadcast_events, turn_player_id,
+    turn_event). ``match_ended_event`` is set when the match is over;
+    otherwise the remaining values describe the next hand's opening.
+    """
+    contenders = [seat for seat in runtime.players if seat.curr_balance > 0]
+    hand_limit = runtime.max_hands is not None and (
+        runtime.engine.hand_number >= runtime.max_hands
+    )
+
+    if len(contenders) > 1 and not hand_limit:
+        broadcasts, turn_player_id, turn_event = begin_next_hand(
+            runtime, log_event
+        )
+        return None, broadcasts, turn_player_id, turn_event
+
+    runtime.status = "finished"
+    if len(contenders) == 1:
+        runtime.winner_ids = [contenders[0].player_id]
+        runtime.end_reason = (
+            "hand_limit" if hand_limit else "opponents_eliminated"
+        )
+    else:
+        top_stack = max(seat.curr_balance for seat in contenders)
+        runtime.winner_ids = [
+            seat.player_id
+            for seat in contenders
+            if seat.curr_balance == top_stack
+        ]
+        runtime.end_reason = "hand_limit"
+
+    log_event(
+        runtime,
+        "match_ended",
+        {"reason": runtime.end_reason, "winner_ids": runtime.winner_ids},
+    )
+    match_ended_event = {
+        "type": "match_ended",
+        "match_id": runtime.match_id,
+        "reason": runtime.end_reason,
+        "winner_ids": runtime.winner_ids,
+        "results": [
+            {
+                "player_id": seat.player_id,
+                "stack": seat.curr_balance,
+            }
+            for seat in runtime.players
+        ],
+    }
+    return match_ended_event, [], None, None
 
 
 def build_blind_events(runtime: MatchRuntime) -> List[Dict[str, Any]]:

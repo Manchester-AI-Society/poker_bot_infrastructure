@@ -6,9 +6,7 @@ from .game_domain_models import InvalidActionError
 from .match_runtime import MatchRuntime
 
 
-def legal_actions(
-    runtime: MatchRuntime, actor_index: int
-) -> list[str]:
+def legal_actions(runtime: MatchRuntime, actor_index: int) -> list[str]:
     """Returns the legal actions for the acting player."""
     seat = runtime.players[actor_index]
     to_call = max(0, runtime.engine.call_amount - seat.curr_bet_amount)
@@ -179,9 +177,7 @@ def _handle_raise_to(
     return amount
 
 
-_ACTION_HANDLERS: Dict[
-    str, Callable[..., Optional[int]]
-] = {
+_ACTION_HANDLERS: Dict[str, Callable[..., Optional[int]]] = {
     "fold": _handle_fold,
     "check": _handle_check,
     "call": _handle_call,

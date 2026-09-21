@@ -238,9 +238,11 @@ def _run_match(
             big_blind=big_blind,
             turn_timeout_seconds=12,
             event_log_limit=500,
+            max_hands=1,
+            wait_for_players=False,
         )
     )["match_id"]
-    admin.start_match(match_id)
+    admin.start_match(match_id, force=True)
 
     frames = _capture_hand(
         admin,

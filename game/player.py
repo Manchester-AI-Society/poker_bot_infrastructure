@@ -10,6 +10,7 @@ class Player:
         self.cards = []
         self.curr_balance = curr_balance
         self.is_all_in = False
+        self.is_eliminated = False
 
         # Street specific data
         self.is_folded = False

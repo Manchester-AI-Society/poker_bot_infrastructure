@@ -14,7 +14,7 @@ class PokerGame:
         big_blind_amount: float,
         small_blind_amount: float,
     ):
-        """Initialises a game engine for a single poker hand."""
+        """Initialises a game engine for a sequence of poker hands."""
         if len(players) < 2:
             raise ValueError("At least two players are required")
         if small_blind_amount >= big_blind_amount:
@@ -36,6 +36,24 @@ class PokerGame:
 
         self.preflop_moves = []
 
+        self.dealer_index = -1
+        self.hand_number = 0
+
+    @property
+    def next_hand_dealer_index(self) -> int:
+        """Returns the seat that will hold the button on the next hand.
+
+        The button moves clockwise from the previous dealer seat and
+        skips players who cannot be dealt in (no chips left). For the
+        first hand it lands on the first seat with chips.
+        """
+        count = len(self.players)
+        for offset in range(1, count + 1):
+            index = (self.dealer_index + offset) % count
+            if self.players[index].curr_balance > 0:
+                return index
+        raise ValueError("No player has chips left to post a blind")
+
     def reset_hand(self):
         """Resets hand-scoped state while preserving player balances."""
         self.pot = 0
@@ -52,11 +70,45 @@ class PokerGame:
             actor.reset_for_new_hand()
 
     def start_hand(self):
-        """Initialises a hand without auto-playing betting rounds."""
+        """Starts the next hand: rotates the button and posts blinds."""
         self.reset_hand()
+
+        self.dealer_index = self.next_hand_dealer_index
+        self.hand_number += 1
+
+        small_blind_seat = self._small_blind_seat()
+        big_blind_seat = self._next_dealt_in_seat(small_blind_seat)
+        self.turn_index = small_blind_seat
         self._play_blind(self.small_blind_amount)
+        self.turn_index = big_blind_seat
         self._play_blind(self.big_blind_amount)
+        # The turn now sits on the seat after the big blind: first to
+        # act preflop (heads-up this wraps back to the button).
+
         self.distribute_cards()
+
+    def _small_blind_seat(self) -> int:
+        """Returns the small blind seat for the current button.
+
+        Heads-up, the button posts the small blind; otherwise it is
+        the first dealt-in seat to the button's left.
+        """
+        if self._dealt_in_count() == 2:
+            return self.dealer_index
+        return self._next_dealt_in_seat(self.dealer_index)
+
+    def _dealt_in_count(self) -> int:
+        """Returns the number of players with chips for this hand."""
+        return sum(1 for actor in self.players if actor.curr_balance > 0)
+
+    def _next_dealt_in_seat(self, from_index: int) -> int:
+        """Returns the next seat after from_index that has chips."""
+        count = len(self.players)
+        for offset in range(1, count + 1):
+            index = (from_index + offset) % count
+            if self.players[index].curr_balance > 0:
+                return index
+        raise ValueError("No player has chips left to post a blind")
 
     def advance_street(self):
         """Advances one street when the current round is settled."""
@@ -77,6 +129,8 @@ class PokerGame:
     def distribute_cards(self):
         """Deals two cards per player and five board cards."""
         for actor in self.players:
+            if actor.curr_balance <= 0:
+                continue
             actor.add_card(self.deck.draw_card())
             actor.add_card(self.deck.draw_card())
 
@@ -98,17 +152,19 @@ class PokerGame:
         for actor in self.players:
             actor.reset_street()
         self.call_amount = 0
-        self.turn_index = 0
+        # Postflop action starts to the left of the button.
+        self.turn_index = (self.dealer_index + 1) % len(self.players)
         self.curr_street = next_street
 
     def _play_blind(self, blind_amount):
-        """Applies a forced blind and updates the pot state."""
+        """Applies a forced blind, capped at the poster's stack."""
         current_player = self.players[self.turn_index]
-        move = (current_player.player_id, "blind", blind_amount)
+        posted = min(int(blind_amount), current_player.curr_balance)
+        move = (current_player.player_id, "blind", posted)
         self.preflop_moves.append(move)
 
-        self.pot += blind_amount
-        current_player.play_blind(blind_amount)
+        self.pot += posted
+        current_player.play_blind(posted)
         self.call_amount = max(
             self.call_amount, current_player.curr_bet_amount
         )

@@ -157,9 +157,13 @@ async def _benchmark_service_lifecycle_once(
     service: GameService, player_ids: List[str]
 ) -> int:
     runtime = service.create_match(
-        player_ids=player_ids, turn_timeout_seconds=120, event_log_limit=3000
+        player_ids=player_ids,
+        turn_timeout_seconds=120,
+        event_log_limit=3000,
+        max_hands=1,
+        wait_for_players=False,
     )
-    await service.start_match(runtime.match_id)
+    await service.start_match(runtime.match_id, force=True)
     actions_taken = 0
 
     while runtime.status == "running":

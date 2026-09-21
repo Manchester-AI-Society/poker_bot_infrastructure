@@ -43,17 +43,12 @@ def translate_action(
     return "raise_to", action.amount
 
 
-def find_player_index(
-    players: Any, player_id: Optional[str]
-) -> Optional[int]:
+def find_player_index(players: Any, player_id: Optional[str]) -> Optional[int]:
     """Returns the seat index of ``player_id`` in a players payload list."""
     if player_id is None or not isinstance(players, list):
         return None
     for index, player in enumerate(players):
-        if (
-            isinstance(player, Mapping)
-            and str(player.get("id")) == player_id
-        ):
+        if isinstance(player, Mapping) and str(player.get("id")) == player_id:
             return index
     return None
 
@@ -305,9 +300,7 @@ class PokerEngineClient:
     def _maybe_discover_seat(self, state_payload: Mapping[str, Any]) -> None:
         if self.player_index is not None or self.player_id is None:
             return
-        index = find_player_index(
-            state_payload.get("players"), self.player_id
-        )
+        index = find_player_index(state_payload.get("players"), self.player_id)
         if index is not None:
             self.player_index = index
 

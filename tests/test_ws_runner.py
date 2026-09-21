@@ -154,18 +154,27 @@ class TestHandleYourTurn:
 
 
 class TestMessageLoop:
-    def test_terminal_event_returns_final_state(self):
+    def test_showdown_does_not_end_a_multi_hand_match(self):
         runner = make_runner()
         socket = FakeWebSocket(
             [
-                {"type": "connected", "player_id": "p1"},
-                {"type": "error", "error": "stale turn"},
                 {"type": "showdown", "match_id": "m1", "results": []},
+                your_turn_message(turn_id=4),
+                {"type": "match_ended", "match_id": "m1"},
             ]
         )
         state = runner._message_loop(socket)
         assert state is not None and state.status == "finished"
-        assert socket.sent == []
+        # The bot still acted on the turn that followed the per-hand
+        # showdown event.
+        assert socket.sent == [
+            {
+                "type": "action",
+                "match_id": "m1",
+                "action": "call",
+                "turn_id": 4,
+            }
+        ]
 
     def test_match_ended_event_returns_final_state(self):
         runner = make_runner()

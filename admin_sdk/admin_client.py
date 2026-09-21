@@ -48,6 +48,8 @@ class AdminSDKClient:
             "big_blind": options.big_blind,
             "turn_timeout_seconds": options.turn_timeout_seconds,
             "event_log_limit": options.event_log_limit,
+            "max_hands": options.max_hands,
+            "wait_for_players": options.wait_for_players,
         }
         return self._transport.request_json(
             "POST",
@@ -57,20 +59,25 @@ class AdminSDKClient:
         )
 
     def start_match(
-        self, match_id: str, api_key_being_used: Optional[str] = None
+        self,
+        match_id: str,
+        force: bool = False,
+        api_key_being_used: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Starts a created match.
+        """Starts (or arms) a created match.
 
         Args:
             match_id (str): Match identifier.
+            force (bool): Skip the player-readiness gate when True.
             api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
         """
+        force_flag = str(force).lower()
         return self._transport.request_json(
             "POST",
-            f"/v1/matches/{match_id}/start",
+            f"/v1/matches/{match_id}/start?force={force_flag}",
             {},
             api_key_override=api_key_being_used,
         )

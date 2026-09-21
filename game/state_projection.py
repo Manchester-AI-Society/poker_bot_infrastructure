@@ -21,6 +21,7 @@ def build_public_state(
             "bet": seat.curr_bet_amount,
             "folded": seat.is_folded,
             "all_in": seat.is_all_in,
+            "eliminated": seat.is_eliminated,
         }
         if viewer_id is not None and viewer_id == seat.player_id:
             entry["hole_cards"] = cards_to_codes(seat.cards)
@@ -38,6 +39,7 @@ def build_public_state(
         "status": runtime.status,
         "current_player_id": current_player_id,
         "turn_id": runtime.turn_id,
+        "hand_number": runtime.engine.hand_number,
     }
 
     if (
@@ -66,6 +68,7 @@ def build_admin_state(
             "bet": seat.curr_bet_amount,
             "folded": seat.is_folded,
             "all_in": seat.is_all_in,
+            "eliminated": seat.is_eliminated,
             "hole_cards": cards_to_codes(seat.cards),
         }
         for seat in runtime.players
@@ -78,10 +81,13 @@ def build_admin_state(
         "board": cards_to_codes(runtime.engine.board.get_revealed_cards()),
         "street": runtime.engine.curr_street,
         "status": runtime.status,
-        "dealer_index": 0,
+        "dealer_index": runtime.engine.dealer_index,
+        "hand_number": runtime.engine.hand_number,
         "acting_index": current_actor_index,
         "turn_id": runtime.turn_id,
         "event_log_limit": runtime.event_log_limit,
+        "winner_ids": list(runtime.winner_ids),
+        "end_reason": runtime.end_reason,
         "paused_at": runtime.paused_at,
         "paused_by": runtime.paused_by,
         "pause_reason": runtime.pause_reason,

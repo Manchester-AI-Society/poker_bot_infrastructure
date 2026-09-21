@@ -36,6 +36,7 @@ def play_local_match(
     big_blind: int = 20,
     turn_timeout_seconds: int = 15,
     event_log_limit: int = 2000,
+    max_hands: Optional[int] = None,
     start_server: bool = True,
     poll_interval_seconds: float = 0.1,
     max_duration_seconds: float = 300.0,
@@ -59,6 +60,8 @@ def play_local_match(
         big_blind (int): Big blind size.
         turn_timeout_seconds (int): Per-turn timeout.
         event_log_limit (int): Server event log capacity.
+        max_hands (Optional[int]): Cap on hands played; unlimited
+            (play to bust-out) when None.
         start_server (bool): Auto-start uvicorn when unreachable.
         poll_interval_seconds (float): Delay between state polls.
         max_duration_seconds (float): Hard wall-clock limit.
@@ -109,9 +112,14 @@ def play_local_match(
             big_blind=big_blind,
             turn_timeout_seconds=turn_timeout_seconds,
             event_log_limit=event_log_limit,
+            max_hands=max_hands,
+            # The harness drives turns over HTTP polling and never
+            # opens player websockets, so the readiness gate must be
+            # bypassed or the match would never deal.
+            wait_for_players=False,
         )
     )["match_id"]
-    admin.start_match(match_id)
+    admin.start_match(match_id, force=True)
     if verbose:
         print(f"[player_sdk] Match {match_id} started:")
         print(

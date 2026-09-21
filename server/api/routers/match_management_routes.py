@@ -58,6 +58,8 @@ async def create_match(
             big_blind=request.big_blind,
             turn_timeout_seconds=request.turn_timeout_seconds,
             event_log_limit=request.event_log_limit,
+            max_hands=request.max_hands,
+            wait_for_players=request.wait_for_players,
         )
     except MatchStateError as exc:
         raise HTTPException(
@@ -75,6 +77,7 @@ async def create_match(
 @router.post("/matches/{match_id}/start")
 async def start_match(
     match_id: str,
+    force: bool = Query(default=False),
     authorization: Optional[str] = Header(default=None),
     x_admin_key: Optional[str] = Header(default=None),
 ) -> dict:
@@ -82,6 +85,9 @@ async def start_match(
 
     Args:
         match_id (str): Match identifier.
+        force (bool): Skip the player-readiness gate when True.
+        authorization (Optional[str]): Optional Bearer authorisation header.
+        x_admin_key (Optional[str]): Optional admin API key header value.
 
     Returns:
         dict: Mapping containing the started match status.
@@ -89,7 +95,7 @@ async def start_match(
     require_admin_id(authorization, x_admin_key)
 
     try:
-        await games.start_match(match_id)
+        result = await games.start_match(match_id, force=force)
     except MatchNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Match not found"
@@ -99,7 +105,7 @@ async def start_match(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
 
-    return {"match_id": match_id, "status": "running"}
+    return result
 
 
 @router.get("/matches/{match_id}")

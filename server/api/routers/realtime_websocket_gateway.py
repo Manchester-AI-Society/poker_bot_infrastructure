@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import (
@@ -16,6 +17,8 @@ from server.api.shared_runtime_dependencies import (
     games,
     require_player_id,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
 
@@ -45,6 +48,13 @@ async def websocket_gateway(
     await connections.send_to_player(
         player_id, {"type": "connected", "player_id": player_id}
     )
+    try:
+        await games.on_player_connected(player_id)
+    except Exception:
+        logger.exception(
+            "Failed readiness check after connect for player_id=%s",
+            player_id,
+        )
 
     try:
         while True:

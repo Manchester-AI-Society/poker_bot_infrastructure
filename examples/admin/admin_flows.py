@@ -63,6 +63,9 @@ def create_and_start(
             big_blind=20,
             turn_timeout_seconds=15,
             event_log_limit=2000,
+            # No bots connect to websocket in this demo, so the
+            # readiness gate is bypassed to make the start immediate.
+            wait_for_players=False,
         ),
         **overrides,
     )
@@ -76,9 +79,7 @@ def create_and_start(
 def run_single(args: argparse.Namespace) -> None:
     """Creates and starts one match using the configured admin key."""
     client, configuration = build_client()
-    key_override = (
-        configuration.admin_api_key if args.key_override else None
-    )
+    key_override = configuration.admin_api_key if args.key_override else None
     print(
         "[example] Creating a single match"
         + (" with explicit key override..." if key_override else "...")
@@ -129,9 +130,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="flow", required=True)
 
-    single = subparsers.add_parser(
-        "single", help="Create and start one match"
-    )
+    single = subparsers.add_parser("single", help="Create and start one match")
     single.add_argument("--starting-stack", type=int, default=1000)
     single.add_argument(
         "--key-override",

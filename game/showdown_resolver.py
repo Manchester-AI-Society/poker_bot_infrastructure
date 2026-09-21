@@ -25,10 +25,8 @@ def settle_fold_win(runtime: MatchRuntime) -> Dict[str, Any]:
             }
         )
 
-    runtime.status = "finished"
     runtime.engine.curr_street = "showdown"
     runtime.engine.pot = 0
-    runtime.winner_ids = [winner.player_id]
 
     return {
         "type": "showdown",
@@ -95,10 +93,8 @@ def settle_showdown(runtime: MatchRuntime) -> Dict[str, Any]:
                 }
             )
 
-    runtime.status = "finished"
     runtime.engine.curr_street = "showdown"
     runtime.engine.pot = 0
-    runtime.winner_ids = list(winner_ids)
 
     return {
         "type": "showdown",
