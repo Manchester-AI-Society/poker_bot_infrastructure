@@ -1,0 +1,11 @@
+services:
+  poker-server:
+    build: .
+    image: poker-bot-server
+    ports:
+      - "8000:8000"
+    # Copy exampleenv to .env (or point env_file at your own file) to
+    # configure BOT_API_KEYS / ADMIN_API_KEYS for this deployment.
+    env_file:
+      - .env
+    restart: unless-stopped

@@ -128,6 +128,27 @@ curl http://127.0.0.1:8000/health
 
 The `exampleenv` file ships dev keys (`admin-dev-key`, `dev-key-1` … `dev-key-3`) so everything works out of the box.
 
+### Run with Docker (optional)
+
+```bash
+# 1. Configure environment variables (dev keys included)
+cp exampleenv .env
+
+# 2. Build and start the containerised server
+docker compose up --build -d
+
+# 3. Verify it is running
+curl http://127.0.0.1:8000/health
+```
+
+The image (`Dockerfile`) contains only the server and engine — the SDKs, examples, and tests are used from your local checkout, connecting to `http://127.0.0.1:8000` as usual. API keys come from `.env` (`BOT_API_KEYS` / `ADMIN_API_KEYS`; dev keys apply when unset), and the container defines a healthcheck against `/health`. To run the container directly instead of via compose:
+
+```bash
+docker build -t poker-bot-server .
+docker run --rm -p 8000:8000 --env-file .env poker-bot-server
+```
+
+
 **Fastest path to a full game** — example scripts auto-start the server if needed:
 
 ```bash
