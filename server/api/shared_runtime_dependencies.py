@@ -58,6 +58,7 @@ games = GameService()
 games.set_event_handlers(
     broadcast_cb=connections.broadcast_to_players,
     direct_cb=connections.send_to_player,
+    connected_check=connections.is_connected,
 )
 
 

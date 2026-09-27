@@ -9,7 +9,7 @@ LOGGER = logging.getLogger(__name__)
 
 class ConnectionManager:
     def __init__(self) -> None:
-        """Initializes the connection manager.
+        """Initialises the connection manager.
 
         Args:
             None: This function does not take external arguments.
@@ -45,6 +45,28 @@ class ConnectionManager:
         """
         async with self._lock:
             self._connections.pop(player_id, None)
+
+    def is_connected(self, player_id: str) -> bool:
+        """Checks whether a player currently has a live socket.
+
+        Args:
+            player_id (str): Identifier for player.
+
+        Returns:
+            bool: True when the player has an active connection.
+        """
+        return player_id in self._connections
+
+    def connected_ids(self) -> List[str]:
+        """Returns the ids of all currently connected players.
+
+        Args:
+            None: This function does not take external arguments.
+
+        Returns:
+            List[str]: Player ids with live connections.
+        """
+        return list(self._connections.keys())
 
     async def send_to_player(self, player_id: str, payload: dict) -> None:
         """Sends a message to a specific player.

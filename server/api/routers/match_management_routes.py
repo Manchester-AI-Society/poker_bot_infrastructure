@@ -4,12 +4,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query, status
 
+from game import InvalidActionError, MatchNotFoundError, MatchStateError
 from server.api.shared_runtime_dependencies import (
     games,
     require_admin_id,
     require_player_id,
 )
-from game import InvalidActionError, MatchNotFoundError, MatchStateError
 from server.api_request_models import (
     CreateMatchRequest,
     EndMatchRequest,
@@ -17,7 +17,6 @@ from server.api_request_models import (
     ResumeMatchRequest,
     SubmitActionRequest,
 )
-
 
 router = APIRouter(prefix="/v1", tags=["matches"])
 
@@ -52,7 +51,16 @@ async def create_match(
     require_admin_id(authorization, x_admin_key)
 
     try:
-        match = games.create_match(request)
+        match = games.create_match(
+            player_ids=request.player_ids,
+            starting_stack=request.starting_stack,
+            small_blind=request.small_blind,
+            big_blind=request.big_blind,
+            turn_timeout_seconds=request.turn_timeout_seconds,
+            event_log_limit=request.event_log_limit,
+            max_hands=request.max_hands,
+            wait_for_players=request.wait_for_players,
+        )
     except MatchStateError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
@@ -69,6 +77,7 @@ async def create_match(
 @router.post("/matches/{match_id}/start")
 async def start_match(
     match_id: str,
+    force: bool = Query(default=False),
     authorization: Optional[str] = Header(default=None),
     x_admin_key: Optional[str] = Header(default=None),
 ) -> dict:
@@ -76,6 +85,9 @@ async def start_match(
 
     Args:
         match_id (str): Match identifier.
+        force (bool): Skip the player-readiness gate when True.
+        authorization (Optional[str]): Optional Bearer authorisation header.
+        x_admin_key (Optional[str]): Optional admin API key header value.
 
     Returns:
         dict: Mapping containing the started match status.
@@ -83,7 +95,7 @@ async def start_match(
     require_admin_id(authorization, x_admin_key)
 
     try:
-        await games.start_match(match_id)
+        result = await games.start_match(match_id, force=force)
     except MatchNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Match not found"
@@ -93,7 +105,7 @@ async def start_match(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
 
-    return {"match_id": match_id, "status": "running"}
+    return result
 
 
 @router.get("/matches/{match_id}")
@@ -104,7 +116,7 @@ async def get_match_state(
 
     Args:
         match_id (str): Match identifier.
-        viewer_id (Optional[str]): Optional player identifier for private view data.
+        viewer_id (Optional[str]): Optional viewer for private data.
 
     Returns:
         dict: Mapping containing the current match state.
@@ -142,45 +154,6 @@ async def get_match_events(
             status_code=status.HTTP_404_NOT_FOUND, detail="Match not found"
         ) from exc
     return {"match_id": match_id, **payload}
-
-
-@router.post("/matches/{match_id}/actions")
-async def submit_action_http(
-    match_id: str, request: SubmitActionRequest
-) -> dict:
-    """Submits an action on behalf of a player id in the request body.
-
-    Args:
-        match_id (str): Match identifier.
-        request (SubmitActionRequest): Action payload.
-
-    Returns:
-        dict: Mapping indicating whether submission succeeded.
-    """
-    if not request.player_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="player_id is required",
-        )
-
-    try:
-        await games.submit_action(
-            match_id=match_id,
-            player_id=request.player_id,
-            action=request.action,
-            amount=request.amount,
-            turn_id=request.turn_id,
-        )
-    except MatchNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Match not found"
-        ) from exc
-    except (MatchStateError, InvalidActionError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
-
-    return {"ok": True}
 
 
 @router.post("/matches/{match_id}/pause")

@@ -29,7 +29,7 @@ class AdminSDKClient:
 
         Args:
             options (MatchCreationOptions): Match creation options.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
@@ -48,6 +48,8 @@ class AdminSDKClient:
             "big_blind": options.big_blind,
             "turn_timeout_seconds": options.turn_timeout_seconds,
             "event_log_limit": options.event_log_limit,
+            "max_hands": options.max_hands,
+            "wait_for_players": options.wait_for_players,
         }
         return self._transport.request_json(
             "POST",
@@ -57,20 +59,25 @@ class AdminSDKClient:
         )
 
     def start_match(
-        self, match_id: str, api_key_being_used: Optional[str] = None
+        self,
+        match_id: str,
+        force: bool = False,
+        api_key_being_used: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Starts a created match.
+        """Starts (or arms) a created match.
 
         Args:
             match_id (str): Match identifier.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            force (bool): Skip the player-readiness gate when True.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
         """
+        force_flag = str(force).lower()
         return self._transport.request_json(
             "POST",
-            f"/v1/matches/{match_id}/start",
+            f"/v1/matches/{match_id}/start?force={force_flag}",
             {},
             api_key_override=api_key_being_used,
         )
@@ -86,7 +93,7 @@ class AdminSDKClient:
         Args:
             match_id (str): Match identifier.
             reason (Optional[str]): Optional pause reason.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
@@ -109,7 +116,7 @@ class AdminSDKClient:
         Args:
             match_id (str): Match identifier.
             reason (Optional[str]): Optional resume reason.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
@@ -132,7 +139,7 @@ class AdminSDKClient:
         Args:
             match_id (str): Match identifier.
             options (Optional[EndMatchOptions]): End options payload.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing server response details.
@@ -153,7 +160,7 @@ class AdminSDKClient:
 
         Args:
             match_id (str): Match identifier.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing full private match state.
@@ -172,7 +179,7 @@ class AdminSDKClient:
 
         Args:
             match_id (str): Match identifier.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing admin action entries.
@@ -195,7 +202,7 @@ class AdminSDKClient:
         Args:
             player_id (str): Player identifier.
             api_key (Optional[str]): Optional explicit API key to assign.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing player creation results.
@@ -214,7 +221,7 @@ class AdminSDKClient:
         """Lists all players and their API keys.
 
         Args:
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing player and key data.
@@ -233,7 +240,7 @@ class AdminSDKClient:
 
         Args:
             player_id (str): Player identifier.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing deletion results.
@@ -256,7 +263,7 @@ class AdminSDKClient:
         Args:
             player_id (str): Player identifier.
             api_key (Optional[str]): Optional explicit replacement key.
-            api_key_being_used (Optional[str]): Optional admin API key override.
+            api_key_being_used (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Mapping containing key rotation results.

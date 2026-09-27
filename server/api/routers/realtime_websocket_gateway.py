@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
 
+from game import InvalidActionError, MatchNotFoundError, MatchStateError
 from server.api.shared_runtime_dependencies import (
     connections,
     games,
     require_player_id,
 )
-from game import InvalidActionError, MatchNotFoundError, MatchStateError
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
 
@@ -40,6 +48,13 @@ async def websocket_gateway(
     await connections.send_to_player(
         player_id, {"type": "connected", "player_id": player_id}
     )
+    try:
+        await games.on_player_connected(player_id)
+    except Exception:
+        logger.exception(
+            "Failed readiness check after connect for player_id=%s",
+            player_id,
+        )
 
     try:
         while True:
@@ -49,7 +64,9 @@ async def websocket_gateway(
                     player_id,
                     {
                         "type": "error",
-                        "error": "Unsupported message type. Expected 'action'.",
+                        "error": (
+                            "Unsupported message type. Expected 'action'."
+                        ),
                     },
                 )
                 continue

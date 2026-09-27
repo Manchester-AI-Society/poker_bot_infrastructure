@@ -33,7 +33,7 @@ class AdminHTTPTransport:
             method (str): HTTP method value.
             path (str): API path appended to the base URL.
             payload (Optional[Dict[str, Any]]): JSON payload for request body.
-            api_key_override (Optional[str]): Optional API key override for this request.
+            api_key_override (Optional[str]): Optional key override.
 
         Returns:
             Dict[str, Any]: Parsed JSON response mapping.
@@ -44,7 +44,9 @@ class AdminHTTPTransport:
         if payload is not None:
             data = json.dumps(payload).encode("utf-8")
 
-        api_key = (api_key_override or self._configuration.admin_api_key).strip()
+        api_key = (
+            api_key_override or self._configuration.admin_api_key
+        ).strip()
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -52,21 +54,30 @@ class AdminHTTPTransport:
             "Authorization": f"Bearer {api_key}",
         }
 
-        req = request.Request(url=url, data=data, method=method.upper(), headers=headers)
+        req = request.Request(
+            url=url, data=data, method=method.upper(), headers=headers
+        )
 
         try:
-            with request.urlopen(req, timeout=self._configuration.timeout_seconds) as response:
+            timeout = self._configuration.timeout_seconds
+            with request.urlopen(req, timeout=timeout) as response:
                 raw = response.read().decode("utf-8")
                 if not raw:
                     return {}
                 parsed = json.loads(raw)
                 if isinstance(parsed, dict):
                     return parsed
-                raise AdminSDKRequestError("Server response was not a JSON object")
+                raise AdminSDKRequestError(
+                    "Server response was not a JSON object"
+                )
         except error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             if exc.code in {401, 403}:
-                raise AdminSDKAuthenticationError(body or "Admin authentication failed") from exc
+                raise AdminSDKAuthenticationError(
+                    body or "Admin authentication failed"
+                ) from exc
             raise AdminSDKRequestError(f"HTTP {exc.code}: {body}") from exc
         except error.URLError as exc:
-            raise AdminSDKRequestError(f"Could not reach server: {exc}") from exc
+            raise AdminSDKRequestError(
+                f"Could not reach server: {exc}"
+            ) from exc
