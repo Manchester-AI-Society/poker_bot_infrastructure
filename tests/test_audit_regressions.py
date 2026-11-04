@@ -214,9 +214,6 @@ def test_h1_hand_runs_out_when_only_one_player_can_act():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="AUDIT H2: all-in below min-raise rejected"
-)
 def test_h2_short_stack_can_shove_below_min_raise():
     async def scenario():
         service, runtime = await new_match([1000, 30])

@@ -127,10 +127,12 @@ def _handle_bet(
     if runtime.engine.call_amount != 0:
         raise InvalidActionError("Use raise_to when a bet already exists")
     minimum = int(runtime.engine.big_blind_amount)
-    if amount < minimum:
+    all_in_total = seat.curr_bet_amount + seat.curr_balance
+    target_total = min(all_in_total, amount)
+    # A stack smaller than the minimum bet may still bet everything.
+    if target_total < minimum and target_total != all_in_total:
         raise InvalidActionError(f"Bet must be at least {minimum}")
 
-    target_total = min(seat.curr_bet_amount + seat.curr_balance, amount)
     placed = target_total - seat.curr_bet_amount
     if placed <= 0:
         raise InvalidActionError("Bet amount is too small")
@@ -159,20 +161,22 @@ def _handle_raise_to(
         raise InvalidActionError("raise_to requires an amount")
     minimum = min_raise_to(runtime, actor_index)
     maximum = seat.curr_bet_amount + seat.curr_balance
-    if amount < minimum:
-        raise InvalidActionError(f"raise_to must be at least {minimum}")
     if amount > maximum:
         raise InvalidActionError(f"raise_to cannot exceed {maximum}")
+    # Going all-in is always allowed, even below the minimum raise.
+    if amount < minimum and amount != maximum:
+        raise InvalidActionError(
+            f"raise_to must be at least {minimum} (or {maximum} all-in)"
+        )
 
     commit_amount = amount - seat.curr_bet_amount
     seat.commit_chips(commit_amount)
     runtime.engine.pot += commit_amount
     raise_size = amount - runtime.engine.call_amount
     runtime.engine.call_amount = amount
-    runtime.min_raise_size = max(
-        int(runtime.engine.big_blind_amount),
-        raise_size,
-    )
+    # Only a full raise changes the increment; a short all-in does not.
+    if raise_size >= runtime.min_raise_size:
+        runtime.min_raise_size = raise_size
     reset_acted_flags_after_aggression(runtime, actor_index)
     return amount
 
