@@ -14,7 +14,9 @@ def legal_actions(runtime: MatchRuntime, actor_index: int) -> list[str]:
     actions = ["fold"]
     if to_call == 0:
         actions.append("check")
-        if seat.curr_balance > 0:
+        # Only an unopened round can be "bet"; the big-blind option
+        # (nothing to call, but the blind is a bet) must use raise_to.
+        if seat.curr_balance > 0 and runtime.engine.call_amount == 0:
             actions.append("bet")
     else:
         actions.append("call")

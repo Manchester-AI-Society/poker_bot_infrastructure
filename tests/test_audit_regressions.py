@@ -232,7 +232,6 @@ def test_h2_short_stack_can_shove_below_min_raise():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT H3: BB-option raise rejected")
 def test_h3_sdk_raise_from_big_blind_option_is_accepted():
     async def scenario():
         service, runtime = await new_match([1000, 1000])

@@ -38,6 +38,12 @@ def translate_action(
             return "check", None
         return "call", None
 
+    # Trust the engine's menu when present: at the big-blind option the
+    # call amount is 0 but only raise_to is legal.
+    if "bet" in state.legal_actions:
+        return "bet", action.amount
+    if "raise_to" in state.legal_actions:
+        return "raise_to", action.amount
     if state.call_amount == 0:
         return "bet", action.amount
     return "raise_to", action.amount

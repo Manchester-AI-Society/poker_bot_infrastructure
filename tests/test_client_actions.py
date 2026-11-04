@@ -74,7 +74,23 @@ class TestTranslateAction:
         )
 
     def test_raise_with_no_call_becomes_bet(self):
-        state = make_state(call_amount=0)
+        state = make_state(
+            call_amount=0, legal_actions=("fold", "check", "bet")
+        )
+        assert translate_action(Action.raise_to(60), state) == ("bet", 60)
+
+    def test_raise_from_big_blind_option_is_raise_to(self):
+        # Nothing to call, but the blind is already a bet.
+        state = make_state(
+            call_amount=0, legal_actions=("fold", "check", "raise_to")
+        )
+        assert translate_action(Action.raise_to(60), state) == (
+            "raise_to",
+            60,
+        )
+
+    def test_raise_without_a_legal_menu_falls_back_to_call_amount(self):
+        state = make_state(call_amount=0, legal_actions=())
         assert translate_action(Action.raise_to(60), state) == ("bet", 60)
 
 
