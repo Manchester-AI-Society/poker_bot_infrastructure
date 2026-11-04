@@ -125,3 +125,36 @@ class TestParse:
         }
         state = GameStateParser().parse_json(json.dumps(payload))
         assert state.current_player_index == 1
+
+
+def test_parser_reads_button_and_blinds():
+    payload = {
+        "state": {
+            "players": [
+                {"id": "a", "stack": 990, "bet": 10},
+                {"id": "b", "stack": 980, "bet": 20},
+            ],
+            "current_player_id": "a",
+            "dealer_index": 0,
+            "small_blind": 10,
+            "big_blind": 20,
+        }
+    }
+    state = GameStateParser().parse(payload, hero_index=0)
+    assert (state.dealer_index, state.small_blind, state.big_blind) == (
+        0,
+        10,
+        20,
+    )
+    assert state.is_dealer is True
+    assert GameStateParser().parse(payload, hero_index=1).is_dealer is False
+
+
+def test_parser_leaves_button_unknown_when_absent():
+    payload = {
+        "players": [{"id": "a", "stack": 1}, {"id": "b", "stack": 1}],
+        "current_player_id": "a",
+    }
+    state = GameStateParser().parse(payload, hero_index=0)
+    assert state.dealer_index is None
+    assert state.is_dealer is False

@@ -115,6 +115,10 @@ class GameStateParser:
             "max_raise_to", payload.get("max_raise_to")
         )
 
+        dealer_index = state_payload.get("dealer_index")
+        small_blind = state_payload.get("small_blind")
+        big_blind = state_payload.get("big_blind")
+
         return GameState(
             hole_cards=resolved_hole_cards,
             community_cards=community_cards,
@@ -135,6 +139,9 @@ class GameStateParser:
             all_in=tuple(all_in),
             min_raise_to=(None if min_raise_to is None else int(min_raise_to)),
             max_raise_to=(None if max_raise_to is None else int(max_raise_to)),
+            dealer_index=(None if dealer_index is None else int(dealer_index)),
+            small_blind=(None if small_blind is None else int(small_blind)),
+            big_blind=(None if big_blind is None else int(big_blind)),
         )
 
     def _parse_current_player_index(

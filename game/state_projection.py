@@ -40,6 +40,9 @@ def build_public_state(
         "current_player_id": current_player_id,
         "turn_id": runtime.turn_id,
         "hand_number": runtime.engine.hand_number,
+        "dealer_index": runtime.engine.dealer_index,
+        "small_blind": int(runtime.engine.small_blind_amount),
+        "big_blind": int(runtime.engine.big_blind_amount),
     }
 
     if (

@@ -73,6 +73,9 @@ class GameState:
     all_in: Tuple[bool, ...] = ()
     min_raise_to: Optional[int] = None
     max_raise_to: Optional[int] = None
+    dealer_index: Optional[int] = None
+    small_blind: Optional[int] = None
+    big_blind: Optional[int] = None
 
     def is_bot_turn(self, bot_player_index: int) -> bool:
         return self.current_player_index == bot_player_index
@@ -91,6 +94,15 @@ class GameState:
     def my_bet(self) -> Optional[int]:
         """This bot's chips committed in the current betting round."""
         return self._seat_value(self.current_bets)
+
+    @property
+    def is_dealer(self) -> bool:
+        """True when this bot holds the button (heads-up: small blind)."""
+        return (
+            self.my_index is not None
+            and self.dealer_index is not None
+            and self.my_index == self.dealer_index
+        )
 
     @property
     def my_player_id(self) -> Optional[str]:
