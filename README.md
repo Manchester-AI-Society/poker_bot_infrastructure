@@ -52,6 +52,32 @@ server: the organiser runs every bot on one machine (a laptop or one HPC
 node), and the rules are the same engine code (`game/`) the server uses.
 Heads-up no-limit Hold'em, Python bots.
 
+### Setup (once, everyone)
+
+Python 3.11+ is required. From the repository root:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Everything below runs as `python -m arena ...` from the repository root; there
+is nothing to build and no server to start. If you see
+`ModuleNotFoundError: No module named 'dotenv'`, the requirements are not
+installed in the Python you are running.
+
+**Try it in 30 seconds** (the bundled starter bot against a calling station):
+
+```bash
+python -m arena validate bots/starter
+python -m arena match bots/starter @call --deals 50
+```
+
+You should see `OK: played 40 hands vs @call with no faults`, then a score line
+such as `starter: +0.400 bb/hand (95% CI ...)`. A positive number means the
+first bot is winning; the interval says how sure we are.
+
 ### For participants: write and test a bot
 
 1. Copy the starter: `cp -r bots/starter bots/myteam` (a folder with a `bot.py`).
@@ -71,6 +97,17 @@ Heads-up no-limit Hold'em, Python bots.
 
    Baselines: `@fold`, `@call`, `@random`, `@shove`. Your bot's `print` output
    and tracebacks go to `arena_logs/<name>.log`.
+
+   Useful `match` options: `--deals N` (each deal is two hands, so more deals
+   means a tighter confidence interval; default 100), `--seed N` (repeat the
+   exact same cards; default 1), `--hands FILE` (save every hand with cards and
+   actions), `--think-budget SECONDS` and `--move-timeout SECONDS` (default 0.2
+   and 1.0, the competition values). `python -m arena match --help` lists the
+   rest.
+
+   If the output says `faults: yourbot=N` with N above zero, open
+   `arena_logs/` and read the log: it holds the traceback or the reason an
+   action was rejected.
 
 Rules of the road:
 
@@ -445,13 +482,72 @@ curl "http://127.0.0.1:8000/v1/matches/<MATCH_ID>/events?offset=0&limit=100"
 ## Tests
 
 ```bash
-pytest                        # everything (integration tests start a local server)
-pytest -m "not integration"   # fast unit suite only
-pytest tests/test_ws_runner.py -v
+pytest -m "not integration" -q   # fast suite, about 40 s: use this day to day
+pytest tests/test_arena_table.py -v   # one file
+ruff check . && ruff format --check .   # lint, as CI does
+
+# server integration tests: real matches over HTTP and WebSocket, about 2 min.
+# They need the dev admin key from exampleenv in the environment:
+POKER_ADMIN_API_KEY=admin-dev-key pytest -m integration -q
+# Windows PowerShell:  $env:POKER_ADMIN_API_KEY = "admin-dev-key"; pytest -m integration -q
 ```
 
-The suite covers config resolution order, action validation and
-translation, parser payload tolerance, action-history parsing from the
+**Expected result of the fast suite:** about 178 passed, 3 deselected (the
+integration tests) and 6 xfailed. The 6 xfails are not failures: they are tests
+that reproduce known server-only bugs listed in [AUDIT.md](AUDIT.md) (C3, C4,
+H4, H5, H9) and are marked `xfail(strict=True)`. When one of those bugs is
+fixed its test starts passing, which strict mode reports as a failure, and you
+then delete the marker.
+
+### What the tests cover
+
+| Area | Files | What they check |
+|---|---|---|
+| Rules | `test_showdown_pots.py`, `test_betting_rules.py`, `test_action_order.py` | Side pots, uncalled bets returned, odd chips, short all-ins, who acts first on every street |
+| Determinism | `test_seeded_deal.py` | The same seed gives the same cards; different seeds differ |
+| Table | `test_arena_table.py` | A hand played through the arena conserves chips; a fuzz test plays about 3,000 random hands (2 and 3 seats, uneven stacks) and asserts no chips are created or lost |
+| Scoring | `test_arena_duel.py` | Identical bots score exactly 0; a bot that folds every hand loses exactly 0.75 bb/hand; scores are antisymmetric when the bots swap sides; both orientations of every deal are played; same seed reproduces |
+| Bot failures | `test_arena_process.py` | Real subprocess bots that crash, hang, print garbage, return illegal actions or fail to import, and that the match still finishes with faults recorded |
+| Competition flow | `test_arena_competition.py`, `test_arena_cli.py` | Submit, version by content hash, ladder only re-runs changed pairings, freeze, final, retry, and every CLI command |
+| Audit repros | `test_audit_regressions.py` | Regression tests for fixed audit findings; the deferred ones stay as strict xfails |
+| SDK | `test_client_actions.py`, `test_parser.py`, ... | Action translation and state parsing |
+
+### Check the whole competition on your machine
+
+A rehearsal of the whole event (submit, ladder, freeze, final) with three teams
+on a laptop takes well under a minute. Bash shown; on Windows use any scratch
+folder in place of `/tmp`.
+
+```bash
+for t in alpha beta gamma; do
+  mkdir -p /tmp/field/$t
+  cp bots/starter/bot.py /tmp/field/$t/
+  echo "# team $t" >> /tmp/field/$t/bot.py     # see the note below
+done
+
+python -m arena ladder --submissions /tmp/field --root /tmp/rehearsal --deals 20 --once
+python -m arena status      --root /tmp/rehearsal
+python -m arena freeze      --root /tmp/rehearsal
+python -m arena final       --root /tmp/rehearsal --deals 50
+python -m arena leaderboard --root /tmp/rehearsal --kind final
+```
+
+Expected: three `valid` submissions, `pairings 3/3`, and a final table. Here
+every team runs the same strategy, so every score is exactly `+0.000`: a useful
+sanity check, because duplicate scoring means identical bots cannot be separated
+by luck. Swap in real, different bots to see a real ranking.
+
+The `echo` line matters. A submission whose code is byte-identical to another
+team's current bot is treated as copied and silently not added, so identical
+files would give you a one-team leaderboard. Results are written to
+`/tmp/rehearsal/results/` (`leaderboard.json`, `final.json`). Always use a
+throwaway `--root` for rehearsals so they never mix with the real event's
+`arena_data/`.
+
+### Server and SDK tests
+
+The older half of the suite covers config resolution order, action validation
+and translation, parser payload tolerance, action-history parsing from the
 server event log, authenticated action submission, websocket message
 handling (fake socket, no server needed), the `play()` dispatch and
 fallback logic, multi-hand progression and the start-readiness gate,
@@ -474,6 +570,12 @@ together.
 | `Player belongs to multiple matches` | Set `match_id` (or `POKER_MATCH_ID`) explicitly when using the CLI or `run_bot()` |
 | `Websocket unavailable …; using HTTP polling instead` | The server accepted HTTP but rejected the WS upgrade — everything still works, this is informational |
 | Bot folded without acting | Turn timer (`turn_timeout_seconds`) expired; make `act()` return faster or raise the match timeout |
+| `ModuleNotFoundError: No module named 'dotenv'` when running `python -m arena` | Requirements not installed in this Python: `python -m pip install -r requirements.txt` |
+| `arena validate` says the bot failed to load | Your file needs exactly one `PokerBot` subclass with a no-argument constructor; the traceback is in `arena_logs/` |
+| `faults:` is non-zero in a match | Exception, timeout or illegal action in your bot; read `arena_logs/<name>.log`. 20 faults disables the bot |
+| A submission is rejected as a duplicate | Its code is identical to another team's current bot |
+| A final has a crashed pairing | `python -m arena retry-failed`, then `python -m arena final` again; only the missing pairings run |
+| Integration tests fail on authentication or admin-key errors | Set `POKER_ADMIN_API_KEY=admin-dev-key` (the value in `exampleenv`) in the environment before running them |
 
 ## Benchmarks
 
