@@ -329,6 +329,7 @@ class GameService:
                 self._timeout_manager.cancel(runtime)
 
             normalised_action = "raise_to" if action == "raise" else action
+            street_before = runtime.engine.curr_street
             action_name, emitted_amount = apply_action(
                 runtime,
                 actor_index,
@@ -368,12 +369,15 @@ class GameService:
                     turn_event,
                 ) = resolve_match_progression(runtime, self._log_event)
             elif runtime.status == "running":
-                next_index = next_eligible_player(
-                    runtime,
-                    actor_index + 1,
-                )
-                if next_index is not None:
-                    runtime.engine.turn_index = next_index
+                # A new street already positioned the first actor (left
+                # of the button); only move on within the same street.
+                if runtime.engine.curr_street == street_before:
+                    next_index = next_eligible_player(
+                        runtime,
+                        actor_index + 1,
+                    )
+                    if next_index is not None:
+                        runtime.engine.turn_index = next_index
                 turn_player_id, turn_event = prepare_turn_event(
                     runtime, self._log_event
                 )
