@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional
@@ -69,8 +70,12 @@ class GameService:
         event_log_limit: int = 2000,
         max_hands: Optional[int] = None,
         wait_for_players: bool = True,
+        seed: Optional[int] = None,
     ) -> MatchRuntime:
-        """Creates and stores a new match runtime."""
+        """Creates and stores a new match runtime.
+
+        ``seed`` makes every shuffle of the match reproducible.
+        """
         if len(player_ids) < 2:
             raise MatchStateError("At least 2 players are required")
         if len(set(player_ids)) != len(player_ids):
@@ -89,6 +94,7 @@ class GameService:
             players=seats,
             big_blind_amount=big_blind,
             small_blind_amount=small_blind,
+            rng=None if seed is None else random.Random(seed),
         )
 
         match_id = uuid.uuid4().hex[:12]

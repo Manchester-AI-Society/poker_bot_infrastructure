@@ -1,4 +1,5 @@
 import random
+from typing import Optional
 
 from .poker_card import (
     CARD_MAX_NUMBER,
@@ -9,8 +10,12 @@ from .poker_card import (
 
 
 class PokerDeck:
-    def __init__(self):
-        """Stores a standard 52 card deck in a list"""
+    def __init__(self, rng: Optional[random.Random] = None):
+        """Stores a shuffled standard 52 card deck in a list.
+
+        Pass a seeded ``random.Random`` for a reproducible shuffle;
+        without one the module-level (unseeded) generator is used.
+        """
 
         self.deck_list = []
         for card_number in range(CARD_MIN_NUMBER, CARD_MAX_NUMBER + 1):
@@ -20,7 +25,7 @@ class PokerDeck:
                 )
                 self.deck_list.append(new_card)
 
-        random.shuffle(self.deck_list)
+        (rng if rng is not None else random).shuffle(self.deck_list)
 
     def draw_card(self):
         """Draws a card from the shuffled deck"""

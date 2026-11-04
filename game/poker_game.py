@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import random
+from typing import Optional
+
 from .player import Player
 from .poker_board import PokerBoard
 from .poker_deck import PokerDeck
@@ -13,8 +16,13 @@ class PokerGame:
         players: list[Player],
         big_blind_amount: float,
         small_blind_amount: float,
+        rng: Optional[random.Random] = None,
     ):
-        """Initialises a game engine for a sequence of poker hands."""
+        """Initialises a game engine for a sequence of poker hands.
+
+        ``rng`` seeds every deck shuffle; leave it ``None`` for
+        unseeded (production) dealing.
+        """
         if len(players) < 2:
             raise ValueError("At least two players are required")
         if small_blind_amount >= big_blind_amount:
@@ -31,7 +39,8 @@ class PokerGame:
         self.small_blind_amount = small_blind_amount
         self.big_blind_amount = big_blind_amount
 
-        self.deck = PokerDeck()
+        self.rng = rng
+        self.deck = PokerDeck(rng=rng)
         self.board = PokerBoard()
 
         self.preflop_moves = []
@@ -61,7 +70,7 @@ class PokerGame:
         self.turn_index = 0
         self.call_amount = 0
 
-        self.deck = PokerDeck()
+        self.deck = PokerDeck(rng=self.rng)
         self.board = PokerBoard()
 
         self.preflop_moves = []
