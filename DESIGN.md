@@ -24,9 +24,11 @@ Teams drop bots in `bots/<team>/`. After the deadline the organiser runs
 - **Scoring:** mean bb/hand against the field, with a 95% CI.
 - **Variance:** duplicate deals (each seeded deal played from both seats),
   fixed 100 bb stacks reset every hand, thousands of hands per pairing.
-- **Compute:** 190 pairings x 2,000 hands = 380k hands. About 6-7 min of
-  harness time on one core with instant bots; with bots at ~5 ms/decision
-  (~50 ms/hand) it is ~5 core-hours, i.e. ~40 min on 8 cores.
+- **Compute:** 190 pairings x 2,000 hands = 380k hands. Measured with real
+  subprocess bots: ~500 hands/s per core, so ~13 min on one core with instant
+  bots; with bots at ~5 ms/decision (~50 ms/hand) it is ~5 core-hours, i.e.
+  ~40 min on 8 cores. (The first draft of this doc said 6-7 min; that was the
+  engine alone, without bot processes.)
 - **Security:** bots run as the organiser's user in subprocesses.
 - **Failure handling:** see section 3 (shared by all designs).
 - **Build complexity:** small. About 2-3 h including the engine fixes.
@@ -208,3 +210,39 @@ into scope.
 - Provisional ladder and final ranking both use mean bb/hand with 95% CI.
 - Per-hand variance will be measured on the fixed engine before the hand
   counts are locked in; the numbers above are placeholders.
+
+## 7. Implementation status (added after building design C)
+
+Built, tested and measured on this machine (22 threads, cheap bots):
+
+| Piece | Where | Notes |
+|---|---|---|
+| Bot host + protocol | `arena/bothost.py`, `arena/agents.py` | JSON lines, prints go to a private log |
+| Fault guard, time bank | `arena/contestant.py` | always-fold stub after 20 faults or an overdrawn bank |
+| Duplicate pairings, CIs | `arena/duel.py`, `arena/stats.py` | both halves restart the bots |
+| Submission + versions | `arena/intake.py` | folder, file or git URL; hash-versioned |
+| Store + job queue | `arena/store.py` | SQLite WAL, no server |
+| Ladder, freeze, final | `arena/scheduler.py`, `arena/cli.py` | only changed pairings re-run |
+| Leaderboard JSON | `arena/leaderboard.py` | for the Phase 3 frontend |
+| Local runner, starter | `python -m arena match`, `bots/starter` | same code path as the competition |
+
+Measured with 20 varied bots: ladder at 200 deals/pairing (76k hands) in 1m49s
+(including validating 20 submissions one by one); final at 1,000 deals/pairing
+(380k hands) in 5m05s with 21 workers.
+
+Deviations from the plan above, and what is not built:
+
+* **Thinking-time bank** (0.2 s per deal per half) added to bound worst-case run
+  time; the 1 s per-move limit alone allowed one pairing to take hours.
+* **No tie-break stage** for close podium pairs yet: `final` plays one fixed
+  number of deals. The leaderboard flags statistically tied neighbours so the
+  organiser can extend those pairings by hand.
+* **Memory/CPU limits are not enforced** (no portable way on Windows); only
+  time and fault limits are. Use `ulimit` or containers on the HPC.
+* **No sandbox**: bots run as the organiser's user. See section 3.
+* **Per-hand variance was not measured separately.** The leaderboard CIs are
+  computed from the data (per-deal averages), so hand counts can be tuned from
+  real results. In the dry-run field the 95% CI half-width at 1,000 deals was
+  roughly 0.1-0.2 bb/hand per team.
+* H8 (complete hand history) is solved for the arena only; the server's event
+  log is unchanged.

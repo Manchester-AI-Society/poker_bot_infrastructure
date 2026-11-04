@@ -36,4 +36,22 @@ jobs:
           python-version: "3.11"
 
       - name: Compile all packages
-        run: python -m compileall -q game server player_sdk admin_sdk
+        run: python -m compileall -q game server player_sdk admin_sdk arena bots
+
+  tests:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt pytest
+          pip install -e .
+
+      - name: Run tests (server-integration tests excluded)
+        run: pytest -m "not integration" -q
