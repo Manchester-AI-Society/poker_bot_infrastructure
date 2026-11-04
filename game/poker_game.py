@@ -137,14 +137,24 @@ class PokerGame:
         self.board.add_cards(self.deck.draw_cards(5))
 
     def round_has_pending_actions(self):
-        """Checks whether any active player still has a pending action."""
-        active = [
-            actor
-            for actor in self.players
-            if not actor.is_folded and not actor.is_all_in
-        ]
-        if len(active) <= 1:
+        """Checks whether the current betting round still needs a move.
+
+        A round is over when at most one player is left in the hand,
+        when nobody can act any more (everyone left is all-in), or
+        when every player who can act has acted and matched the bet.
+        A lone player who can still act is only owed a decision when
+        facing a bet they have not matched (e.g. an opponent's all-in
+        raise); with nothing to answer there is nobody to bet against.
+        """
+        in_hand = [actor for actor in self.players if not actor.is_folded]
+        if len(in_hand) <= 1:
             return False
+
+        active = [actor for actor in in_hand if not actor.is_all_in]
+        if not active:
+            return False
+        if len(active) == 1:
+            return self.call_amount > active[0].curr_bet_amount
         return any(actor.can_play_turn(self.call_amount) for actor in active)
 
     def _reset_street_data(self, next_street):

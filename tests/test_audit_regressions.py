@@ -164,7 +164,6 @@ def test_c1_three_way_short_stack_wins_main_pot_only():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT C2: shove is never answered")
 def test_c2_opponent_must_answer_a_heads_up_shove():
     async def scenario():
         service, runtime = await new_match([200, 1000])
@@ -270,7 +269,6 @@ def test_c4_turn_timer_survives_an_illegal_action():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT H1: lone player keeps acting")
 def test_h1_hand_runs_out_when_only_one_player_can_act():
     async def scenario():
         service, runtime = await new_match([1000, 200])

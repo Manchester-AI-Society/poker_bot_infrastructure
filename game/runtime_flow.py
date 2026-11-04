@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .action_engine import (
-    all_remaining_all_in,
     legal_actions,
     min_raise_to,
     next_eligible_player,
@@ -99,8 +98,6 @@ def advance_and_settle_if_ready(
             return showdown
 
         runtime.engine.turn_index = next_index
-        if not all_remaining_all_in(runtime):
-            break
 
     return None
 
