@@ -172,8 +172,14 @@ def cmd_ladder(args: argparse.Namespace) -> int:
     settings = _settings(args)
     submissions = Path(args.submissions) if args.submissions else None
 
+    last_scan = [float("-inf")]
+
     def tick() -> None:
-        if submissions is not None:
+        # Hashing every bot folder is not free: scan at most every
+        # --interval seconds, not on every scheduler poll.
+        due = time.monotonic() - last_scan[0] >= args.interval
+        if submissions is not None and due:
+            last_scan[0] = time.monotonic()
             for result in scan_directory(
                 store, submissions, move_timeout=args.move_timeout
             ):

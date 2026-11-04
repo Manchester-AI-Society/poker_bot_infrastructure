@@ -214,3 +214,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Arena competition state and bot logs
+arena_data/
+arena_logs/

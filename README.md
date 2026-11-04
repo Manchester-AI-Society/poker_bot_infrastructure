@@ -45,6 +45,99 @@ class MyBot(PokerBot):
         return Action.fold()
 ```
 
+## Running a bot competition (arena)
+
+The `arena/` package is the competition harness. It does **not** use the
+server: the organiser runs every bot on one machine (a laptop or one HPC
+node), and the rules are the same engine code (`game/`) the server uses.
+Heads-up no-limit Hold'em, Python bots.
+
+### For participants: write and test a bot
+
+1. Copy the starter: `cp -r bots/starter bots/myteam` (a folder with a `bot.py`).
+2. Your `bot.py` must define **exactly one** `PokerBot` subclass with a
+   no-argument constructor. `act(game_state)` returns `Action.fold()`,
+   `Action.call()` (checks when nothing is owed) or `Action.raise_to(total)`
+   where `total` is the *total* you want in the pot this betting round, between
+   `game_state.min_raise_to` and `game_state.max_raise_to`.
+3. Test it against the built-in baselines or another bot. This is the same
+   code and scoring the competition uses:
+
+   ```bash
+   python -m arena validate bots/myteam                  # loads, plays legally, on time?
+   python -m arena match bots/myteam @call --deals 200   # vs a calling station
+   python -m arena match bots/myteam bots/starter --deals 500 --hands hands.jsonl.gz
+   ```
+
+   Baselines: `@fold`, `@call`, `@random`, `@shove`. Your bot's `print` output
+   and tracebacks go to `arena_logs/<name>.log`.
+
+Rules of the road:
+
+| | |
+|---|---|
+| **Time** | 1 s hard limit per move (do loading in `__init__`/at import). A thinking-time bank of 0.2 s per deal per half is also enforced; overdrawing it disables the bot for the rest of the pairing. |
+| **Faults** | An exception, timeout, crash, bad reply or illegal action is a *fault*: the engine plays a legal fallback (check, else fold) and the bot is restarted if needed. After 20 faults the bot is replaced by an always-fold stub (it loses ~0.75 bb/hand against anything). |
+| **State** | Your process lives for a whole run of hands, so you can keep opponent statistics on `self`. It is restarted for the second half of a match, so do not rely on memory across halves. |
+| **Libraries** | The organiser's Python environment. Ask before relying on anything beyond the standard library and what `requirements.txt` installs. |
+| **Not allowed** | Reading other teams' files, the network, or anything outside your folder. Subprocess isolation is not a sandbox; this is a trust-based rule. |
+
+### How scoring works
+
+* **Duplicate deals.** Every deal (a seeded shuffle) is played twice: once with
+  you in seat 0 and once with your opponent there, so both bots play both
+  positions with both sets of hole cards. Stacks reset to 100 big blinds every
+  hand. This removes most card luck.
+* **Score = mean big blinds per hand** against each opponent, with a 95%
+  confidence interval over deals. A team's ranking score is its mean over all
+  opponents (each weighted equally); the leaderboard shows the interval, a
+  win/draw/loss record that only counts *statistically clear* results, and a `~`
+  when two neighbouring teams cannot be separated.
+* **Ladder vs final.** During the event a *ladder* keeps a provisional round
+  robin of everyone's latest versions (about 400 hands per pairing). At the
+  deadline the organiser *freezes* the submitted versions and plays a larger
+  *final* round robin (about 2,000 hands per pairing) on exactly those versions;
+  only the final decides the result.
+
+### For the organiser
+
+State lives under `arena_data/` (change with `--root`): a single SQLite file,
+immutable copies of each submitted version, hand histories and private logs.
+
+```bash
+# Option 1: watch a folder of <team>/bot.py directories (re-checked every 10 s)
+python -m arena ladder --submissions submissions/ --deals 200
+
+# Option 2: submit explicitly (folder, single file, or git URL)
+python -m arena submit alpha path/to/alpha-bot
+python -m arena submit beta https://github.com/team/beta-bot.git
+python -m arena ladder                      # play all missing pairings, keep results fresh
+
+python -m arena status                      # versions and queue
+python -m arena leaderboard                 # also writes arena_data/results/leaderboard.json
+
+# at the deadline
+python -m arena freeze                      # re-validates every bot, snapshots versions
+python -m arena final --deals 1000          # writes arena_data/results/final.json
+python -m arena retry-failed && python -m arena final   # if any pairing crashed
+```
+
+* Each submission is copied to `versions/<team>/<hash>/`, smoke-tested against
+  `@call` and only then becomes the team's current version. A broken push never
+  replaces a working bot, identical code is a no-op, and code copied from
+  another team is rejected.
+* A new version only queues the pairings it takes part in. Pairings run in a
+  process pool (`--workers`, default CPUs - 1) with one child process per bot.
+* Every pairing writes a gzip hand history with seeds, hole cards, board and
+  every action (`arena_data/hands/`), so any result can be audited or replayed.
+* **Measured on a 22-thread Windows laptop with cheap bots:** 20 teams, ladder at
+  200 deals/pairing (76k hands) in under 2 minutes; final at 1,000 deals/pairing
+  (380k hands) in about 5 minutes. Real bot think time adds to this directly.
+* **HPC:** nothing needs the network. Run the same commands inside a job with
+  `--workers $SLURM_CPUS_PER_TASK`; `arena_data/` must be on a local or POSIX
+  filesystem that supports SQLite locking. Use `ulimit` or a container for
+  memory/CPU limits; the harness only enforces time and fault limits.
+
 ## Architecture
 
 ```mermaid
@@ -87,7 +180,8 @@ It stands out because it is batteries-included — a complete hand engine, admin
 
 ## Key Features
 
-- **Authoritative no-limit Texas Hold'em engine** — blinds, `preflop → flop → turn → river → showdown`, side-pot-free settlement with split-pot chip distribution
+- **Authoritative no-limit Texas Hold'em engine** — blinds, `preflop → flop → turn → river → showdown`, main and side pots, uncalled bets returned, split pots with the odd chip to the first seat left of the button, seedable shuffles
+- **Competition arena** — a local harness that plays bots as isolated subprocesses in heads-up *duplicate* matches, with a live ladder and a frozen final round robin ([details](#running-a-bot-competition-arena))
 - **Multi-hand matches** — matches play hand after hand (with a rotating dealer button and blind-skipping for eliminated players) until one player owns every chip, or until an optional `max_hands` cap is reached
 - **Auto-start readiness gate** — `start_match` arms the match; dealing begins automatically once every player's websocket is live, so the first turn never races a cold-starting bot (`force` start or `wait_for_players=False` for HTTP-only setups)
 - **Strict action validation** — only legal actions (`fold`, `check`, `call`, `bet`, `raise_to`) with server-computed raise bounds are accepted
@@ -394,6 +488,8 @@ python benchmarks/run_benchmarks.py --json-output benchmarks/latest.json
 ## Project Layout
 
 ```
+arena/          Competition harness: bot host, duplicate matches, ladder, final, CLI
+bots/           Starter bot (copy it to begin)
 player_sdk/     Player SDK: play(), PokerBot interface, WS + HTTP transports, CLI
 admin_sdk/      Admin SDK: match lifecycle management
 server/         FastAPI routers, auth, websocket gateway
@@ -401,7 +497,16 @@ game/           Authoritative engine: actions, streets, showdown, timeouts
 examples/       bots, remote play, local testing, admin flows, visualisation
 tests/          pytest unit + integration suites
 benchmarks/     engine hot-path benchmarks
+AUDIT.md        Phase 1 audit (bugs, robustness, fairness) and fix status
+DESIGN.md       Competition design options and the chosen architecture
 ```
+
+**Server mode vs arena.** The FastAPI server and `play()` remain for live
+network matches, but they are not used by the competition. Several server-only
+findings from [AUDIT.md](AUDIT.md) are intentionally still open (unauthenticated
+`viewer_id`, turn-timer stall after an illegal action, WebSocket amount
+validation, `.env` load order, dead-bot forfeits); do not expose the server to
+untrusted networks until they are fixed.
 
 ## Contributing
 

@@ -246,9 +246,12 @@ starting stack, or per-hand history (see H9). `hand_started` carries
 ### Checked and found correct
 Hand evaluation (wheel, steel wheel, two trips→full house, three pair, kicker
 ordering, flush-over-straight, ties) — spot-checked, no defects; heads-up
-button/SB/BB rules and postflop order; blind capping for short stacks; min-raise
+button/SB/BB posting rules; blind capping for short stacks; min-raise
 size tracking for normal raises; stale-`turn_id` rejection; chip conservation in
 normal multi-hand play; button skipping busted seats.
+
+> **Correction (added during Phase 2).** An earlier version of this list also
+> said "postflop order" was correct. That was wrong: see **N1** in §9.
 
 ---
 
@@ -398,3 +401,49 @@ depend on the design chosen in Phase 2.
    Singularity, SLURM), possibly no inbound network for a web UI.
 4. **Team count and when final results must exist** — drives hands per matchup
    and parallelism (see §4).
+
+---
+
+## 9. Fix status (updated after Phase 2 implementation)
+
+Scope decision: fix what the competition path (`arena/`) exercises; leave
+server-only items for later. Each fix is its own commit and graduates its
+`xfail` repro in `tests/test_audit_regressions.py`.
+
+| Item | Status | Commit |
+|---|---|---|
+| C1 side pots / uncalled bet | **fixed** (+ `tests/test_showdown_pots.py`) | `07c5537` |
+| M1 odd chip to first seat left of button | **fixed** | `07c5537` |
+| C2 all-in raise answered | **fixed** | `decfc39` |
+| H1 run-out when only one can act | **fixed** | `decfc39` |
+| H2 all-in below min raise/bet | **fixed**; short all-in no longer lowers the raise increment | `d430546` |
+| H3 BB-option raise | **fixed** (engine + SDK) | `0548a82` |
+| H7 seeded deck | **fixed** (opt-in; server default unchanged) | `704c442` |
+| M6 dealer/blinds in state | **fixed** (+ `GameState.is_dealer`) | `995f758` |
+| H8 complete hand history | **addressed in the arena only**: `arena/table.py` records seeds, all hole cards, board and every action per hand. The server's bounded event log is unchanged | `020a981` |
+| C3, C4, H4 (×2), H5, H6, H9, M2, M4, M5 | **open, deliberately** (server/SDK-network only; the competition does not use them). Their strict-xfail tests remain | — |
+
+### Found after the audit
+
+* **N1 (high) — wrong first actor after the flop** (`game_service_core.py`,
+  `submit_action`). After a street advanced, the turn was overwritten with "seat
+  after the player who just acted", so the **button acted first** postflop
+  (heads-up: the small blind; multiway: the seat after the big blind) instead of
+  last. This contradicted the "checked and correct" note in §1; that check was
+  incomplete. Fixed in `15850c1` with tests in `tests/test_action_order.py`.
+* **N2 (medium) — `min_raise_to` could exceed `max_raise_to`** after the H2
+  fix, so `raise_to(min_raise_to)` faulted for short stacks. Found by running a
+  20-bot field through the arena. Fixed in `cc08e16`.
+* **N3 (medium) — agent teardown could raise under load** and fail a whole
+  pairing (`proc.wait()` after `kill()` timed out with 21 workers). Fixed in
+  `b7ac6ed`, plus one automatic retry on harness (not bot) errors.
+* **Known simplification (low):** a short all-in raise still re-opens betting for
+  players who already acted (real rules do not). Documented in the H2 commit.
+
+### Fairness notes for the arena (F-series status)
+
+* F1 seeding and F2 duplicate play: implemented (`arena/duel.py`). Each deal is
+  played from both seats; a bot cannot carry memory from the first half to the
+  mirrored deal because both bots are restarted between halves.
+* Leaderboard statistics: mean bb/hand with Student-t CIs over deals; the
+  ranking is flagged `~` where neighbours cannot be separated.
