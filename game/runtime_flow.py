@@ -102,6 +102,31 @@ def advance_and_settle_if_ready(
     return None
 
 
+def finish_action(
+    runtime: MatchRuntime,
+    actor_index: int,
+    street_before: str,
+    log_event: LogEventCallback,
+) -> Optional[Dict[str, Any]]:
+    """Settles or advances the hand after an action was applied.
+
+    Returns the showdown payload when the hand ended. Otherwise the
+    turn passes to the next seat that can act, unless the action
+    closed the street (the new street already positioned its first
+    actor left of the button).
+    """
+    showdown = advance_and_settle_if_ready(runtime, log_event)
+    if (
+        showdown is None
+        and runtime.status == "running"
+        and runtime.engine.curr_street == street_before
+    ):
+        next_index = next_eligible_player(runtime, actor_index + 1)
+        if next_index is not None:
+            runtime.engine.turn_index = next_index
+    return showdown
+
+
 def current_actor_index(runtime: MatchRuntime) -> Optional[int]:
     """Returns the current eligible actor index for the runtime."""
     if not runtime.players:

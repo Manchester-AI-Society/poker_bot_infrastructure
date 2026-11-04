@@ -6,7 +6,7 @@ import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional
 
-from .action_engine import apply_action, next_eligible_player
+from .action_engine import apply_action
 from .game_domain_models import (
     BroadcastCallback,
     DirectCallback,
@@ -18,9 +18,9 @@ from .match_runtime import MatchRuntime
 from .player import Player
 from .poker_game import PokerGame
 from .runtime_flow import (
-    advance_and_settle_if_ready,
     begin_next_hand,
     current_actor_index,
+    finish_action,
     prepare_turn_event,
     resolve_match_progression,
 )
@@ -364,8 +364,8 @@ class GameService:
                 },
             )
 
-            showdown_event = advance_and_settle_if_ready(
-                runtime, self._log_event
+            showdown_event = finish_action(
+                runtime, actor_index, street_before, self._log_event
             )
             if showdown_event is not None:
                 (
@@ -375,15 +375,6 @@ class GameService:
                     turn_event,
                 ) = resolve_match_progression(runtime, self._log_event)
             elif runtime.status == "running":
-                # A new street already positioned the first actor (left
-                # of the button); only move on within the same street.
-                if runtime.engine.curr_street == street_before:
-                    next_index = next_eligible_player(
-                        runtime,
-                        actor_index + 1,
-                    )
-                    if next_index is not None:
-                        runtime.engine.turn_index = next_index
                 turn_player_id, turn_event = prepare_turn_event(
                     runtime, self._log_event
                 )
