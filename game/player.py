@@ -16,6 +16,8 @@ class Player:
         self.is_folded = False
         self.has_moved = False
         self.curr_bet_amount = 0
+        # Chips put in over the whole hand (all streets); drives side pots.
+        self.total_committed = 0
 
     def add_card(self, new_card: PokerCard):
         """Adds a card to the player hand"""
@@ -97,6 +99,7 @@ class Player:
         self.is_folded = False
         self.has_moved = False
         self.curr_bet_amount = 0
+        self.total_committed = 0
         self.is_all_in = self.curr_balance == 0
 
     def _make_bet(self, bet):
@@ -106,6 +109,7 @@ class Player:
         # Makes the bet
         self.curr_balance -= bet
         self.curr_bet_amount += bet
+        self.total_committed += bet
 
         # Checks if player is all in
         if self.curr_balance == 0:

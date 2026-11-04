@@ -116,7 +116,6 @@ def stacks(runtime: MatchRuntime) -> List[int]:
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT C1: no side pots")
 def test_c1_heads_up_uncalled_excess_is_returned():
     """600 into a 200 stack: only 200 can be won or lost."""
 
@@ -134,7 +133,6 @@ def test_c1_heads_up_uncalled_excess_is_returned():
     assert stacks(runtime) == [800, 400]
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT C1: no side pots")
 def test_c1_three_way_short_stack_wins_main_pot_only():
     """Short-stack all-in with the best hand must not win the side pot."""
 
