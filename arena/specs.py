@@ -18,6 +18,7 @@ def contestant_from_spec(
     spec: str,
     *,
     name: Optional[str] = None,
+    log_name: Optional[str] = None,
     log_dir: Optional[Path] = None,
     move_timeout: float = 1.0,
     max_faults: int = 20,
@@ -36,7 +37,7 @@ def contestant_from_spec(
     if not target.exists():
         raise FileNotFoundError(f"Bot not found: {spec}")
     label = name or (target.stem if target.is_file() else target.name)
-    log_path = (log_dir / f"{label}.log") if log_dir else None
+    log_path = (log_dir / f"{log_name or label}.log") if log_dir else None
     return Contestant(
         name=label,
         factory=lambda: ProcessAgent(
