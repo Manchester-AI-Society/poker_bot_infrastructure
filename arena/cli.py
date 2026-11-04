@@ -4,6 +4,16 @@ Commands for participants:
     match A B     play a duplicate match locally (the same code path and
                   scoring the competition uses)
     validate BOT  check that a bot loads and plays legally on time
+
+Commands for the organiser (state lives under --root, default arena_data):
+    submit TEAM SRC   add a bot version from a folder, file or git URL
+    ladder            run the live ladder (pick up submissions, play
+                      pairings, keep results/leaderboard.json current)
+    freeze            snapshot the current versions for the final
+    final             play the frozen round robin, write results/final.json
+    leaderboard       print (and write) the current ranking
+    status            show versions and the job queue
+    retry-failed      re-queue pairings whose job crashed
 """
 
 from __future__ import annotations
@@ -14,9 +24,19 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+from . import leaderboard as board_module
 from .duel import PairingConfig, PairingResult, play_pairing
 from .history import HandWriter
+from .intake import SubmissionError, scan_directory, submit
+from .scheduler import (
+    Settings,
+    enqueue_final,
+    enqueue_ladder,
+    freeze_submissions,
+    run_pending,
+)
 from .specs import contestant_from_spec
+from .store import Store
 from .validate import smoke_test
 
 
@@ -107,6 +127,159 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def _settings(args: argparse.Namespace) -> Settings:
+    kwargs = dict(
+        deals=args.deals,
+        move_timeout=args.move_timeout,
+        max_faults=args.max_faults,
+        think_budget_per_deal=args.think_budget,
+        time_cap_seconds=args.time_cap,
+    )
+    if args.workers:
+        kwargs["workers"] = args.workers
+    return Settings(**kwargs)
+
+
+def _publish(store: Store, kind: str) -> dict:
+    board = board_module.compute(store, kind)
+    name = "final.json" if kind == "final" else "leaderboard.json"
+    board_module.write_json(board, store.root / "results" / name)
+    return board
+
+
+def cmd_submit(args: argparse.Namespace) -> int:
+    store = Store(args.root)
+    try:
+        result = submit(
+            store,
+            args.team,
+            args.source,
+            validate=not args.no_validate,
+            move_timeout=args.move_timeout,
+        )
+    except SubmissionError as exc:
+        print(f"REJECTED: {exc}")
+        return 1
+    print(
+        f"{result.status.upper()}: {result.team} @ {result.digest}: "
+        f"{result.message}"
+    )
+    return 0 if result.accepted else 1
+
+
+def cmd_ladder(args: argparse.Namespace) -> int:
+    store = Store(args.root)
+    settings = _settings(args)
+    submissions = Path(args.submissions) if args.submissions else None
+
+    def tick() -> None:
+        if submissions is not None:
+            for result in scan_directory(
+                store, submissions, move_timeout=args.move_timeout
+            ):
+                print(
+                    f"[submit] {result.team}: {result.status} "
+                    f"{result.digest} - {result.message}"
+                )
+        enqueue_ladder(store, settings.deals)
+
+    def progress() -> None:
+        counts = store.job_counts("ladder")
+        _publish(store, "ladder")
+        print(
+            f"[ladder] done={counts.get('done', 0)} "
+            f"queued={counts.get('queued', 0)} "
+            f"running={counts.get('running', 0)} "
+            f"failed={counts.get('failed', 0)}"
+        )
+
+    while True:
+        run_pending(
+            store,
+            settings,
+            kinds=("ladder",),
+            tick=tick,
+            on_progress=progress,
+        )
+        board = _publish(store, "ladder")
+        print(board_module.format_table(board))
+        if args.once:
+            return 0
+        time.sleep(args.interval)
+
+
+def cmd_freeze(args: argparse.Namespace) -> int:
+    store = Store(args.root)
+    freeze_id, excluded = freeze_submissions(
+        store, move_timeout=args.move_timeout
+    )
+    members = store.freeze_members(freeze_id)
+    print(f"freeze {freeze_id}: {len(members)} bots")
+    for version in members:
+        print(f"  {version.team:<20} {version.hash}")
+    for team, reason in excluded:
+        print(f"  EXCLUDED {team}: {reason}")
+    return 0
+
+
+def cmd_final(args: argparse.Namespace) -> int:
+    store = Store(args.root)
+    freeze_id = args.freeze_id or store.latest_freeze()
+    if freeze_id is None:
+        print("no freeze yet; run 'freeze' first")
+        return 1
+    settings = _settings(args)
+    created = enqueue_final(store, freeze_id, settings.deals)
+    print(f"final (freeze {freeze_id}): {created} pairings queued")
+
+    def progress() -> None:
+        counts = store.job_counts("final")
+        print(
+            f"[final] done={counts.get('done', 0)} "
+            f"queued={counts.get('queued', 0)} "
+            f"running={counts.get('running', 0)} "
+            f"failed={counts.get('failed', 0)}"
+        )
+
+    run_pending(store, settings, kinds=("final",), on_progress=progress)
+    board = board_module.compute(store, "final", freeze_id)
+    board_module.write_json(board, store.root / "results" / "final.json")
+    print(board_module.format_table(board))
+    failed = store.job_counts("final").get("failed", 0)
+    if failed:
+        print(
+            f"WARNING: {failed} pairings failed; see 'status', then "
+            "'retry-failed' and run 'final' again"
+        )
+        return 1
+    return 0
+
+
+def cmd_leaderboard(args: argparse.Namespace) -> int:
+    store = Store(args.root)
+    board = _publish(store, args.kind)
+    print(board_module.format_table(board))
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    store = Store(args.root)
+    print("current versions:")
+    for version in store.current_versions():
+        print(f"  {version.team:<20} {version.hash}")
+    for kind in ("ladder", "final"):
+        print(f"{kind} jobs: {store.job_counts(kind) or 'none'}")
+    freeze_id = store.latest_freeze()
+    print(f"latest freeze: {freeze_id if freeze_id else 'none'}")
+    return 0
+
+
+def cmd_retry_failed(args: argparse.Namespace) -> int:
+    count = Store(args.root).requeue_failed()
+    print(f"{count} failed jobs cleared; the next run will queue them again")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m arena",
@@ -144,6 +317,56 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--move-timeout", type=float, default=1.0)
     validate.add_argument("--log-dir", default="arena_logs")
     validate.set_defaults(handler=cmd_validate)
+
+    # -- organiser commands -------------------------------------------
+    def organiser(name, help_text, handler, *, play=False):
+        sub = commands.add_parser(name, help=help_text)
+        sub.add_argument(
+            "--root", default="arena_data", help="competition state folder"
+        )
+        sub.set_defaults(handler=handler)
+        if play:
+            sub.add_argument("--workers", type=int, default=0)
+            sub.add_argument("--move-timeout", type=float, default=1.0)
+            sub.add_argument("--max-faults", type=int, default=20)
+            sub.add_argument("--think-budget", type=float, default=0.2)
+            sub.add_argument(
+                "--time-cap",
+                type=float,
+                default=1800.0,
+                help="wall-clock seconds allowed per pairing",
+            )
+        return sub
+
+    sub = organiser("submit", "add a bot version", cmd_submit)
+    sub.add_argument("team")
+    sub.add_argument("source", help="folder, bot.py or git URL")
+    sub.add_argument("--no-validate", action="store_true")
+    sub.add_argument("--move-timeout", type=float, default=1.0)
+
+    sub = organiser("ladder", "run the live ladder", cmd_ladder, play=True)
+    sub.add_argument("--deals", type=int, default=200)
+    sub.add_argument(
+        "--submissions",
+        help="folder of <team>/bot.py directories to watch for changes",
+    )
+    sub.add_argument("--once", action="store_true")
+    sub.add_argument("--interval", type=float, default=10.0)
+
+    sub = organiser("freeze", "snapshot versions for the final", cmd_freeze)
+    sub.add_argument("--move-timeout", type=float, default=1.0)
+
+    sub = organiser(
+        "final", "play the frozen round robin", cmd_final, play=True
+    )
+    sub.add_argument("--deals", type=int, default=1000)
+    sub.add_argument("--freeze-id", type=int, default=0)
+
+    sub = organiser("leaderboard", "show the ranking", cmd_leaderboard)
+    sub.add_argument("--kind", choices=["ladder", "final"], default="ladder")
+
+    organiser("status", "show versions and the queue", cmd_status)
+    organiser("retry-failed", "re-queue crashed jobs", cmd_retry_failed)
     return parser
 
 
