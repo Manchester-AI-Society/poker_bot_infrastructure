@@ -27,20 +27,24 @@ def legal_actions(runtime: MatchRuntime, actor_index: int) -> list[str]:
 
 
 def min_raise_to(runtime: MatchRuntime, actor_index: int) -> int:
-    """Calculates the minimum allowed raise target."""
+    """Calculates the minimum allowed raise target.
+
+    Never more than the seat can put in: a stack too short for a full
+    raise may only go all-in, so its minimum equals its maximum.
+    """
     seat = runtime.players[actor_index]
     to_call = max(0, runtime.engine.call_amount - seat.curr_bet_amount)
+    all_in_total = seat.curr_bet_amount + seat.curr_balance
 
     if to_call == 0:
         big_blind = int(runtime.engine.big_blind_amount)
-        return max(
-            big_blind,
-            runtime.engine.call_amount + big_blind,
+        minimum = max(big_blind, runtime.engine.call_amount + big_blind)
+    else:
+        minimum = runtime.engine.call_amount + max(
+            int(runtime.engine.big_blind_amount),
+            runtime.min_raise_size,
         )
-    return runtime.engine.call_amount + max(
-        int(runtime.engine.big_blind_amount),
-        runtime.min_raise_size,
-    )
+    return min(minimum, all_in_total)
 
 
 def apply_action(

@@ -87,3 +87,15 @@ def test_lone_player_facing_a_short_all_in_is_not_prompted_again():
     # p0's unmatched 200 is returned; nothing else to decide.
     assert runtime.status == "finished"
     assert stacks(runtime) == [1100, 0]
+
+
+def test_min_raise_to_never_exceeds_what_the_stack_can_put_in():
+    async def scenario():
+        service, runtime = await new_match([1000, 30])
+        await act(service, runtime, "call")  # p0 limps; p1 has the option
+        return service.get_public_state(runtime.match_id, "p1")
+
+    state = asyncio.run(scenario())
+    # A full raise would be to 40, but the stack only reaches 30.
+    assert state["max_raise_to"] == 30
+    assert state["min_raise_to"] == 30
