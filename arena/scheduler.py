@@ -25,6 +25,8 @@ from .specs import contestant_from_spec
 from .store import Store, Version
 from .validate import smoke_test
 
+HARNESS_ATTEMPTS = 2
+
 
 def default_workers() -> int:
     return max(1, (os.cpu_count() or 2) - 1)
@@ -137,13 +139,21 @@ def execute_job(root: str, job_id: int, settings: Settings) -> None:
         time_cap_seconds=settings.time_cap_seconds,
     )
     hands_rel = f"hands/{job.kind}-{job.id}.jsonl.gz"
-    with HandWriter(store.root / hands_rel) as writer:
-        result = play_pairing(
-            contestant(first, second),
-            contestant(second, first),
-            config,
-            writer.write,
-        )
+    for attempt in range(HARNESS_ATTEMPTS):
+        try:
+            with HandWriter(store.root / hands_rel) as writer:
+                result = play_pairing(
+                    contestant(first, second),
+                    contestant(second, first),
+                    config,
+                    writer.write,
+                )
+            break
+        except Exception:
+            # Bot misbehaviour never reaches here (it is scored); this
+            # is the harness itself failing, e.g. under heavy load.
+            if attempt == HARNESS_ATTEMPTS - 1:
+                raise
     data = result.to_dict()
     data["a_team"], data["b_team"] = first.team, second.team
     store.finish_job(job.id, data, hands_rel)

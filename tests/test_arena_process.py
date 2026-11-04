@@ -219,3 +219,43 @@ def test_two_pokerbot_subclasses_is_a_load_error(tmp_path):
     )
     with pytest.raises(AgentCrashed, match="exactly one PokerBot"):
         ProcessAgent(path, startup_timeout=30)
+
+
+def test_closing_an_agent_twice_is_safe(tmp_path):
+    path = write_bot(
+        tmp_path,
+        "closer",
+        """
+        class Closer(PokerBot):
+            def act(self, game_state):
+                return Action.call()
+        """,
+    )
+    agent = ProcessAgent(path, startup_timeout=30)
+    agent.close()
+    agent.close()  # must not raise
+
+
+def test_a_teardown_timeout_does_not_raise(tmp_path, monkeypatch):
+    import subprocess
+
+    path = write_bot(
+        tmp_path,
+        "stubborn",
+        """
+        class Stubborn(PokerBot):
+            def act(self, game_state):
+                return Action.call()
+        """,
+    )
+    agent = ProcessAgent(path, startup_timeout=30)
+    real_wait = agent._proc.wait
+
+    def slow_wait(timeout=None):
+        if timeout in (0.3, 10):
+            raise subprocess.TimeoutExpired("bot", timeout)
+        return real_wait(timeout)
+
+    monkeypatch.setattr(agent._proc, "wait", slow_wait)
+    agent.close()  # kill path with a wait that times out: no exception
+    real_wait(10)

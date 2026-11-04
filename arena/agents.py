@@ -155,6 +155,8 @@ class ProcessAgent(Agent):
         return reply
 
     def close(self) -> None:
+        """Stops the bot process. Never raises: a stuck teardown under
+        heavy load must not take the surrounding match down."""
         proc = self._proc
         if proc.poll() is None:
             try:
@@ -166,8 +168,14 @@ class ProcessAgent(Agent):
                 proc.wait(timeout=0.3)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                proc.wait(timeout=5)
-        for stream in (proc.stdin, proc.stdout):
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass  # being torn down by the OS; do not wait more
+        exited = proc.poll() is not None
+        # Closing stdout while the pump thread is blocked reading it can
+        # block, so only do it once the process is gone (EOF reached).
+        for stream in (proc.stdin, proc.stdout) if exited else (proc.stdin,):
             try:
                 stream.close()
             except (OSError, ValueError):
