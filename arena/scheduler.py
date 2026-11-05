@@ -42,12 +42,19 @@ class Settings:
     workers: int = field(default_factory=default_workers)
 
 
-def pair_seed(base_seed: int, kind: str, a_hash: str, b_hash: str) -> int:
-    """Per-pairing seed: stable, secret to teams, distinct per kind."""
+def pair_seed(
+    base_seed: int, kind: str, a_hash: str, b_hash: str, round: int = 0
+) -> int:
+    """Per-pairing seed: stable, secret to teams, distinct per kind.
+
+    Every round of a timed cycle gets its own seed, so a pairing is played
+    on fresh cards each time. Round 0 keeps the seed it always had.
+    """
     a_hash, b_hash = sorted((a_hash, b_hash))
-    digest = hashlib.sha256(
-        f"{base_seed}:{kind}:{a_hash}:{b_hash}".encode()
-    ).digest()
+    text = f"{base_seed}:{kind}:{a_hash}:{b_hash}"
+    if round:
+        text += f":round{round}"
+    digest = hashlib.sha256(text.encode()).digest()
     # 62 bits: SQLite integers are signed 64-bit.
     return int.from_bytes(digest[:8], "big") & ((1 << 62) - 1)
 
@@ -55,6 +62,13 @@ def pair_seed(base_seed: int, kind: str, a_hash: str, b_hash: str) -> int:
 def enqueue_ladder(store: Store, deals: int) -> int:
     """Queues every missing pairing of the current versions."""
     return _enqueue(store, "ladder", store.current_versions(), deals, None)
+
+
+def enqueue_cycle(store: Store, deals: int, round: int) -> int:
+    """Queues EVERY pairing of the current versions for a new round."""
+    return _enqueue(
+        store, "ladder", store.current_versions(), deals, None, round
+    )
 
 
 def enqueue_final(store: Store, freeze_id: int, deals: int) -> int:
@@ -69,6 +83,7 @@ def _enqueue(
     versions: Sequence[Version],
     deals: int,
     freeze_id: Optional[int],
+    round: int = 0,
 ) -> int:
     created = 0
     for first, second in itertools.combinations(versions, 2):
@@ -77,8 +92,9 @@ def _enqueue(
             first.hash,
             second.hash,
             deals,
-            pair_seed(store.base_seed, kind, first.hash, second.hash),
+            pair_seed(store.base_seed, kind, first.hash, second.hash, round),
             freeze_id,
+            round,
         )
         created += job_id is not None
     return created
@@ -207,6 +223,42 @@ def run_pending(
                 if on_progress is not None:
                     on_progress()
     return finished
+
+
+def run_round(
+    store: Store,
+    settings: Settings,
+    *,
+    tick: Optional[Callable[[], None]] = None,
+    on_progress: Optional[Callable[[], None]] = None,
+) -> Tuple[int, int]:
+    """One timed cycle: plays every pairing of the current bots again.
+
+    Fresh cards every round; each pairing's results are pooled over all the
+    rounds it has been played. Returns ``(round number, jobs finished)``.
+    Results of the round stay hidden until it has finished, so what is
+    published is always whole rounds.
+    """
+    round = store.last_round("ladder") + 1
+    if store.cycle_done() is None:
+        # Cycling starts now: what already exists stays visible, and the new
+        # round is hidden until it is complete.
+        store.finish_round(round - 1)
+    if tick is not None:
+        # Pick up new or changed submissions BEFORE queueing, so a bot that
+        # arrived since the last round plays in this one.
+        tick()
+    enqueue_cycle(store, settings.deals, round)
+    finished = run_pending(
+        store,
+        settings,
+        kinds=("ladder",),
+        tick=tick,
+        on_progress=on_progress,
+    )
+    store.finish_round(round)
+    store.prune_old_hands("ladder")
+    return round, finished
 
 
 def clear_logs(store: Store, team: str) -> None:

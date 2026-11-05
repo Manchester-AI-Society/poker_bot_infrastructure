@@ -65,3 +65,33 @@ def mean_and_se(values: Sequence[float]) -> Tuple[Optional[float], float]:
 def ci95(standard_error: float, samples: int) -> float:
     """Half-width of the 95% confidence interval for a mean."""
     return t95(samples - 1) * standard_error
+
+
+def pool(
+    samples: Sequence[Tuple[int, Optional[float], Optional[float]]],
+) -> Tuple[int, Optional[float], float]:
+    """Combines several runs of the same pairing into one.
+
+    Each sample is ``(deals, mean, standard error)`` for one run. The result
+    is exactly what you would get by computing the mean and standard error
+    over all the deals of every run together (the per-deal spread is
+    recovered from each run's standard error). A run with a single deal has
+    no spread of its own, and contributes none.
+    """
+    runs = [
+        (n, m, se) for n, m, se in samples if n and n > 0 and m is not None
+    ]
+    total = sum(n for n, _, _ in runs)
+    if total == 0:
+        return 0, None, float("inf")
+    mean = sum(n * m for n, m, _ in runs) / total
+    if total < 2:
+        return total, mean, float("inf")
+    squares = 0.0
+    for n, m, se in runs:
+        if n >= 2:
+            if se is None or not math.isfinite(se):
+                return total, mean, float("inf")
+            squares += (n - 1) * (se * se * n)
+        squares += n * (m - mean) ** 2
+    return total, mean, math.sqrt(squares / (total - 1) / total)

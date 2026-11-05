@@ -48,6 +48,7 @@ export function matchRow(p, now) {
       { class: 'meta' },
       kindBadge(p.kind),
       ` ${plural(p.hands, 'hand')} (${plural(p.deals_completed, 'deal')})`,
+      p.rounds > 1 ? ` · pooled over ${p.rounds} rounds` : '',
       p.status !== 'complete' ? ' · incomplete' : '',
       faults.length ? h('span', { class: 'lose' }, ` · ⚠ ${faults.join('; ')}`) : null,
     ),

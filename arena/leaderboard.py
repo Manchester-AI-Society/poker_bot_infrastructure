@@ -72,6 +72,8 @@ def compute(
         "generated_at": time.time(),
         "pairs_total": total_pairs,
         "pairs_done": len(pair) // 2,
+        # The last finished timed cycle, or None when not cycling.
+        "cycle": store.cycle_done() if kind == "ladder" else None,
         "teams": teams,
         "matrix": {
             me: {

@@ -120,7 +120,8 @@ export function leaderboardView(ctx) {
     h(
       'span',
       { class: 'muted small' },
-      `${board.pairs_done} of ${plural(board.pairs_total, 'pairing')} played`,
+      `${board.pairs_done} of ${plural(board.pairs_total, 'pairing')} played` +
+        (board.cycle ? ` · cycle ${board.cycle}: every pairing is replayed each cycle and the results are added together` : ''),
     ),
   );
   if (ctx.kind === 'ladder' && ctx.data.boards.final) {

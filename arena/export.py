@@ -312,6 +312,7 @@ def _pairing_entries(
                 "b": second.team,
                 "deals": row["deals"],
                 "deals_completed": row["deals_completed"],
+                "rounds": row.get("rounds", 1),
                 "hands": row["hands_played"],
                 "mean_bb": mean,
                 "ci95_bb": half,

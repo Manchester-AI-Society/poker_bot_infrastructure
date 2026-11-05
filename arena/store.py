@@ -17,6 +17,7 @@ Layout under ``root``::
 from __future__ import annotations
 
 import json
+import math
 import secrets
 import sqlite3
 import time
@@ -26,6 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Sequence
 
 from .procs import pid_alive, worker_pid
+from .stats import ci95, pool
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -47,10 +49,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     a_hash TEXT NOT NULL, b_hash TEXT NOT NULL,
     deals INTEGER NOT NULL, seed INTEGER NOT NULL,
     status TEXT NOT NULL, worker TEXT, error TEXT,
-    created_at REAL NOT NULL, started_at REAL, finished_at REAL);
-CREATE UNIQUE INDEX IF NOT EXISTS jobs_pair
-    ON jobs(kind, IFNULL(freeze_id, 0), a_hash, b_hash)
-    WHERE status != 'stale';
+    created_at REAL NOT NULL, started_at REAL, finished_at REAL,
+    round INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS results (
     job_id INTEGER PRIMARY KEY REFERENCES jobs(id),
     data TEXT NOT NULL, hands_path TEXT);
@@ -86,10 +86,33 @@ class Store:
         self.db_path = self.root / "arena.sqlite"
         with self._conn() as conn:
             conn.executescript(SCHEMA)
+            self._migrate(conn)
             conn.execute(
                 "INSERT OR IGNORE INTO meta(key, value) VALUES (?, ?)",
                 ("seed", str(secrets.randbits(48))),
             )
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        """Brings a database made by an older version up to date.
+
+        A pairing used to be unique per (kind, freeze, a, b). With timed
+        cycles the same pairing is played again every round, so the round is
+        part of the key; every older job is round 0.
+        """
+        columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(jobs)")
+        }
+        if "round" not in columns:
+            conn.execute(
+                "ALTER TABLE jobs ADD COLUMN round INTEGER NOT NULL DEFAULT 0"
+            )
+            conn.execute("DROP INDEX IF EXISTS jobs_pair")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS jobs_pair_round "
+            "ON jobs(kind, IFNULL(freeze_id, 0), round, a_hash, b_hash) "
+            "WHERE status != 'stale'"
+        )
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -334,15 +357,16 @@ class Store:
         deals: int,
         seed: int,
         freeze_id: Optional[int] = None,
+        round: int = 0,
     ) -> Optional[int]:
-        """Queues a pairing; returns None if it already exists."""
+        """Queues a pairing; returns None if it already exists this round."""
         a_hash, b_hash = sorted((a_hash, b_hash))
         with self._conn() as conn:
             try:
                 cursor = conn.execute(
                     "INSERT INTO jobs(kind, freeze_id, a_hash, b_hash, "
-                    "deals, seed, status, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)",
+                    "deals, seed, status, created_at, round) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
                     (
                         kind,
                         freeze_id,
@@ -351,6 +375,7 @@ class Store:
                         deals,
                         seed,
                         time.time(),
+                        round,
                     ),
                 )
             except sqlite3.IntegrityError:
@@ -492,13 +517,88 @@ class Store:
             rows = conn.execute(query, params).fetchall()
         return {row["status"]: row["n"] for row in rows}
 
+    # -- timed cycles ---------------------------------------------------
+
+    def meta_get(self, key: str) -> Optional[str]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key=?", (key,)
+            ).fetchone()
+        return None if row is None else row["value"]
+
+    def meta_set(self, key: str, value: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )
+
+    def cycle_done(self) -> Optional[int]:
+        """The last ladder round that finished, or None if not cycling.
+
+        Results of a round still being played are hidden, so that what is
+        published is always whole rounds (one cycle, one consistent table).
+        """
+        value = self.meta_get("ladder_round_done")
+        return None if value is None else int(value)
+
+    def finish_round(self, round: int) -> None:
+        self.meta_set("ladder_round_done", str(round))
+
+    def last_round(self, kind: str = "ladder") -> int:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT MAX(round) AS r FROM jobs WHERE kind=?", (kind,)
+            ).fetchone()
+        return int(row["r"] or 0)
+
+    def prune_old_hands(self, kind: str = "ladder") -> int:
+        """Deletes hand files that a newer round of the same pairing replaced.
+
+        Only the newest round's hands are ever shown, and a cycle every few
+        minutes would otherwise keep every round of every pairing for the
+        whole event. Scores are unaffected (they live in the results).
+        """
+        newest: Dict[tuple, int] = {}
+        removed = 0
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT j.id, j.a_hash, j.b_hash, "
+                "IFNULL(j.freeze_id, 0) AS f, r.hands_path "
+                "FROM jobs j JOIN results r ON r.job_id=j.id "
+                "WHERE j.status='done' AND j.kind=? ORDER BY j.id",
+                (kind,),
+            ).fetchall()
+            for row in rows:
+                newest[(row["f"], row["a_hash"], row["b_hash"])] = row["id"]
+            for row in rows:
+                key = (row["f"], row["a_hash"], row["b_hash"])
+                if row["id"] == newest[key] or not row["hands_path"]:
+                    continue
+                try:
+                    (self.root / row["hands_path"]).unlink(missing_ok=True)
+                except OSError:
+                    continue
+                conn.execute(
+                    "UPDATE results SET hands_path=NULL WHERE job_id=?",
+                    (row["id"],),
+                )
+                removed += 1
+        return removed
+
     def results(
         self, kind: str, freeze_id: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """Finished pairings of a kind, newest results only per pair."""
+        """One pooled result per pairing of a kind.
+
+        A pairing played in several rounds (timed cycles) is combined into
+        one result over all its deals. The job id, hands and finish time are
+        those of its newest round.
+        """
         query = (
             "SELECT j.id, j.a_hash, j.b_hash, j.deals, j.finished_at, "
-            "r.data, r.hands_path "
+            "j.round, r.data, r.hands_path "
             "FROM jobs j JOIN results r ON r.job_id=j.id "
             "WHERE j.status='done' AND j.kind=?"
         )
@@ -506,18 +606,68 @@ class Store:
         if freeze_id is not None:
             query += " AND j.freeze_id=?"
             params.append(freeze_id)
+        done_round = self.cycle_done() if kind == "ladder" else None
+        if done_round is not None:
+            query += " AND j.round<=?"
+            params.append(done_round)
         query += " ORDER BY j.id"
         with self._conn() as conn:
             rows = conn.execute(query, params).fetchall()
-        return [
-            {
+        runs: Dict[tuple, List[Dict[str, Any]]] = {}
+        for row in rows:
+            run = {
                 "job_id": row["id"],
                 "a_hash": row["a_hash"],
                 "b_hash": row["b_hash"],
                 "deals": row["deals"],
                 "hands_path": row["hands_path"],
                 "finished_at": row["finished_at"],
+                "round": row["round"],
                 **json.loads(row["data"]),
             }
-            for row in rows
+            runs.setdefault((row["a_hash"], row["b_hash"]), []).append(run)
+        return [_pool_runs(group) for group in runs.values()]
+
+
+def _pool_runs(runs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Combines the rounds of one pairing (oldest first) into one row."""
+    newest = dict(runs[-1])
+    newest["rounds"] = len(runs)
+    if len(runs) == 1:
+        return newest
+    total, mean, se = pool(
+        [
+            (
+                run.get("deals_completed", 0),
+                run.get("mean_bb"),
+                run.get("se_bb"),
+            )
+            for run in runs
         ]
+    )
+    finite = not math.isinf(se)
+    newest["mean_bb"] = mean
+    newest["se_bb"] = se if finite else None
+    newest["deals_completed"] = total
+    newest["ci95_bb"] = ci95(se, total) if finite and total > 1 else None
+    for key in (
+        "deals",
+        "deals_requested",
+        "hands_played",
+        "faults_a",
+        "faults_b",
+        "think_a",
+        "think_b",
+        "elapsed",
+    ):
+        newest[key] = sum(run.get(key) or 0 for run in runs)
+    for key in ("disabled_a", "disabled_b"):
+        newest[key] = next(
+            (run[key] for run in reversed(runs) if run.get(key)), None
+        )
+    newest["status"] = (
+        "complete"
+        if all(run.get("status") == "complete" for run in runs)
+        else "incomplete"
+    )
+    return newest

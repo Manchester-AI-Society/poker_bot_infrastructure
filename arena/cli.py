@@ -48,6 +48,7 @@ from .scheduler import (
     enqueue_ladder,
     freeze_submissions,
     run_pending,
+    run_round,
 )
 from .specs import contestant_from_spec
 from .store import Store
@@ -219,9 +220,23 @@ def _team_sources(args: argparse.Namespace, store: Store):
     return parts[0] if len(parts) == 1 else CombinedSources(*parts)
 
 
+def _wait(seconds: float) -> None:
+    """Sleeps in short steps so Ctrl+C is answered promptly."""
+    deadline = time.monotonic() + seconds
+    while True:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return
+        time.sleep(min(1.0, left))
+
+
 def cmd_ladder(args: argparse.Namespace) -> int:
     store = Store(args.root)
     settings = _settings(args)
+    cycling = args.cycle is not None
+    if cycling and args.cycle <= 0:
+        print("--cycle must be a number of seconds above zero")
+        return 2
     submissions = Path(args.submissions) if args.submissions else None
     sync_stop = None
     try:
@@ -262,7 +277,9 @@ def cmd_ladder(args: argparse.Namespace) -> int:
                     f"[submit] {result.team}: {result.status} "
                     f"{result.digest} - {result.message}"
                 )
-        enqueue_ladder(store, settings.deals)
+        if not cycling:
+            # A cycle queues every pairing itself, once per round.
+            enqueue_ladder(store, settings.deals)
 
     def progress() -> None:
         counts = store.job_counts("ladder")
@@ -276,6 +293,29 @@ def cmd_ladder(args: argparse.Namespace) -> int:
 
     try:
         while True:
+            if cycling:
+                started = time.monotonic()
+                round_no, finished = run_round(store, settings, tick=tick)
+                board = _publish(store, "ladder")
+                print(board_module.format_table(board))
+                took = time.monotonic() - started
+                print(
+                    f"[cycle {round_no}] {finished} pairings played in "
+                    f"{took:.0f}s"
+                )
+                if args.once:
+                    return 0
+                spare = args.cycle - took
+                if spare <= 0:
+                    print(
+                        f"[cycle {round_no}] took longer than --cycle "
+                        f"({args.cycle:.0f}s): starting the next at once. "
+                        "Lower --deals or raise --cycle."
+                    )
+                else:
+                    print(f"[cycle {round_no}] next in {spare:.0f}s")
+                    _wait(spare)
+                continue
             run_pending(
                 store,
                 settings,
@@ -605,6 +645,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub.add_argument("--once", action="store_true")
     sub.add_argument("--interval", type=float, default=10.0)
+    sub.add_argument(
+        "--cycle",
+        type=float,
+        metavar="SECONDS",
+        help="timed mode: every SECONDS, play EVERY pairing again on fresh "
+        "cards and pool the results (the results appear once the round is "
+        "complete, so a site is redeployed once per cycle). --deals is then "
+        "the number of deals per pairing per round",
+    )
     sub.add_argument(
         "--teams",
         help="teams file (team + git URL per line): pull each team's repo",
