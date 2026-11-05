@@ -18,7 +18,7 @@ export function submissionsView(ctx) {
       h(
         'div',
         { class: 'card' },
-        h('h2', {}, 'How to submit'),
+        h('h2', {}, 'From the organiser'),
         h('p', { style: 'white-space:pre-wrap;margin:0' }, text),
       ),
     );
