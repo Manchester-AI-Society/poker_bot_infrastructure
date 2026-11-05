@@ -59,6 +59,8 @@ from .sync import (
 )
 from .validate import smoke_test
 
+DEFAULT_GUIDE = Path(__file__).resolve().parents[1] / "SUBMITTING.md"
+
 
 def _fmt_bb(value: Optional[float]) -> str:
     return "n/a" if value is None else f"{value:+.3f}"
@@ -388,12 +390,21 @@ def cmd_export(args: argparse.Namespace) -> int:
     submit_text = args.submit_text
     if args.submit_text_file:
         submit_text = Path(args.submit_text_file).read_text(encoding="utf-8")
+    guide = ""
+    if not args.no_guide:
+        guide_path = Path(args.guide) if args.guide else DEFAULT_GUIDE
+        if guide_path.is_file():
+            guide = guide_path.read_text(encoding="utf-8-sig")
+        elif args.guide:
+            print(f"export failed: cannot read the guide {guide_path}")
+            return 1
     options = ExportOptions(
         title=args.title,
         replays=args.replays,
         reveal=args.reveal,
         max_replay_hands=args.max_replay_hands,
         submit_text=submit_text,
+        guide=guide,
     )
     try:
         options.validate()
@@ -569,6 +580,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub.add_argument(
         "--submit-text-file", help="read the how-to-submit text from a file"
+    )
+    sub.add_argument(
+        "--guide",
+        help="markdown for the 'How to submit' page "
+        "(default: SUBMITTING.md in the repository)",
+    )
+    sub.add_argument(
+        "--no-guide",
+        action="store_true",
+        help="leave the 'How to submit' page out of the site",
     )
     sub.add_argument(
         "--loop",

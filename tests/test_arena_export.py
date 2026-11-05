@@ -635,3 +635,45 @@ def test_a_team_without_any_sync_has_no_sync_entry(competition, tmp_path):
     teams = load(out / "data" / "teams.json")["teams"]
 
     assert all(team["sync"] is None for team in teams)
+
+
+# -- the how-to-submit guide ------------------------------------------
+
+
+def test_the_guide_is_published_as_markdown_and_announced_in_the_manifest(
+    tmp_path,
+):
+    store = Store(tmp_path / "arena_data")
+
+    export_site(store.root, tmp_path / "site", ExportOptions(guide="# Hi\n"))
+
+    assert (tmp_path / "site/data/submitting.md").read_text(
+        encoding="utf-8"
+    ) == "# Hi\n"
+    assert load(tmp_path / "site/data/manifest.json")["has_guide"] is True
+
+
+def test_without_a_guide_there_is_no_file_and_the_manifest_says_so(tmp_path):
+    store = Store(tmp_path / "arena_data")
+    out = tmp_path / "site"
+    export_site(store.root, out, ExportOptions(guide="# Hi\n"))
+
+    again = export_site(store.root, out, ExportOptions())
+
+    assert again.changed  # removing the guide is a change
+    assert not (out / "data" / "submitting.md").exists()
+    assert load(out / "data" / "manifest.json")["has_guide"] is False
+
+
+def test_editing_the_guide_counts_as_a_change_and_is_otherwise_stable(
+    tmp_path,
+):
+    store = Store(tmp_path / "arena_data")
+    out = tmp_path / "site"
+    first = export_site(store.root, out, ExportOptions(guide="one"))
+
+    same = export_site(store.root, out, ExportOptions(guide="one"))
+    edited = export_site(store.root, out, ExportOptions(guide="two"))
+
+    assert first.changed and not same.changed and edited.changed
+    assert (out / "data" / "submitting.md").read_text() == "two"

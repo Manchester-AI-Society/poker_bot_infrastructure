@@ -60,6 +60,20 @@ async function loadAll(manifest) {
   replayCache.clear(); // replay files may have been rebuilt
 }
 
+/** The how-to-submit guide as markdown text (cached until the data changes). */
+let guideCache = null;
+export async function loadGuide() {
+  const bust = data.manifest ? data.manifest.fingerprint : '0';
+  if (!guideCache || guideCache.bust !== bust) {
+    const response = await fetch(`data/submitting.md?v=${encodeURIComponent(bust)}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`data/submitting.md: HTTP ${response.status}`);
+    guideCache = { bust, text: await response.text() };
+  }
+  return guideCache.text;
+}
+
 export async function loadReplay(path) {
   if (!replayCache.has(path)) {
     const bust = data.manifest ? data.manifest.fingerprint : '0';

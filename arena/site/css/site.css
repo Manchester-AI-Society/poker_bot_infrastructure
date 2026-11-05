@@ -313,6 +313,43 @@ select {
 .steps li button[aria-current="step"] { background: var(--hilite); font-weight: 600; }
 .verdict { font-weight: 700; margin: 0.5rem 0 0; }
 
+/* ---- markdown (the how-to-submit guide) ------------------------------ */
+
+.md { max-width: 52rem; }
+.md h2 { font-size: 1.6rem; margin: 0 0 0.75rem; }
+.md h3 { font-size: 1.25rem; margin: 1.75rem 0 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--grid); }
+.md h4 { font-size: 1.05rem; margin: 1.25rem 0 0.4rem; }
+.md h2 + p, .md h3 + p { margin-top: 0; }
+.md p, .md li { line-height: 1.6; }
+.md ul, .md ol { padding-left: 1.4rem; margin: 0 0 0.9rem; }
+.md li { margin: 0.2rem 0; }
+.md code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.88em;
+  background: var(--grid); padding: 0.1em 0.35em; border-radius: 4px;
+}
+.md pre {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.75rem 1rem; overflow-x: auto; margin: 0 0 1rem;
+}
+.md pre code { background: none; padding: 0; font-size: 0.85rem; line-height: 1.5; white-space: pre; }
+.md blockquote {
+  margin: 0 0 1rem; padding: 0.5rem 1rem; border-left: 4px solid var(--series);
+  background: var(--hilite); border-radius: 0 8px 8px 0;
+}
+.md .tablewrap { margin: 0 0 1rem; }
+.md .tbl td { vertical-align: top; }
+.md .tbl.labels td:first-child { white-space: nowrap; }
+.md .tbl { min-width: 32rem; } /* room to scroll sideways, not to be squeezed */
+@media (max-width: 640px) {
+  /* Label tables become a stack: the label above its text. */
+  .md .tbl.labels { min-width: 0; }
+  .md .tbl.labels, .md .tbl.labels tbody, .md .tbl.labels tr, .md .tbl.labels td { display: block; }
+  .md .tbl.labels tr { padding: 0.5rem 0; border-bottom: 1px solid var(--grid); }
+  .md .tbl.labels td { padding: 0.1rem 0.2rem; border: 0; }
+  .md .tbl.labels td:first-child { white-space: normal; font-weight: 700; }
+}
+.guide .card { padding: 1.25rem 1.5rem; }
+
 /* ---- TV mode --------------------------------------------------------- */
 
 html.tv { font-size: clamp(16px, 1.3vw, 28px); }

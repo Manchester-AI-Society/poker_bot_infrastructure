@@ -57,6 +57,9 @@ class ExportOptions:
     # Per pairing, the hands with the biggest swings; 0 publishes every hand.
     max_replay_hands: int = 60
     submit_text: str = ""
+    # Markdown for the 'How to submit' page (normally SUBMITTING.md);
+    # empty means the site has no such page.
+    guide: str = ""
 
     def validate(self) -> None:
         if self.replays not in REPLAY_POLICIES:
@@ -487,11 +490,21 @@ def export_site(
     for name, text in files.items():
         changed = _write_if_changed(data / name, text) or changed
 
+    # The how-to-submit guide travels with the site as plain markdown;
+    # the page turns it into elements itself (never as raw markup).
+    guide_path = data / "submitting.md"
+    if options.guide.strip():
+        changed = _write_if_changed(guide_path, options.guide) or changed
+    elif guide_path.exists():
+        guide_path.unlink()
+        changed = True
+
     fingerprint = hashlib.sha256(
         "".join(files[name] for name in sorted(files)).encode()
         + options.fingerprint().encode()
         + options.title.encode()
         + options.submit_text.encode()
+        + options.guide.encode()
     ).hexdigest()[:16]
     generated_at = time.time()
     manifest_path = data / "manifest.json"
@@ -511,6 +524,7 @@ def export_site(
         "schema": SCHEMA_VERSION,
         "title": options.title,
         "submit_text": options.submit_text,
+        "has_guide": bool(options.guide.strip()),
         "fingerprint": fingerprint,
         "generated_at": generated_at,
         "kinds": list(boards),

@@ -134,3 +134,68 @@ def test_a_burst_of_simultaneous_requests_all_complete(served):
         bodies = list(pool.map(get, range(60)))
 
     assert all(json.loads(body) == {"a": 1} for body in bodies)
+
+
+def test_export_command_publishes_the_repositorys_submitting_guide(tmp_path):
+    from arena.cli import DEFAULT_GUIDE
+
+    Store(tmp_path / "arena_data")
+
+    code = main(
+        [
+            "export",
+            "--root",
+            str(tmp_path / "arena_data"),
+            "--out",
+            str(tmp_path / "site"),
+        ]
+    )
+
+    assert code == 0
+    published = (tmp_path / "site/data/submitting.md").read_text(
+        encoding="utf-8"
+    )
+    assert published == DEFAULT_GUIDE.read_text(encoding="utf-8-sig")
+    assert "How to submit your bot" in published
+
+
+def test_export_command_can_leave_the_guide_out_or_use_another(
+    tmp_path, capsys
+):
+    Store(tmp_path / "arena_data")
+    root = str(tmp_path / "arena_data")
+
+    main(
+        ["export", "--root", root, "--out", str(tmp_path / "a"), "--no-guide"]
+    )
+    custom = tmp_path / "mine.md"
+    custom.write_text("# Our own rules\n", encoding="utf-8")
+    main(
+        [
+            "export",
+            "--root",
+            root,
+            "--out",
+            str(tmp_path / "b"),
+            "--guide",
+            str(custom),
+        ]
+    )
+    code = main(
+        [
+            "export",
+            "--root",
+            root,
+            "--out",
+            str(tmp_path / "c"),
+            "--guide",
+            str(tmp_path / "missing.md"),
+        ]
+    )
+
+    assert not (tmp_path / "a/data/submitting.md").exists()
+    assert (tmp_path / "b/data/submitting.md").read_text(
+        encoding="utf-8"
+    ) == "# Our own rules\n"
+    assert code == 1
+    assert "cannot read the guide" in capsys.readouterr().out

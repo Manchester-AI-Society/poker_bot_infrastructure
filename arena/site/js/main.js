@@ -5,6 +5,7 @@
 import { data, refresh } from './api.js';
 import { h } from './dom.js';
 import { ago, parseHash } from './format.js';
+import { guideView } from './views/guide.js';
 import { leaderboardView } from './views/leaderboard.js';
 import { matchesView } from './views/matches.js';
 import { matrixView } from './views/matrix.js';
@@ -51,6 +52,7 @@ const ROUTES = {
   matches: { view: matchesView, live: true },
   team: { view: teamView, live: true },
   submissions: { view: submissionsView, live: true },
+  submit: { view: guideView, live: true },
   replay: { view: replayView, live: false },
   tv: { view: tvView, live: false },
 };
