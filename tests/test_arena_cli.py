@@ -109,3 +109,47 @@ def test_starter_never_returns_an_illegal_raise_size():
         action = StarterBot().act(state)
         assert action.amount is not None
         assert min(low, high) <= action.amount <= high
+
+
+def test_baselines_work_without_the_at_sign(tmp_path, capsys):
+    # PowerShell treats a leading @ as its splat operator and silently drops
+    # the argument, so `match bots/starter @call` fails there.
+    code = main(
+        [
+            "match",
+            "bots/starter",
+            "call",
+            "--deals",
+            "5",
+            "--log-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert code == 0
+    assert "@call" in capsys.readouterr().out
+
+
+def test_a_real_bot_folder_wins_over_a_baseline_of_the_same_name(
+    tmp_path, monkeypatch
+):
+    from arena.specs import contestant_from_spec
+
+    folder = tmp_path / "call"
+    folder.mkdir()
+    (folder / "bot.py").write_text("# not a baseline\n")
+    monkeypatch.chdir(tmp_path)
+
+    contestant = contestant_from_spec("call")
+
+    assert contestant.name == "call"  # the folder, not the @call baseline
+    assert contestant.factory.__name__ == "<lambda>"  # a child-process bot
+
+
+def test_an_unknown_name_still_reports_a_missing_bot():
+    import pytest
+
+    from arena.specs import contestant_from_spec
+
+    with pytest.raises(FileNotFoundError, match="nonexistent"):
+        contestant_from_spec("nonexistent")

@@ -71,7 +71,7 @@ installed in the Python you are running.
 
 ```bash
 python -m arena validate bots/starter
-python -m arena match bots/starter @call --deals 50
+python -m arena match bots/starter call --deals 50
 ```
 
 You should see `OK: played 40 hands vs @call with no faults`, then a score line
@@ -91,11 +91,13 @@ first bot is winning; the interval says how sure we are.
 
    ```bash
    python -m arena validate bots/myteam                  # loads, plays legally, on time?
-   python -m arena match bots/myteam @call --deals 200   # vs a calling station
+   python -m arena match bots/myteam call --deals 200    # vs a calling station
    python -m arena match bots/myteam bots/starter --deals 500 --hands hands.jsonl.gz
    ```
 
-   Baselines: `@fold`, `@call`, `@random`, `@shove`. Your bot's `print` output
+   Baselines: `fold`, `call`, `random`, `shove` (also written `@call` etc.; in
+   PowerShell `@` is the splat operator, so quote it as `'@call'` or leave the `@`
+   off). A bot folder with the same name always wins. Your bot's `print` output
    and tracebacks go to `arena_logs/<name>.log`.
 
    Useful `match` options: `--deals N` (each deal is two hands, so more deals
@@ -617,6 +619,7 @@ together.
 | `Player belongs to multiple matches` | Set `match_id` (or `POKER_MATCH_ID`) explicitly when using the CLI or `run_bot()` |
 | `Websocket unavailable …; using HTTP polling instead` | The server accepted HTTP but rejected the WS upgrade — everything still works, this is informational |
 | Bot folded without acting | Turn timer (`turn_timeout_seconds`) expired; make `act()` return faster or raise the match timeout |
+| `error: the following arguments are required: bot_b` in PowerShell | PowerShell treats `@call` as its splat operator and drops it. Write `call` (no `@`) or quote it: `'@call'` |
 | `ModuleNotFoundError: No module named 'dotenv'` when running `python -m arena` | Requirements not installed in this Python: `python -m pip install -r requirements.txt` |
 | `arena validate` says the bot failed to load | Your file needs exactly one `PokerBot` subclass with a no-argument constructor; the traceback is in `arena_logs/` |
 | `faults:` is non-zero in a match | Exception, timeout or illegal action in your bot; read `arena_logs/<name>.log`. 20 faults disables the bot |

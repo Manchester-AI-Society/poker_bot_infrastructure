@@ -98,7 +98,7 @@ through the harness.
 | `arena/table.py` | Plays one hand: asks the engine whose turn it is, asks that contestant, applies the action, repeats until the hand ends. Asserts chips are conserved. Returns a full hand record. |
 | `arena/duel.py` | Plays a **pairing**: N seeded deals, each played twice with the seats swapped, bots restarted between the two halves. Produces mean bb/hand and a 95% confidence interval. |
 | `arena/stats.py` | Mean, standard error and Student-t confidence intervals. |
-| `arena/baselines.py` | `@fold`, `@call`, `@random`, `@shove`. |
+| `arena/baselines.py` | `fold`, `call`, `random`, `shove` (also `@fold` etc.; PowerShell needs `'@call'` quoted, so the bare name is the portable form). |
 | `arena/specs.py` | Turns `@name` or a path into a contestant. |
 | `arena/validate.py` | The smoke test every submission must pass (a short match against `@call`). |
 | `arena/intake.py` | Submission: copy to `versions/<team>/<hash>/`, content-hash, validate, make current only if valid. |
@@ -234,7 +234,7 @@ python -m pip install -r requirements.txt
 ```bash
 cp -r bots/starter bots/myteam
 python -m arena validate bots/myteam
-python -m arena match bots/myteam @call --deals 200
+python -m arena match bots/myteam call --deals 200
 python -m arena match bots/myteam bots/starter --deals 500 --hands hands.jsonl.gz
 ```
 
