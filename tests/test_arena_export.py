@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -677,3 +678,42 @@ def test_editing_the_guide_counts_as_a_change_and_is_otherwise_stable(
 
     assert first.changed and not same.changed and edited.changed
     assert (out / "data" / "submitting.md").read_text() == "two"
+
+
+def test_a_repeated_sync_check_does_not_change_the_published_data(tmp_path):
+    """Regression: a sync pass runs every minute; if its time was published,
+    every export changed the site data and a git host deployed it every
+    minute although nothing had happened."""
+    store = Store(tmp_path / "arena_data")
+    out = tmp_path / "site"
+    store.set_sync_status("alpha", "unreachable", "fatal: not found")
+    first = export_site(store.root, out, ExportOptions())
+    before = (out / "data" / "teams.json").read_text(encoding="utf-8")
+
+    time.sleep(0.05)
+    store.set_sync_status("alpha", "unreachable", "fatal: not found")  # again
+    second = export_site(store.root, out, ExportOptions())
+
+    assert first.changed and not second.changed
+    assert (out / "data" / "teams.json").read_text(encoding="utf-8") == before
+    # ... but a real change (the repository is now fixed) does get published.
+    store.set_sync_status("alpha", "valid", "fine")
+    third = export_site(store.root, out, ExportOptions())
+    assert third.changed
+
+
+def test_the_status_time_moves_only_when_the_outcome_changes(tmp_path):
+    store = Store(tmp_path / "arena_data")
+    store.set_sync_status("alpha", "rejected", "no bot.py")
+    first = store.sync_statuses()["alpha"]
+
+    time.sleep(0.05)
+    store.set_sync_status("alpha", "rejected", "no bot.py")
+    same = store.sync_statuses()["alpha"]
+    time.sleep(0.05)
+    store.set_sync_status("alpha", "valid", "ok")
+    changed = store.sync_statuses()["alpha"]
+
+    assert same["at"] == first["at"]  # unchanged outcome: same time
+    assert same["checked_at"] > first["checked_at"]  # but it was re-checked
+    assert changed["at"] > first["at"]  # a new outcome: new time

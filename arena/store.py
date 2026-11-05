@@ -111,15 +111,36 @@ class Store:
         return int(row["value"])
 
     def set_sync_status(self, team: str, status: str, message: str) -> None:
-        """Remembers the outcome of the latest attempt to fetch ``team``."""
-        value = json.dumps(
-            {"status": status, "message": message, "at": time.time()}
-        )
+        """Remembers the outcome of the latest attempt to fetch ``team``.
+
+        ``at`` is when the outcome last CHANGED; ``checked_at`` is when it was
+        last looked at. Only ``at`` is published. If the published time moved
+        on every pass (a pass runs every minute), the website data would change
+        every minute, and a git host would deploy it every minute for nothing.
+        """
+        now = time.time()
+        key = f"sync:{team}"
         with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key=?", (key,)
+            ).fetchone()
+            previous = json.loads(row["value"]) if row else {}
+            same = (
+                previous.get("status") == status
+                and previous.get("message") == message
+            )
+            value = json.dumps(
+                {
+                    "status": status,
+                    "message": message,
+                    "at": previous.get("at", now) if same else now,
+                    "checked_at": now,
+                }
+            )
             conn.execute(
                 "INSERT INTO meta(key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (f"sync:{team}", value),
+                (key, value),
             )
 
     def sync_statuses(self) -> Dict[str, Dict[str, Any]]:
