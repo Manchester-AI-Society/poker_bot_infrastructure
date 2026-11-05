@@ -543,3 +543,35 @@ def test_git_publish_reports_a_folder_that_is_not_a_repository(tmp_path):
 
     with pytest.raises(ExportError):
         git_publish(folder, "x")
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
+def test_a_failed_push_is_retried_on_the_next_pass(competition, tmp_path):
+    remote = tmp_path / "remote.git"
+    work = tmp_path / "work"
+    git("init", "--bare", "-q", str(remote), cwd=tmp_path)
+    git("clone", "-q", str(remote), str(work), cwd=tmp_path)
+    git("config", "user.email", "t@example.com", cwd=work)
+    git("config", "user.name", "Test", cwd=work)
+    git("commit", "--allow-empty", "-q", "-m", "init", cwd=work)
+    git("push", "-q", "-u", "origin", "HEAD", cwd=work)
+    export_site(competition.root, work, ExportOptions())
+
+    # The network "drops": the remote disappears mid-event.
+    moved = tmp_path / "away.git"
+    remote.rename(moved)
+    with pytest.raises(ExportError):
+        git_publish(work, "Update results")
+    moved.rename(remote)
+
+    # The commit made during the outage is pushed on the next pass.
+    assert git_publish(work, "Update results") is True
+    shown = git(
+        "--git-dir",
+        str(remote),
+        "show",
+        "HEAD:data/manifest.json",
+        cwd=tmp_path,
+    )
+    assert strict_loads(shown)["schema"] == 1
+    assert git_publish(work, "Update results") is False

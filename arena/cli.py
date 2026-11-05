@@ -14,18 +14,29 @@ Commands for the organiser (state lives under --root, default arena_data):
     leaderboard       print (and write) the current ranking
     status            show versions and the job queue
     retry-failed      re-queue pairings whose job crashed
+    export            write the static results site (optionally serve it
+                      or push it to a git host)
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import List, Optional
 
 from . import leaderboard as board_module
 from .duel import PairingConfig, PairingResult, play_pairing
+from .export import (
+    REPLAY_POLICIES,
+    REVEAL_MODES,
+    ExportError,
+    ExportOptions,
+    export_site,
+    git_publish,
+)
 from .history import HandWriter
 from .intake import SubmissionError, scan_directory, submit
 from .scheduler import (
@@ -286,6 +297,76 @@ def cmd_retry_failed(args: argparse.Namespace) -> int:
     return 0
 
 
+def _export_once(args: argparse.Namespace, options: ExportOptions) -> None:
+    """One export pass, plus an optional git push; prints one line."""
+    summary = export_site(args.root, args.out, options)
+    stamp = time.strftime("%H:%M:%S")
+    note = "updated" if summary.changed else "no change"
+    print(
+        f"[export {stamp}] {note}: {summary.teams} teams, "
+        f"{summary.ladder_pairings} ladder / {summary.final_pairings} final "
+        f"pairings, {summary.replay_files} replays "
+        f"({summary.replay_bytes / 1e6:.1f} MB)"
+    )
+    if args.git_push:
+        pushed = git_publish(args.out, f"Update results ({stamp})")
+        if pushed:
+            print(f"[export {stamp}] pushed to git")
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    from .serve import lan_address, make_server
+
+    submit_text = args.submit_text
+    if args.submit_text_file:
+        submit_text = Path(args.submit_text_file).read_text(encoding="utf-8")
+    options = ExportOptions(
+        title=args.title,
+        replays=args.replays,
+        reveal=args.reveal,
+        max_replay_hands=args.max_replay_hands,
+        submit_text=submit_text,
+    )
+    try:
+        options.validate()
+        _export_once(args, options)
+    except ExportError as exc:
+        print(f"export failed: {exc}")
+        return 1
+
+    server = None
+    if args.serve:
+        server = make_server(args.out, args.host, args.serve)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        print(f"serving {args.out} at http://localhost:{args.serve}/")
+        if args.host in ("0.0.0.0", "::"):
+            address = lan_address()
+            if address:
+                print(
+                    f"others on this network: http://{address}:{args.serve}/"
+                )
+        print("press Ctrl+C to stop")
+
+    if not args.loop and server is None:
+        return 0
+    try:
+        while True:
+            time.sleep(args.loop or 3600)
+            if args.loop:
+                try:
+                    _export_once(args, options)
+                except ExportError as exc:
+                    # A dropped network or a busy database must not end an
+                    # event: report it and try again next time round.
+                    print(f"[export] problem, will retry: {exc}")
+    except KeyboardInterrupt:
+        print("stopped")
+    finally:
+        if server is not None:
+            server.shutdown()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m arena",
@@ -370,6 +451,60 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = organiser("leaderboard", "show the ranking", cmd_leaderboard)
     sub.add_argument("--kind", choices=["ladder", "final"], default="ladder")
+
+    sub = organiser("export", "write the static results site", cmd_export)
+    sub.add_argument(
+        "--out", default="arena_site", help="folder to write the site into"
+    )
+    sub.add_argument("--title", default="Poker Bot Competition")
+    sub.add_argument(
+        "--replays",
+        choices=REPLAY_POLICIES,
+        default="final",
+        help="whose hand replays to publish (default: the final only)",
+    )
+    sub.add_argument(
+        "--reveal",
+        choices=REVEAL_MODES,
+        default="showdown",
+        help="show hole cards only at showdown (default) or always",
+    )
+    sub.add_argument(
+        "--max-replay-hands",
+        type=int,
+        default=60,
+        help="hands per pairing, biggest swings first; 0 = every hand",
+    )
+    sub.add_argument(
+        "--submit-text", default="", help="how to submit, shown on the site"
+    )
+    sub.add_argument(
+        "--submit-text-file", help="read the how-to-submit text from a file"
+    )
+    sub.add_argument(
+        "--loop",
+        type=float,
+        default=0,
+        metavar="SECONDS",
+        help="keep exporting every SECONDS until Ctrl+C",
+    )
+    sub.add_argument(
+        "--serve",
+        type=int,
+        default=0,
+        metavar="PORT",
+        help="also serve the site on this port",
+    )
+    sub.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="address to serve on (0.0.0.0 lets others on the network in)",
+    )
+    sub.add_argument(
+        "--git-push",
+        action="store_true",
+        help="commit and push --out (a git clone) after each export",
+    )
 
     organiser("status", "show versions and the queue", cmd_status)
     organiser("retry-failed", "re-queue crashed jobs", cmd_retry_failed)

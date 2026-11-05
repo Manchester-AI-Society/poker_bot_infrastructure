@@ -521,32 +521,35 @@ def export_site(
 
 
 def git_publish(out: Path | str, message: str) -> bool:
-    """Commits and pushes ``out`` if it is a git work tree with changes.
+    """Commits and pushes ``out`` (a git work tree). True if it pushed.
 
-    Returns True when something was pushed. Raises ExportError with git's
-    own message if a command fails, so the caller can report it and retry.
+    A push that fails (say the network dropped) leaves its commit in place,
+    and the next call pushes it, so a flaky connection during an event costs
+    nothing but time. Raises ExportError with git's own message on failure.
     """
     out = str(out)
 
-    def git(*args: str) -> str:
+    def git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
         done = subprocess.run(
             ["git", "-C", out, *args],
             capture_output=True,
             text=True,
             timeout=300,
         )
-        if done.returncode != 0:
+        if check and done.returncode != 0:
             raise ExportError(
                 f"git {' '.join(args)} failed: "
                 f"{(done.stderr or done.stdout).strip()}"
             )
-        return done.stdout
+        return done
 
-    if git("rev-parse", "--is-inside-work-tree").strip() != "true":
+    if git("rev-parse", "--is-inside-work-tree").stdout.strip() != "true":
         raise ExportError(f"{out} is not a git work tree")
     git("add", "-A")
-    if not git("status", "--porcelain").strip():
-        return False
-    git("commit", "-q", "-m", message)
+    if git("status", "--porcelain").stdout.strip():
+        git("commit", "-q", "-m", message)
+    ahead = git("rev-list", "--count", "@{u}..HEAD", check=False)
+    if ahead.returncode == 0 and ahead.stdout.strip() == "0":
+        return False  # nothing committed that the remote lacks
     git("push", "-q")
     return True
