@@ -5,6 +5,12 @@ Nothing in it uses HTTP, WebSockets or any network service. Bots are ordinary
 child processes on the organiser's machine, and all state is local files plus
 one SQLite database.
 
+People see the results through a **static website**: `python -m arena export`
+turns the results into a folder of plain HTML, CSS, JavaScript and JSON that
+can be shown from the laptop or pushed to any static host (see
+[section 9](#9-the-results-website)). It contains no server code and never
+accepts uploads.
+
 The older HTTP/WebSocket match server (`server/`, `player_sdk.play()`,
 `admin_sdk`) still exists in the repository for live network matches, but the
 competition does not use it. See [the last section](#what-the-competition-does-not-use).
@@ -70,9 +76,17 @@ flowchart TB
     P2 -.stderr.-> LOG
     POOL --> DB
     DB --> RES
+
+    EXP["arena export<br/>read-only, sanitising"]
+    DB --> EXP
+    HND --> EXP
+    EXP --> SITE["arena_site/<br/>static HTML, JS and JSON"]
+    SITE -->|laptop projector, LAN, or a static host| BR["Browsers<br/>leaderboard, matrix, replays, TV mode"]
 ```
 
-The only network use anywhere is `git clone` when a team submits a git URL.
+Network use: `git clone` when a team submits a git URL, and, only if you choose
+to, serving or pushing the exported site folder. Bots never touch the network
+through the harness.
 
 ## 2. Components
 
@@ -92,6 +106,10 @@ The only network use anywhere is `git clone` when a team submits a git URL.
 | `arena/scheduler.py` | Queues pairings, runs them in a process pool, handles freeze and final. |
 | `arena/leaderboard.py` | Ranks teams and writes `results/leaderboard.json` and `final.json`. |
 | `arena/history.py` | Reads and writes gzip JSON-lines hand histories. |
+| `arena/export.py` | Builds the static site data: manifest, leaderboards, pairings, teams and replays. Decides what is published and strips what must stay private. Also `git_publish`. |
+| `arena/serve.py` | A small preview server for the exported folder (no-store caching, pinned MIME types, a deep listen backlog and keep-alive). |
+| `arena/jsonutil.py` | Strictly valid JSON (no `Infinity`/`NaN`) and atomic file writes, for everything a browser reads. |
+| `arena/site/` | The website itself: `index.html`, `css/`, and `js/` (router, views, replay builder). Copied into the export folder. |
 | `arena/cli.py` | The `python -m arena` command line. |
 | `game/` | The rules engine, shared with the old server: actions, betting, pots, showdown. |
 | `player_sdk/` | What bot authors import: `PokerBot`, `Action`, `GameState`. The arena reuses its parser and action translation. |
@@ -183,8 +201,9 @@ The SQLite tables are `meta`, `versions`, `current`, `freezes`,
 `freeze_members`, `jobs` and `results`. A unique index stops the same pairing
 being queued twice. Each team's bot output goes to its own `logs/<team>/`
 folder and is never mixed into results or hand histories. Nothing enforces
-access control on those files yet: whoever can read `arena_data/` can read
-every team's logs, so team-only access would have to come from a frontend.
+access control on those files: whoever can read `arena_data/` can read every
+team's logs. The exported website never contains them (section 9), so they stay
+on the organiser's machine; give a team its own folder by hand if it asks.
 
 A hand record in `hands/*.jsonl.gz` looks like this (shortened):
 
@@ -197,8 +216,8 @@ A hand record in `hands/*.jsonl.gz` looks like this (shortened):
 ```
 
 `leaderboard.json` holds `teams` (rank, score, `ci95`, W/D/L, faults,
-`tied_with_next`), and a `matrix` of pairwise results. A future frontend reads
-these files directly.
+`tied_with_next`), and a `matrix` of pairwise results. The website export reads
+the database, not these files, and writes its own browser-safe copies.
 
 ## 7. How to run it
 
@@ -308,7 +327,114 @@ for hand in read_hands("arena_data/hands/final-12.jsonl.gz"):
     print(hand["hand_index"], hand["hole_cards"], hand["board"], hand["net"])
 ```
 
-## 9. Known limits
+## 9. The results website
+
+### What it is
+
+`python -m arena export` writes a folder (default `arena_site/`) with the page
+and its data. Plain HTML, CSS and JavaScript: no framework, no build step, and
+nothing is loaded from the internet, so it works on a venue network with no
+internet. It is read-only.
+
+```
+arena_site/
+  index.html, css/, js/                 the page (copied from arena/site/)
+  data/manifest.json                    title, fingerprint, last change, policy
+  data/leaderboard-<ladder|final>.json  ranking and head-to-head matrix
+  data/pairings-<ladder|final>.json     every match, newest first
+  data/teams.json                       versions and validation status
+  data/replays/<kind>-<job>.json        hands for the replayer (per policy)
+```
+
+| Page | Shows |
+|---|---|
+| Leaderboard | Score with a 95% interval on a shared axis, W-D-L, faults, a marker for teams that cannot be separated. The Final / Ladder switch appears once a final exists. |
+| Head-to-head | Blue/red matrix of every pairing; faded cells are not statistically clear; "Show numbers" is also the table view. |
+| Matches | Every pairing with its result, filterable by team and kind. |
+| Team | Rank, results against each opponent, submitted versions and their status. |
+| Replay | Step through a stored hand on a table (keys: arrows, space, `[` `]`). |
+| Submissions | Whether each team's latest push validated. Read-only: see below. |
+| TV mode | A hands-off rotation for a projector: top 10, the full matrix, latest results, an autoplaying hand. |
+
+There is no submission form on purpose. This harness has no sandbox, so a public
+upload page would let anyone who can reach it run Python on the organiser's
+machine. Submissions keep arriving through `submit`, a watched folder, or git
+(`--submit-text "..."` puts the instructions on the Submissions page).
+
+### Run it
+
+```bash
+# Show it on this machine: open http://localhost:8000/ (TV mode: /#/tv)
+python -m arena export --serve 8000 --loop 15
+
+# Let others on the same network open it (prints the address to share)
+python -m arena export --serve 8000 --host 0.0.0.0 --loop 15
+
+# Write the folder once, to host it yourself
+python -m arena export --out arena_site
+
+# Keep a git-hosted copy (for example GitHub Pages) up to date
+git clone <your-pages-repo> arena_site
+python -m arena export --out arena_site --loop 30 --git-push
+```
+
+Options: `--title`, `--submit-text` / `--submit-text-file`, `--replays`
+(`none`, `final` (default) or `all`), `--reveal` (`showdown` (default) or `all`),
+`--max-replay-hands` (default 60 per pairing, the biggest swings; 0 = every hand).
+Open it through the server, not by double-clicking `index.html`: browsers block
+ES modules and `fetch` on `file://` pages.
+
+### Where to host it
+
+| Option | Notes |
+|---|---|
+| This laptop, on a projector | No network needed. Open `/#/tv`. |
+| Same Wi-Fi or LAN | `--host 0.0.0.0`. Venue Wi-Fi sometimes stops devices talking to each other, and Windows usually asks once to allow Python through its firewall: try it before the event. |
+| A static host such as GitHub Pages | `--git-push` commits and pushes after every pass; a push that fails (a dropped connection) is retried on the next pass. Public by default, and git history keeps every version ever pushed. The git mechanics are tested against a local remote; **GitHub Pages itself and the deploy delay have not been tried from here.** |
+| A tunnel to the laptop | Not built in; point any tunnel tool at the served port. Not tried from here. |
+
+### What is published, and what never is
+
+| Published | Never published |
+|---|---|
+| Scores, intervals, records, fault counts, the match list | Bot source code |
+| Team names, version hashes, validation status, and the exception line of a failed check (file paths blanked) | Tracebacks, fault messages (a replay keeps only a yes/no flag per move), anything under `logs/` |
+| Replays as the policy allows: by default the final only, hole cards only when a hand reached showdown, and the board only as far as it was dealt | A deal's shuffle seed (it reproduces every hidden card), unless `--reveal all` |
+
+Choose the replay policy before the first push to a public host. Hands show how
+a bot plays, and during the ladder that is information a rival could use; the
+default of "final only" publishes them when nothing is left to adapt. With a git
+host, a mistake stays in the history.
+
+### How live it is
+
+The page reads a tiny `manifest.json` every 10 s and refetches the larger files
+only when its fingerprint changes. `--loop N` re-exports every N seconds, and an
+export that changes nothing writes nothing, so a git host gets no empty commits.
+Checked in a real browser: changing the title and re-exporting updated an open
+page by itself within 16 s, and stopping the server left the page showing its
+last results with a red "Connection lost" notice instead of an empty screen.
+With a static host, add that host's deploy time to the delay.
+
+### Size and speed (measured on the 20-team dry run)
+
+First export of 190 + 190 pairings, with replays for the final only: about 9 s.
+Those replays (the default, 60 hands each) are 190 files, 7.1 MB. Replays for
+ladder and final: 380 files, 13.5 MB (the whole folder is about 15 MB). An
+unchanged re-export rewrites nothing.
+
+### Testing it
+
+`pytest` runs the export, privacy and server tests; `node --test
+tests/site_js/*.test.mjs` runs the JavaScript tests (`test_site_js.py` runs them
+for you if Node is installed). The replay builder is checked against 107 real
+hands: what the actions say each seat put in must equal what the engine's own
+result implies, which caught deliberately planted bugs that a chip-conservation
+check alone missed. The pages themselves were checked by hand in headless Edge
+on Windows (desktop, 1080p TV, phone width, light and dark); there is no
+automated browser test in the repository.
+
+## 10. Known limits
 
 * **No sandbox.** Bots run as the organiser's user. Treat it as trust-based, or
   run the whole thing in a container or under a restricted account.
@@ -320,7 +446,14 @@ for hand in read_hands("arena_data/hands/final-12.jsonl.gz"):
   betting for players who already acted.
 * Tested on Windows with Python 3.14. CI targets Python 3.11 on Linux, which
   has not been observed running; nothing has been run on an HPC yet.
-* **No web frontend yet.** Results are the CLI table and the JSON files above.
+* **The website is read-only and public by construction.** There is no login,
+  no upload, and no team-private page: a static host cannot tell teams apart.
+  Team logs stay on the organiser's machine.
+* **Replays cost information.** Any replay you publish shows how bots play.
+  The default publishes the final's only; `--replays all` during the ladder is
+  a deliberate trade-off.
+* **Not tried from here:** GitHub Pages, a tunnel, a Linux or macOS browser, and
+  Safari or Firefox. Only desktop Edge (headless) was used for visual checks.
 
 ## What the competition does not use
 

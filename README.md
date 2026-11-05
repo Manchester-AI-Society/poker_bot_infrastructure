@@ -175,6 +175,42 @@ python -m arena retry-failed && python -m arena final   # if any pairing crashed
   filesystem that supports SQLite locking. Use `ulimit` or a container for
   memory/CPU limits; the harness only enforces time and fault limits.
 
+### Show the results (website)
+
+`export` turns the results into a **static website**: leaderboard with confidence
+intervals, a head-to-head matrix, match lists, team pages, a hand replayer and a
+TV mode for a projector. It is plain HTML, CSS and JavaScript with no server
+code, so it can be shown from the laptop or pushed to any static host.
+
+```bash
+# Show it here: open http://localhost:8000/   (projector: http://localhost:8000/#/tv)
+python -m arena export --serve 8000 --loop 15
+
+# Let others on the same network open it (the command prints the address)
+python -m arena export --serve 8000 --host 0.0.0.0 --loop 15
+
+# Write the folder once, or keep a git-hosted copy (e.g. GitHub Pages) current
+python -m arena export --out arena_site
+git clone <your-pages-repo> arena_site
+python -m arena export --out arena_site --loop 30 --git-push
+```
+
+* **What is public.** Scores, intervals, the match list, team names and whether
+  each team's latest push validated. Never bot code, tracebacks or logs. Replays
+  are published **for the final only** by default, and hole cards only when a
+  hand reached showdown, because replays show how a bot plays. Change it with
+  `--replays none|final|all` and `--reveal showdown|all` *before* the first push
+  to a public host: a git host keeps its history.
+* **Open it through the server**, not by double-clicking `index.html`: browsers
+  block ES modules and `fetch` on `file://` pages.
+* **It is read-only.** There is no upload form: this harness has no sandbox, so a
+  public upload page would let anyone run Python on your machine. Teams submit
+  with `submit`, a watched folder or git; `--submit-text "..."` shows
+  instructions on the Submissions page.
+* **GitHub Pages and a tunnel have not been tried from here;** only the local
+  server and the git push (against a local remote) were tested. Details, sizes
+  and the privacy rules are in [ARCHITECTURE.md](ARCHITECTURE.md#9-the-results-website).
+
 ## Architecture
 
 > **The competition does not use this diagram.** The diagram below is the
@@ -227,6 +263,7 @@ It stands out because it is batteries-included — a complete hand engine, admin
 
 - **Authoritative no-limit Texas Hold'em engine** — blinds, `preflop → flop → turn → river → showdown`, main and side pots, uncalled bets returned, split pots with the odd chip to the first seat left of the button, seedable shuffles
 - **Competition arena** — a local harness that plays bots as isolated subprocesses in heads-up *duplicate* matches, with a live ladder and a frozen final round robin ([details](#running-a-bot-competition-arena))
+- **Results website** — a static, read-only site (leaderboard with confidence intervals, head-to-head matrix, hand replays, TV mode) that refreshes itself; show it from a laptop or push it to a static host ([details](#show-the-results-website))
 - **Multi-hand matches** — matches play hand after hand (with a rotating dealer button and blind-skipping for eliminated players) until one player owns every chip, or until an optional `max_hands` cap is reached
 - **Auto-start readiness gate** — `start_match` arms the match; dealing begins automatically once every player's websocket is live, so the first turn never races a cold-starting bot (`force` start or `wait_for_players=False` for HTTP-only setups)
 - **Strict action validation** — only legal actions (`fold`, `check`, `call`, `bet`, `raise_to`) with server-computed raise bounds are accepted
@@ -493,6 +530,7 @@ curl "http://127.0.0.1:8000/v1/matches/<MATCH_ID>/events?offset=0&limit=100"
 pytest -m "not integration" -q   # fast suite, about 40 s: use this day to day
 pytest tests/test_arena_table.py -v   # one file
 ruff check . && ruff format --check .   # lint, as CI does
+node --test tests/site_js/*.test.mjs  # the website's JavaScript (needs Node 18+)
 
 # server integration tests: real matches over HTTP and WebSocket, about 2 min.
 # They need the dev admin key from exampleenv in the environment:
@@ -517,6 +555,7 @@ then delete the marker.
 | Scoring | `test_arena_duel.py` | Identical bots score exactly 0; a bot that folds every hand loses exactly 0.75 bb/hand; scores are antisymmetric when the bots swap sides; both orientations of every deal are played; same seed reproduces |
 | Bot failures | `test_arena_process.py` | Real subprocess bots that crash, hang, print garbage, return illegal actions or fail to import, and that the match still finishes with faults recorded |
 | Competition flow | `test_arena_competition.py`, `test_arena_cli.py` | Submit, version by content hash, ladder only re-runs changed pairings, freeze, final, retry, and every CLI command |
+| Results site | `test_arena_export.py`, `test_arena_serve.py`, `test_arena_site_assets.py`, `test_site_js.py`, `tests/site_js/` | What is published and what never is (tracebacks, seeds, folded hole cards), valid JSON, replay policy, git push and retry, the preview server, and the page's own files; the JavaScript tests replay 107 real hands and check them against the engine's results |
 | Audit repros | `test_audit_regressions.py` | Regression tests for fixed audit findings; the deferred ones stay as strict xfails |
 | SDK | `test_client_actions.py`, `test_parser.py`, ... | Action translation and state parsing |
 
@@ -583,6 +622,10 @@ together.
 | `faults:` is non-zero in a match | Exception, timeout or illegal action in your bot; read `arena_logs/<name>.log`. 20 faults disables the bot |
 | A submission is rejected as a duplicate | Its code is identical to another team's current bot |
 | A final has a crashed pairing | `python -m arena retry-failed`, then `python -m arena final` again; only the missing pairings run |
+| The website shows "The results could not be loaded" | The page cannot reach `data/manifest.json`: run `python -m arena export` first, and open the page through `--serve` (or any web server), not from a `file://` path |
+| The website says "Connection lost" in red | The server or network went away; the page keeps the last results and retries every 10 s |
+| `export failed: no competition data found` | `--root` does not contain `arena.sqlite`; submit a bot or run the ladder first |
+| Others cannot open the site on your Wi-Fi | Use `--host 0.0.0.0`, allow Python through the firewall, and check the venue network lets devices reach each other |
 | Integration tests fail on authentication or admin-key errors | Set `POKER_ADMIN_API_KEY=admin-dev-key` (the value in `exampleenv`) in the environment before running them |
 
 ## Benchmarks
@@ -599,6 +642,7 @@ python benchmarks/run_benchmarks.py --json-output benchmarks/latest.json
 
 ```
 arena/          Competition harness: bot host, duplicate matches, ladder, final, CLI
+arena/site/     The results website (HTML, CSS, JavaScript), copied out by `arena export`
 bots/           Starter bot (copy it to begin)
 player_sdk/     Player SDK: play(), PokerBot interface, WS + HTTP transports, CLI
 admin_sdk/      Admin SDK: match lifecycle management
