@@ -600,3 +600,38 @@ def test_a_failed_push_is_retried_on_the_next_pass(competition, tmp_path):
     )
     assert strict_loads(shown)["schema"] == 1
     assert git_publish(work, "Update results") is False
+
+
+def test_a_team_whose_repository_cannot_be_fetched_is_listed_with_the_reason(
+    tmp_path,
+):
+    store = Store(tmp_path / "arena_data")
+    store.set_sync_status(
+        "ghost",
+        "unreachable",
+        "git clone failed: fatal: repository "
+        "'https://github.com/ghost/bot/' not found",
+    )
+    store.set_sync_status(
+        "leaky", "rejected", "failed to read C:/Users/organiser/x/bot.py"
+    )
+
+    export_site(store.root, tmp_path / "site", ExportOptions())
+
+    text = (tmp_path / "site/data/teams.json").read_text(encoding="utf-8")
+    teams = {t["team"]: t for t in strict_loads(text)["teams"]}
+    assert teams["ghost"]["versions"] == []
+    assert teams["ghost"]["current"] is None
+    assert teams["ghost"]["sync"]["status"] == "unreachable"
+    # The address is kept (it is the team's own, public repository) ...
+    assert "https://github.com/ghost/bot/" in teams["ghost"]["sync"]["message"]
+    # ... but the organiser's file paths never reach the page.
+    assert "Users" not in text and "organiser" not in text
+
+
+def test_a_team_without_any_sync_has_no_sync_entry(competition, tmp_path):
+    out, _ = run_export(competition, tmp_path)
+
+    teams = load(out / "data" / "teams.json")["teams"]
+
+    assert all(team["sync"] is None for team in teams)

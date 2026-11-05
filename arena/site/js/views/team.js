@@ -1,6 +1,6 @@
 import { boardRow, teamEntry } from '../api.js';
 import { h } from '../dom.js';
-import { ago, fmtBB, fmtPlain, plural, shortHash } from '../format.js';
+import { ago, fmtBB, fmtPlain, plural, shortHash, syncProblemText } from '../format.js';
 import { kindBadge } from './leaderboard.js';
 
 /** One opponent's result seen from `me`'s side (signs flip when me is B). */
@@ -35,6 +35,12 @@ export function teamView(ctx) {
 
   const row = boardRow(ctx.kind, name);
   page.appendChild(h('header', {}, h('h1', {}, name), kindBadge(ctx.kind)));
+  const fetchProblem = syncProblemText(entry.sync);
+  if (fetchProblem) {
+    page.appendChild(
+      h('div', { class: 'card', style: 'margin-bottom:1rem' }, h('span', { class: 'lose' }, 'Fetch problem: '), fetchProblem),
+    );
+  }
 
   const stat = (value, label) =>
     h('div', { class: 'stat' }, h('div', { class: 'v' }, value), h('div', { class: 'k' }, label));

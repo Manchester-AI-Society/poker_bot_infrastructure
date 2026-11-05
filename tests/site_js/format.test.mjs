@@ -16,6 +16,7 @@ import {
   parseHash,
   plural,
   quantile,
+  syncProblemText,
 } from '../../arena/site/js/format.js';
 
 test('fmtBB shows a sign and never prints negative zero', () => {
@@ -145,4 +146,26 @@ test('axis limits fit every interval and one outlier cannot wash out a matrix', 
   const values = [...Array(20).fill(0.3), 40];
   assert.ok(matrixMax(values) < 1, 'the shover outlier is clipped, not scaled to');
   assert.equal(matrixMax([]), 0.25);
+});
+
+test('a team is told why its repository could not be used', () => {
+  assert.equal(syncProblemText(null), null);
+  assert.equal(syncProblemText({ status: 'valid', message: 'fine' }), null);
+  // A failed validation is shown from the version itself, not repeated here.
+  assert.equal(syncProblemText({ status: 'invalid', message: 'boom' }), null);
+  assert.equal(syncProblemText({ status: 'unchanged', message: '' }), null);
+
+  const unreachable = syncProblemText({
+    status: 'unreachable',
+    message: "fatal: repository 'https://github.com/a/b/' not found",
+  });
+  assert.match(unreachable, /not found/);
+  assert.match(unreachable, /public/); // the usual cause of a failed fetch
+
+  assert.match(
+    syncProblemText({ status: 'rejected', message: 'must contain bot.py' }),
+    /cannot be used: must contain bot\.py/,
+  );
+  assert.match(syncProblemText({ status: 'error', message: 'MemoryError' }), /MemoryError/);
+  assert.match(syncProblemText({ status: 'unreachable' }), /no details/);
 });

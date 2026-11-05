@@ -321,14 +321,27 @@ def _team_entries(
     grouped: Dict[str, List[Version]] = {}
     for version in store.all_versions():
         grouped.setdefault(version.team, []).append(version)
+    # A team whose repository could never be fetched has no version yet, but
+    # must still be listed, with the reason, so its members can see it.
+    sync = store.sync_statuses()
     teams = []
-    for team in sorted(grouped):
-        versions = grouped[team]
+    for team in sorted(set(grouped) | set(sync)):
+        versions = grouped.get(team, [])
+        status = sync.get(team)
         teams.append(
             {
                 "team": team,
                 "current": current.get(team),
                 "frozen": frozen.get(team),
+                "sync": (
+                    {
+                        "status": status["status"],
+                        "message": short_message(status["message"]),
+                        "at": status["at"],
+                    }
+                    if status
+                    else None
+                ),
                 "versions": [
                     {
                         "hash": version.hash,

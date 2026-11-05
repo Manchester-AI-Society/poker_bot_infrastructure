@@ -1,5 +1,5 @@
 import { h } from '../dom.js';
-import { ago, plural, shortHash } from '../format.js';
+import { ago, plural, shortHash, syncProblemText } from '../format.js';
 
 /** Validation status of every team's bots. Read-only: submitting is done
  *  through the organiser's channel (see the text below), not on this page. */
@@ -28,11 +28,29 @@ export function submissionsView(ctx) {
   const rows = teams.map((team) => {
     const latest = team.versions[team.versions.length - 1];
     const current = team.versions.find((v) => v.hash === team.current);
+    const fetchProblem = syncProblemText(team.sync);
     const status = team.current
       ? h('span', { class: 'badge ok' }, '✓ playing')
-      : h('span', { class: 'badge bad' }, '✗ no valid bot');
+      : h(
+          'span',
+          { class: 'badge bad' },
+          fetchProblem ? '✗ cannot fetch repo' : '✗ no valid bot',
+        );
     // Explain a failure only when the newest push is the one that failed.
     const problem = latest && latest.status !== 'valid' ? latest.message : '';
+    const notes = [];
+    if (fetchProblem) {
+      notes.push(
+        h('div', {}, h('span', { class: 'lose' }, 'Fetch problem: '), fetchProblem,
+          current ? ' The previous version keeps playing.' : ''),
+      );
+    }
+    if (problem) {
+      notes.push(
+        h('div', {}, h('span', { class: 'lose' }, 'Latest push failed: '), problem,
+          current ? ' (the previous version keeps playing)' : ''),
+      );
+    }
     return h(
       'tr',
       {},
@@ -41,13 +59,7 @@ export function submissionsView(ctx) {
       h('td', { class: 'mono' }, shortHash(team.current)),
       h('td', { class: 'num' }, team.versions.length),
       h('td', { class: 'muted small' }, latest ? ago(now - latest.created_at) : ''),
-      h(
-        'td',
-        { class: 'small' },
-        problem
-          ? [h('span', { class: 'lose' }, 'Latest push failed: '), problem, current ? ' (the previous version keeps playing)' : '']
-          : '',
-      ),
+      h('td', { class: 'small' }, notes),
     );
   });
   page.appendChild(
