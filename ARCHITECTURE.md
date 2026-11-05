@@ -101,7 +101,8 @@ through the harness.
 | `arena/baselines.py` | `fold`, `call`, `random`, `shove` (also `@fold` etc.; PowerShell needs `'@call'` quoted, so the bare name is the portable form). |
 | `arena/specs.py` | Turns `@name` or a path into a contestant. |
 | `arena/validate.py` | The smoke test every submission must pass (a short match against `@call`). |
-| `arena/intake.py` | Submission: copy to `versions/<team>/<hash>/`, content-hash, validate, make current only if valid. |
+| `arena/intake.py` | Submission: copy to `versions/<team>/<hash>/`, content-hash, validate, make current only if valid. Git sources are cloned shallowly with prompts disabled, a timeout, and `--` before the address (a source starting with `-` is refused). |
+| `arena/sync.py` | Pulls each team's bot from its own repository, from a teams file (`team url [branch]`, https only, strictly validated). Re-reads the file every pass, remembers each team's last fetch outcome, and runs as a background thread inside `ladder --teams`. |
 | `arena/store.py` | SQLite storage (WAL mode) and the job queue. |
 | `arena/scheduler.py` | Queues pairings, runs them in a process pool, handles freeze and final. |
 | `arena/leaderboard.py` | Ranks teams and writes `results/leaderboard.json` and `final.json`. |
@@ -358,7 +359,8 @@ arena_site/
 
 There is no submission form on purpose. This harness has no sandbox, so a public
 upload page would let anyone who can reach it run Python on the organiser's
-machine. Submissions keep arriving through `submit`, a watched folder, or git
+machine. Submissions keep arriving through the teams' own git repositories
+(`sync`, see [SUBMITTING.md](SUBMITTING.md)), `submit`, or a watched folder
 (`--submit-text "..."` puts the instructions on the Submissions page).
 
 ### Run it
@@ -446,6 +448,12 @@ automated browser test in the repository.
   betting for players who already acted.
 * Tested on Windows with Python 3.14. CI targets Python 3.11 on Linux, which
   has not been observed running; nothing has been run on an HPC yet.
+* **Submissions are public repositories, pulled on a schedule.** Private
+  repositories are not supported (the arena has no credentials for other
+  people's accounts), and nothing tells the arena when a team pushes, so
+  there is up to a minute of delay. A team can only be added by the organiser
+  editing the teams file; there is no self-service registration, and the
+  teams file does not prove who owns a repository.
 * **The website is read-only and public by construction.** There is no login,
   no upload, and no team-private page: a static host cannot tell teams apart.
   Team logs stay on the organiser's machine.

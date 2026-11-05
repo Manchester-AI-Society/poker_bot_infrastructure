@@ -1,0 +1,17 @@
+# Teams file for `python -m arena sync` and `python -m arena ladder --teams`.
+#
+# Copy this to teams.txt (it is ignored by git) and edit it. One team per line:
+#
+#   team-name   https://github.com/owner/repository   [branch]
+#
+# * The team name is lowercase letters, digits, - and _ (up to 32 characters).
+# * The address must start with https:// and be a PUBLIC repository, with
+#   bot.py at its top level. No passwords or tokens in the address.
+# * The branch is optional; without it the repository's default branch is used.
+# * Lines starting with # are comments. Blank lines are ignored.
+# * You can edit this file while the ladder is running: it is re-read on every
+#   pass, so new teams appear within a minute. A mistake in an edit is reported
+#   once and the previous list keeps being used.
+
+alpha     https://github.com/alpha-team/poker-bot
+beta      https://github.com/beta-team/my-bot          dev

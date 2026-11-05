@@ -80,6 +80,10 @@ first bot is winning; the interval says how sure we are.
 
 ### For participants: write and test a bot
 
+> Competing? [SUBMITTING.md](SUBMITTING.md) is the one-page guide: write a
+> bot, test it, put it in your own public GitHub repository, and give the
+> organiser your team name and its address.
+
 1. Copy the starter: `cp -r bots/starter bots/myteam` (a folder with a `bot.py`).
    Six more example bots with different styles are in `bots/` ([bots/README.md](bots/README.md)).
 2. Your `bot.py` must define **exactly one** `PokerBot` subclass with a
@@ -177,6 +181,43 @@ python -m arena retry-failed && python -m arena final   # if any pairing crashed
   `--workers $SLURM_CPUS_PER_TASK`; `arena_data/` must be on a local or POSIX
   filesystem that supports SQLite locking. Use `ulimit` or a container for
   memory/CPU limits; the harness only enforces time and fault limits.
+
+### Collect submissions from the teams' git repositories
+
+Each team keeps its bot in its **own public GitHub repository** (`bot.py` at the
+top level) and gives you a team name and the address. You list them in a teams
+file, and the arena pulls every repository, checks it, and plays it. Teams
+update their bot by pushing; there is nothing for you to copy.
+
+```bash
+cp teams.example.txt teams.txt        # PowerShell: Copy-Item teams.example.txt teams.txt
+# edit teams.txt: one "team-name  https://github.com/owner/repo  [branch]" per line
+
+python -m arena ladder --teams teams.txt --deals 100       # rolling: pulls every minute
+python -m arena sync --teams teams.txt --once              # just fetch and check, once
+```
+
+* **`ladder --teams`** pulls every repository once at the start (so the first
+  ladder already includes everyone), then again every `--sync-interval` seconds
+  (default 60) in the background, and re-plays only the teams whose bot changed.
+  Combine it with `--submissions folder/` if some teams hand you files instead.
+* **All at once at a deadline:** `sync --once`, then `freeze`, then
+  `final --deals 1000`. No ladder is needed. `sync --once` exits non-zero if any
+  team has a problem, and lists each one.
+* **Edit `teams.txt` while it runs:** it is re-read on every pass, so you can add
+  a team mid-event. A mistake in the edit is reported once and the previous list
+  keeps being used. Every problem in the file is reported with its line number.
+* **What is accepted:** public `https://` repositories only, no password or
+  token in the address, `bot.py` at the top level, up to 25 MB, each repository
+  and each team once. A broken push never replaces a working bot.
+* **What a team sees:** the Submissions page of the results website says whether
+  each team's latest fetch worked, and why not (wrong address, private
+  repository, no `bot.py`, copied code, a failed check). Give teams
+  [SUBMITTING.md](SUBMITTING.md).
+* **Not instant:** the arena polls; it is not told when a team pushes. Allow a
+  minute plus the match time, and a few minutes more for the website.
+* **Trust:** a team's code runs on your computer with no sandbox, so only add
+  teams you trust to follow the rules.
 
 ### Show the results (website)
 
