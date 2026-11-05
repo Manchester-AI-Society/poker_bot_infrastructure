@@ -121,8 +121,13 @@ def execute_job(root: str, job_id: int, settings: Settings) -> None:
         log_dir = store.root / "logs" / version.team / version.hash
         log_name = f"{job.kind}-vs-{opponent.team}"
         stale = log_dir / f"{log_name}.log"
-        if stale.exists():
-            stale.unlink()
+        try:
+            stale.unlink(missing_ok=True)
+        except OSError:
+            # On Windows a log still held open by an orphaned bot process
+            # (after a forced stop) cannot be deleted. That must not fail the
+            # whole pairing: the new run appends to it instead.
+            pass
         return contestant_from_spec(
             version.path,
             name=version.team,

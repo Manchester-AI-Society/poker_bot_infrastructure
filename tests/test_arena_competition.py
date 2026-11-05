@@ -277,3 +277,34 @@ def test_running_jobs_left_by_a_dead_scheduler_are_requeued(store, bots):
 
     run_pending(store, quick(5, 1), kinds=("ladder",))
     assert store.job_counts("ladder") == {"done": 1}
+
+
+def test_a_stale_log_that_cannot_be_deleted_does_not_fail_the_pairing(
+    store, bots, monkeypatch
+):
+    """On Windows a log held open by an orphaned bot process (left by a forced
+    stop of an earlier run) cannot be deleted; that used to fail the job with
+    PermissionError."""
+    from arena.scheduler import execute_job
+
+    for name in ("caller", "folder"):
+        submit(store, name, str(bots[name]))
+    enqueue_ladder(store, deals=4)
+    job = store.claim_job("test-worker", ("ladder",))
+    for team in ("caller", "folder"):
+        folder = next(store.root.joinpath("logs", team).iterdir())
+        (folder / "ladder-vs-folder.log").write_text("old")
+        (folder / "ladder-vs-caller.log").write_text("old")
+
+    original = Path.unlink
+
+    def locked(self, *args, **kwargs):
+        if self.suffix == ".log":
+            raise PermissionError(13, "being used by another process")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", locked)
+
+    execute_job(str(store.root), job.id, quick(4, 1))  # must not raise
+
+    assert store.results("ladder")
