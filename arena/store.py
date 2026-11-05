@@ -110,6 +110,29 @@ class Store:
             ).fetchone()
         return int(row["value"])
 
+    def set_sync_status(self, team: str, status: str, message: str) -> None:
+        """Remembers the outcome of the latest attempt to fetch ``team``."""
+        value = json.dumps(
+            {"status": status, "message": message, "at": time.time()}
+        )
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (f"sync:{team}", value),
+            )
+
+    def sync_statuses(self) -> Dict[str, Dict[str, Any]]:
+        """Latest fetch outcome per team: status, message and time."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT key, value FROM meta WHERE key LIKE 'sync:%'"
+            ).fetchall()
+        return {
+            row["key"].removeprefix("sync:"): json.loads(row["value"])
+            for row in rows
+        }
+
     # -- versions -------------------------------------------------------
 
     def add_version(

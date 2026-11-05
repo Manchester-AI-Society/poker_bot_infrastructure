@@ -7,6 +7,8 @@ Commands for participants:
 
 Commands for the organiser (state lives under --root, default arena_data):
     submit TEAM SRC   add a bot version from a folder, file or git URL
+    sync              pull every team's bot from its own git repository, as
+                      listed in a teams file (and keep doing it)
     ladder            run the live ladder (pick up submissions, play
                       pairings, keep results/leaderboard.json current)
     freeze            snapshot the current versions for the final
@@ -48,6 +50,13 @@ from .scheduler import (
 )
 from .specs import contestant_from_spec
 from .store import Store
+from .sync import (
+    Reporter,
+    TeamsFile,
+    TeamsFileError,
+    start_background,
+    sync_teams,
+)
 from .validate import smoke_test
 
 
@@ -167,6 +176,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
             args.source,
             validate=not args.no_validate,
             move_timeout=args.move_timeout,
+            branch=args.branch,
         )
     except SubmissionError as exc:
         print(f"REJECTED: {exc}")
@@ -182,6 +192,29 @@ def cmd_ladder(args: argparse.Namespace) -> int:
     store = Store(args.root)
     settings = _settings(args)
     submissions = Path(args.submissions) if args.submissions else None
+    sync_stop = None
+    if args.teams:
+        teams = TeamsFile(args.teams)
+        try:
+            sources = teams.current()
+        except TeamsFileError as exc:
+            print(f"cannot use {args.teams}:\n{exc}")
+            return 2
+        sync_args = dict(
+            move_timeout=args.move_timeout, clone_timeout=args.clone_timeout
+        )
+        reporter = Reporter()
+        # One pass now, so the first ladder already includes every team.
+        for line in reporter.lines(sync_teams(store, sources, **sync_args)):
+            print(line)
+        if not args.once:
+            sync_stop = start_background(
+                store,
+                teams,
+                args.sync_interval,
+                reporter=reporter,
+                **sync_args,
+            )
 
     last_scan = [float("-inf")]
 
@@ -210,19 +243,54 @@ def cmd_ladder(args: argparse.Namespace) -> int:
             f"failed={counts.get('failed', 0)}"
         )
 
-    while True:
-        run_pending(
-            store,
-            settings,
-            kinds=("ladder",),
-            tick=tick,
-            on_progress=progress,
-        )
-        board = _publish(store, "ladder")
-        print(board_module.format_table(board))
-        if args.once:
-            return 0
-        time.sleep(args.interval)
+    try:
+        while True:
+            run_pending(
+                store,
+                settings,
+                kinds=("ladder",),
+                tick=tick,
+                on_progress=progress,
+            )
+            board = _publish(store, "ladder")
+            print(board_module.format_table(board))
+            if args.once:
+                return 0
+            time.sleep(args.interval)
+    finally:
+        if sync_stop is not None:
+            sync_stop.set()
+
+
+def cmd_sync(args: argparse.Namespace) -> int:
+    store = Store(args.root)
+    teams = TeamsFile(args.teams)
+    try:
+        teams.current()
+    except TeamsFileError as exc:
+        print(f"cannot use {args.teams}:\n{exc}")
+        return 2
+    reporter = Reporter()
+    options = dict(
+        move_timeout=args.move_timeout, clone_timeout=args.clone_timeout
+    )
+    try:
+        while True:
+            results = sync_teams(store, teams.current(), **options)
+            for line in reporter.lines(results):
+                print(line)
+            if args.once:
+                problems = [r for r in results if not r.ok]
+                if problems:
+                    print(
+                        f"{len(problems)} of {len(results)} teams have "
+                        "a problem (listed above)"
+                    )
+                return 1 if problems else 0
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        print("stopped")
+        return 0
 
 
 def cmd_freeze(args: argparse.Namespace) -> int:
@@ -430,6 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("source", help="folder, bot.py or git URL")
     sub.add_argument("--no-validate", action="store_true")
     sub.add_argument("--move-timeout", type=float, default=1.0)
+    sub.add_argument("--branch", help="branch to use when SOURCE is a git URL")
 
     sub = organiser("ladder", "run the live ladder", cmd_ladder, play=True)
     sub.add_argument("--deals", type=int, default=200)
@@ -439,6 +508,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub.add_argument("--once", action="store_true")
     sub.add_argument("--interval", type=float, default=10.0)
+    sub.add_argument(
+        "--teams",
+        help="teams file (team + git URL per line): pull each team's repo",
+    )
+    sub.add_argument(
+        "--sync-interval",
+        type=float,
+        default=60.0,
+        help="seconds between pulls of the teams' repositories",
+    )
+    sub.add_argument("--clone-timeout", type=float, default=90.0)
+
+    sub = organiser(
+        "sync", "pull each team's bot from its git repository", cmd_sync
+    )
+    sub.add_argument("--teams", required=True, help="teams file")
+    sub.add_argument("--once", action="store_true")
+    sub.add_argument("--interval", type=float, default=60.0)
+    sub.add_argument("--move-timeout", type=float, default=1.0)
+    sub.add_argument("--clone-timeout", type=float, default=90.0)
 
     sub = organiser("freeze", "snapshot versions for the final", cmd_freeze)
     sub.add_argument("--move-timeout", type=float, default=1.0)
