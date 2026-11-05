@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Sequence
 
+from .procs import pid_alive, worker_pid
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -370,13 +372,29 @@ class Store:
             )
 
     def requeue_running(self) -> int:
-        """Puts jobs left 'running' by a dead scheduler back in the queue."""
+        """Puts jobs left 'running' by a DEAD scheduler back in the queue.
+
+        A job whose scheduler is still alive is left alone. Two schedulers can
+        share one results folder (a ladder and a final, say); taking the other
+        one's running job would run the same pairing twice at once, and both
+        runs would write the same hand-history file.
+        """
+        released = 0
         with self._conn() as conn:
-            cursor = conn.execute(
-                "UPDATE jobs SET status='queued', worker=NULL "
-                "WHERE status='running'"
-            )
-        return cursor.rowcount
+            running = conn.execute(
+                "SELECT id, worker FROM jobs WHERE status='running'"
+            ).fetchall()
+            for row in running:
+                pid = worker_pid(row["worker"])
+                if pid is not None and pid_alive(pid):
+                    continue
+                cursor = conn.execute(
+                    "UPDATE jobs SET status='queued', worker=NULL "
+                    "WHERE id=? AND status='running' AND worker IS ?",
+                    (row["id"], row["worker"]),
+                )
+                released += cursor.rowcount
+        return released
 
     def requeue_failed(self) -> int:
         """Drops failed jobs so their pairings can be queued again."""
