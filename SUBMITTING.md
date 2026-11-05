@@ -79,7 +79,19 @@ my-poker-bot/
   data/           <- optional
 ```
 
-## 4. Tell the organiser two things
+## 4. Register your team
+
+If the site has a **Register** tab, use it: enter your team name and your
+repository address (and a branch, if you do not use the default), then press
+**Open GitHub to register**. GitHub opens a registration form already filled
+in; press **Submit new issue** while signed in as **the GitHub account that
+owns the repository**. Registrations from any other account are rejected, so
+nobody can register your repository for you. The arena replies on the issue,
+and once the organiser approves it your bot is fetched and starts playing.
+To change repository, register the same team again from the same account;
+to withdraw, close the issue.
+
+If there is no Register tab, tell the organiser two things instead:
 
 * your **team name**: lowercase letters, digits, `-` and `_`, up to 32
   characters (for example `team-fox`);

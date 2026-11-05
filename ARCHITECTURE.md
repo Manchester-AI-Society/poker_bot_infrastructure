@@ -386,6 +386,23 @@ Options: `--title`, `--submit-text` / `--submit-text-file`, `--replays`
 Open it through the server, not by double-clicking `index.html`: browsers block
 ES modules and `fetch` on `file://` pages.
 
+### Registration
+
+With `--registry OWNER/REPO` on `sync` or `ladder`, teams register through
+issues in that GitHub repository (`registry-template/` holds the issue form).
+`arena/registry.py` parses each issue, then decides in order of issue number:
+valid name, URL and branch; the issue's author owns the repository (or the
+issue has the `verified` label); the name and repository are not taken by
+another team, and the account has not hit `--max-per-user`; accepted when the
+issue has the `approved` label (or with `--open-registration`), otherwise
+pending. Accepted teams become sources for the same sync as the teams file.
+Name claims are stored, so a name is first come first served and survives an
+issue being edited. A newer issue from an account replaces its older one, and
+closing an issue withdraws it. The arena comments on an issue once per
+outcome. The export lists waiting and rejected registrations in
+`teams.json`, and `--registry-repo` makes the site show a Register page whose
+button opens the pre-filled issue form.
+
 ### Where to host it
 
 | Option | Notes |
@@ -451,9 +468,15 @@ automated browser test in the repository.
 * **Submissions are public repositories, pulled on a schedule.** Private
   repositories are not supported (the arena has no credentials for other
   people's accounts), and nothing tells the arena when a team pushes, so
-  there is up to a minute of delay. A team can only be added by the organiser
-  editing the teams file; there is no self-service registration, and the
-  teams file does not prove who owns a repository.
+  there is up to a minute of delay. Teams are added by the organiser editing
+  the teams file, or by registering through a GitHub issue (see section 9);
+  the teams file does not prove who owns a repository, a registration does.
+* **Registration trusts GitHub's idea of the author.** The arena checks that
+  the issue's author is the repository's owner, so a team organisation's repo
+  needs the organiser's `verified` label. It needs a public registry repo
+  (anyone can open an issue) and `gh` or a token to read it; a GitHub outage
+  keeps the last good list. Approval is a manual label, because a registered
+  repository's code runs unsandboxed.
 * **The website is read-only and public by construction.** There is no login,
   no upload, and no team-private page: a static host cannot tell teams apart.
   Team logs stay on the organiser's machine.

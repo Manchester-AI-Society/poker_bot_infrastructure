@@ -204,6 +204,22 @@ python -m arena sync --teams teams.txt --once              # just fetch and chec
 * **All at once at a deadline:** `sync --once`, then `freeze`, then
   `final --deals 1000`. No ladder is needed. `sync --once` exits non-zero if any
   team has a problem, and lists each one.
+* **Self-service registration:** instead of (or as well as) a teams file,
+  teams can register on the site's **Register** page, which opens an issue in a
+  public GitHub repository you set up (`registry-template/` has the issue form
+  and the steps). The arena proves the issue's author owns the repository,
+  and you approve a team by labelling its issue `approved`:
+
+  ```bash
+  python -m arena ladder --registry your-org/poker-registry --deals 100
+  python -m arena sync   --registry your-org/poker-registry --once
+  python -m arena export --registry-repo your-org/poker-registry --serve 8000
+  ```
+
+  Add `--teams teams.txt` to use both (the file wins on a duplicate), or
+  `--open-registration` to skip approval on a trusted, private event. A
+  registered repository's code runs on your machine unsandboxed, which is why
+  approval is the default. Needs `gh` signed in, or `GITHUB_TOKEN`.
 * **Edit `teams.txt` while it runs:** it is re-read on every pass, so you can add
   a team mid-event. A mistake in the edit is reported once and the previous list
   keeps being used. Every problem in the file is reported with its line number.
