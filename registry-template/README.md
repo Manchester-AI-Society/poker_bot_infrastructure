@@ -10,6 +10,9 @@ you approve, fetches and plays that repository's `bot.py`.
    (public so teams can open issues without being added, and so the Register
    page can show what is waiting).
 2. Copy the `.github/` folder from this directory into it and push.
+   If the registry is an existing repository that also takes ordinary issues,
+   copy only `register.yml`: `config.yml` turns blank issues off for the whole
+   repository. GitHub reads issue forms from the **default branch** only.
 3. Create these labels in the repository (Issues -> Labels):
    - `registration`  - added automatically by the form
    - `approved`      - you add this to let a team in
