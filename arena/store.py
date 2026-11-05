@@ -155,6 +155,14 @@ class Store:
             ).fetchall()
         return [Version(**dict(row)) for row in rows]
 
+    def all_versions(self) -> List[Version]:
+        """Every submitted version, valid or not, oldest first."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM versions ORDER BY created_at, hash"
+            ).fetchall()
+        return [Version(**dict(row)) for row in rows]
+
     def current_hash(self, team: str) -> Optional[str]:
         with self._conn() as conn:
             row = conn.execute(
@@ -348,7 +356,8 @@ class Store:
     ) -> List[Dict[str, Any]]:
         """Finished pairings of a kind, newest results only per pair."""
         query = (
-            "SELECT j.id, j.a_hash, j.b_hash, j.deals, r.data, r.hands_path "
+            "SELECT j.id, j.a_hash, j.b_hash, j.deals, j.finished_at, "
+            "r.data, r.hands_path "
             "FROM jobs j JOIN results r ON r.job_id=j.id "
             "WHERE j.status='done' AND j.kind=?"
         )
@@ -366,6 +375,7 @@ class Store:
                 "b_hash": row["b_hash"],
                 "deals": row["deals"],
                 "hands_path": row["hands_path"],
+                "finished_at": row["finished_at"],
                 **json.loads(row["data"]),
             }
             for row in rows
