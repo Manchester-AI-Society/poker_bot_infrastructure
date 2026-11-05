@@ -63,11 +63,11 @@ function chooseKind(requested) {
 }
 
 function showNoData() {
-  // Distinguish "nothing published yet" from "could not load", so an
-  // organiser can tell a missing export from a broken connection.
+  // Show the real reason when loading failed (a missing export, a broken
+  // connection), so an organiser can tell them apart; otherwise just loading.
   const text = data.error
     ? `The results could not be loaded (${data.error.message}). This page tries again every few seconds.`
-    : 'No results have been published yet. This page checks again every few seconds.';
+    : 'Loading results…';
   main.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'empty card' }, text)));
 }
 
