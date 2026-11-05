@@ -486,3 +486,160 @@ def test_every_outcome_has_a_plain_message():
     assert "fetched within a minute" in feedback_text(Decision(r, "accepted"))
     assert "approval" in feedback_text(Decision(r, "pending", "x"))
     assert "not accepted" in feedback_text(Decision(r, "rejected", "because"))
+
+
+# -- the command line --------------------------------------------------
+
+
+def fake_fetch(monkeypatch, github):
+    """Makes the commands use a fake GitHub and a fetch that clones nothing."""
+    import arena.cli as cli
+    import arena.sync as sync
+
+    fetched = []
+
+    def fake_submit(store, team, url, **kwargs):
+        from arena.intake import SubmitResult
+
+        fetched.append((team, url, kwargs.get("branch")))
+        return SubmitResult(team, "abc123def456", "valid", "played 40 hands")
+
+    monkeypatch.setattr(cli, "GitHubIssues", lambda repo: github)
+    monkeypatch.setattr(sync, "submit", fake_submit)
+    return fetched
+
+
+def run(*args):
+    from arena.cli import main
+
+    return main(list(args))
+
+
+def test_sync_pulls_only_the_accepted_registrations(
+    tmp_path, monkeypatch, capsys
+):
+    github = FakeGitHub(
+        [
+            issue(1, "alice", "fox", labels=["approved"], branch="dev"),
+            issue(2, "bob", "owl"),  # waiting for approval
+            issue(
+                3,
+                "carol",
+                "bear",
+                repo="https://github.com/alice/x",
+                labels=["approved"],
+            ),  # not carol's repository
+        ]
+    )
+    fetched = fake_fetch(monkeypatch, github)
+
+    code = run(
+        "sync",
+        "--registry",
+        "club/registry",
+        "--once",
+        "--root",
+        str(tmp_path / "d"),
+    )
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert fetched == [("fox", "https://github.com/alice/fox-bot", "dev")]
+    assert "#2 owl (bob): pending" in out
+    assert "#3 bear (carol): rejected" in out
+
+
+def test_open_registration_pulls_without_the_approved_label(
+    tmp_path, monkeypatch
+):
+    github = FakeGitHub([issue(1, "alice", "fox")])
+    fetched = fake_fetch(monkeypatch, github)
+
+    run(
+        "sync",
+        "--registry",
+        "club/registry",
+        "--once",
+        "--open-registration",
+        "--root",
+        str(tmp_path / "d"),
+    )
+
+    assert [team for team, _, _ in fetched] == ["fox"]
+
+
+def test_the_per_account_limit_is_a_command_line_option(tmp_path, monkeypatch):
+    github = FakeGitHub(
+        [
+            issue(1, "alice", "fox", labels=["approved"]),
+            issue(2, "alice", "owl", labels=["approved"]),
+        ]
+    )
+    fetched = fake_fetch(monkeypatch, github)
+
+    run(
+        "sync",
+        "--registry",
+        "club/registry",
+        "--once",
+        "--max-per-user",
+        "2",
+        "--root",
+        str(tmp_path / "d"),
+    )
+
+    assert sorted(team for team, _, _ in fetched) == ["fox", "owl"]
+
+
+def test_sync_needs_a_teams_file_or_a_registry(tmp_path, capsys):
+    code = run("sync", "--once", "--root", str(tmp_path / "d"))
+
+    assert code == 2
+    assert "--teams FILE, --registry OWNER/REPO" in capsys.readouterr().out
+
+
+def test_a_registry_name_that_is_not_owner_slash_repo_is_refused(
+    tmp_path, capsys
+):
+    code = run(
+        "sync",
+        "--registry",
+        "not a repo",
+        "--once",
+        "--root",
+        str(tmp_path / "d"),
+    )
+
+    assert code == 2
+    assert "OWNER/REPO" in capsys.readouterr().out
+
+
+def test_a_teams_file_and_the_registry_work_together_first_listing_wins(
+    tmp_path, monkeypatch, capsys
+):
+    teams = tmp_path / "teams.txt"
+    teams.write_text("fox https://github.com/organiser/fox-bot\n")
+    github = FakeGitHub(
+        [
+            issue(1, "alice", "fox", labels=["approved"]),  # clashes with file
+            issue(2, "bob", "owl", labels=["approved"]),
+        ]
+    )
+    fetched = fake_fetch(monkeypatch, github)
+
+    run(
+        "sync",
+        "--teams",
+        str(teams),
+        "--registry",
+        "club/registry",
+        "--once",
+        "--root",
+        str(tmp_path / "d"),
+    )
+
+    assert sorted(fetched) == [
+        ("fox", "https://github.com/organiser/fox-bot", None),
+        ("owl", "https://github.com/bob/owl-bot", None),
+    ]
+    assert "fox is listed twice" in capsys.readouterr().out

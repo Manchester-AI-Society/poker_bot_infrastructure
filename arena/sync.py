@@ -256,6 +256,41 @@ class TeamsFile:
         return list(self._good)
 
 
+class CombinedSources:
+    """Several sources of teams (a teams file, the registry) used as one.
+
+    Earlier sources win: a team or repository that two sources both list is
+    taken from the first, and the clash is reported once.
+    """
+
+    def __init__(self, *sources) -> None:
+        self.sources = sources
+        self._reported: set = set()
+
+    def current(
+        self, report: Callable[[str], None] = print
+    ) -> List[TeamSource]:
+        merged: List[TeamSource] = []
+        teams: set = set()
+        repos: set = set()
+        for source in self.sources:
+            for item in source.current(report):
+                repo = _repo_key(item.url)
+                if item.team in teams or repo in repos:
+                    key = (item.team, repo)
+                    if key not in self._reported:
+                        self._reported.add(key)
+                        report(
+                            f"[sync] {item.team} is listed twice "
+                            "(teams file and registry); using the first"
+                        )
+                    continue
+                teams.add(item.team)
+                repos.add(repo)
+                merged.append(item)
+        return merged
+
+
 def run_loop(
     store: Store,
     teams: TeamsFile,

@@ -61,6 +61,9 @@ class ExportOptions:
     # Markdown for the 'How to submit' page (normally SUBMITTING.md);
     # empty means the site has no such page.
     guide: str = ""
+    # OWNER/REPO of the registry (issues are registrations). Empty means
+    # the site has no Register page.
+    registry_repo: str = ""
 
     def validate(self) -> None:
         if self.replays not in REPLAY_POLICIES:
@@ -69,6 +72,13 @@ class ExportOptions:
             raise ExportError(f"reveal must be one of {REVEAL_MODES}")
         if self.max_replay_hands < 0:
             raise ExportError("max_replay_hands cannot be negative")
+        if self.registry_repo and not re.match(
+            r"^[\w.-]+/[\w.-]+$", self.registry_repo
+        ):
+            raise ExportError(
+                "registry_repo must look like OWNER/REPO, "
+                f"not {self.registry_repo!r}"
+            )
 
     def fingerprint(self) -> str:
         return (
@@ -365,6 +375,30 @@ def _team_entries(
     return teams
 
 
+def _registration_entries(store: Store) -> List[Dict[str, Any]]:
+    """Registrations that are not (yet) teams: waiting or rejected.
+
+    Accepted ones become teams and appear there. The reasons are the
+    arena's own plain sentences; the account names are GitHub's public
+    issue authors.
+    """
+    entries = []
+    for number, record in sorted(store.registrations().items()):
+        if record.get("status") == "accepted":
+            continue
+        entries.append(
+            {
+                "issue": number,
+                "team": record.get("team", ""),
+                "user": record.get("user", ""),
+                "status": record.get("status", ""),
+                "message": short_message(record.get("message", "")),
+                "at": record.get("at"),
+            }
+        )
+    return entries
+
+
 def _sync_assets(out: Path) -> None:
     """Copies the page assets, touching only files whose bytes changed."""
     for source in SITE_DIR.rglob("*"):
@@ -485,7 +519,12 @@ def export_site(
         board.pop("generated_at", None)  # the manifest carries the time
         files[f"leaderboard-{kind}.json"] = dumps(board)
         files[f"pairings-{kind}.json"] = dumps(pairings[kind])
-    files["teams.json"] = dumps({"teams": _team_entries(store, final_members)})
+    files["teams.json"] = dumps(
+        {
+            "teams": _team_entries(store, final_members),
+            "registrations": _registration_entries(store),
+        }
+    )
     if "final" not in boards:
         for name in ("leaderboard-final.json", "pairings-final.json"):
             stale = data / name
@@ -511,6 +550,7 @@ def export_site(
         + options.title.encode()
         + options.submit_text.encode()
         + options.guide.encode()
+        + options.registry_repo.encode()
     ).hexdigest()[:16]
     generated_at = time.time()
     manifest_path = data / "manifest.json"
@@ -531,6 +571,7 @@ def export_site(
         "title": options.title,
         "submit_text": options.submit_text,
         "has_guide": bool(options.guide.strip()),
+        "registry_repo": options.registry_repo or None,
         "fingerprint": fingerprint,
         "generated_at": generated_at,
         "kinds": list(boards),

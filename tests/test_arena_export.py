@@ -755,3 +755,103 @@ def test_a_truncated_hand_file_is_also_survived(competition, tmp_path):
     victim_id = victim.name.removesuffix(".jsonl.gz")
     pairings = load(out / "data" / "pairings-final.json")
     assert {p["id"]: p for p in pairings}[victim_id]["replay"] is None
+
+
+# -- the registry ------------------------------------------------------
+
+
+def test_the_registry_is_announced_in_the_manifest(tmp_path):
+    store = Store(tmp_path / "arena_data")
+
+    export_site(
+        store.root,
+        tmp_path / "site",
+        ExportOptions(registry_repo="club/arena-registry"),
+    )
+
+    manifest = load(tmp_path / "site/data/manifest.json")
+    assert manifest["registry_repo"] == "club/arena-registry"
+
+
+def test_without_a_registry_the_manifest_says_so(tmp_path):
+    store = Store(tmp_path / "arena_data")
+
+    export_site(store.root, tmp_path / "site", ExportOptions())
+
+    assert load(tmp_path / "site/data/manifest.json")["registry_repo"] is None
+
+
+@pytest.mark.parametrize(
+    "name", ["club", "a b/c", "https://github.com/a/b", "/x"]
+)
+def test_a_registry_name_must_be_owner_slash_repo(tmp_path, name):
+    with pytest.raises(ExportError, match="OWNER/REPO"):
+        ExportOptions(registry_repo=name).validate()
+
+
+def test_only_waiting_and_rejected_registrations_are_listed(tmp_path):
+    store = Store(tmp_path / "arena_data")
+    store.set_registration(
+        1,
+        {
+            "team": "fox",
+            "user": "alice",
+            "repo": "r",
+            "status": "accepted",
+            "message": "",
+        },
+    )
+    store.set_registration(
+        2,
+        {
+            "team": "owl",
+            "user": "bob",
+            "repo": "r2",
+            "status": "pending",
+            "message": "waiting for the organiser's approval",
+        },
+    )
+    store.set_registration(
+        3,
+        {
+            "team": "bear",
+            "user": "mallory",
+            "repo": "r3",
+            "status": "rejected",
+            "message": "the repository belongs to 'alice' but this issue was "
+            "opened by 'mallory'",
+        },
+    )
+
+    export_site(store.root, tmp_path / "site", ExportOptions())
+
+    listed = load(tmp_path / "site/data/teams.json")["registrations"]
+    assert [(r["issue"], r["team"], r["status"]) for r in listed] == [
+        (2, "owl", "pending"),
+        (3, "bear", "rejected"),
+    ]
+    assert "belongs to 'alice'" in listed[1]["message"]
+
+
+def test_a_check_that_changes_nothing_does_not_change_the_published_data(
+    tmp_path,
+):
+    """The registry is polled every minute; like the sync status, nothing that
+    only records 'we looked again' may reach the site."""
+    store = Store(tmp_path / "arena_data")
+    record = {
+        "team": "owl",
+        "user": "bob",
+        "repo": "r",
+        "status": "pending",
+        "message": "waiting",
+    }
+    store.set_registration(2, record)
+    out = tmp_path / "site"
+    export_site(store.root, out, ExportOptions())
+
+    time.sleep(0.05)
+    store.set_registration(2, dict(record))  # looked again, same answer
+    second = export_site(store.root, out, ExportOptions())
+
+    assert not second.changed

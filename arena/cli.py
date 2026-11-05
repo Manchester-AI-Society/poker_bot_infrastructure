@@ -41,6 +41,7 @@ from .export import (
 )
 from .history import HandWriter
 from .intake import SubmissionError, scan_directory, submit
+from .registry import GitHubError, GitHubIssues, Registry
 from .scheduler import (
     Settings,
     enqueue_final,
@@ -51,6 +52,7 @@ from .scheduler import (
 from .specs import contestant_from_spec
 from .store import Store
 from .sync import (
+    CombinedSources,
     Reporter,
     TeamsFile,
     TeamsFileError,
@@ -190,18 +192,45 @@ def cmd_submit(args: argparse.Namespace) -> int:
     return 0 if result.accepted else 1
 
 
+def _team_sources(args: argparse.Namespace, store: Store):
+    """The teams to pull: a teams file, the registry, or both (None: neither).
+
+    Raises TeamsFileError for a bad teams file or registry name.
+    """
+    parts = []
+    if args.teams:
+        parts.append(TeamsFile(args.teams))
+    if args.registry:
+        try:
+            client = GitHubIssues(args.registry)
+        except GitHubError as exc:
+            raise TeamsFileError(str(exc)) from exc
+        parts.append(
+            Registry(
+                client,
+                store,
+                open_registration=args.open_registration,
+                max_per_user=args.max_per_user,
+                feedback=not args.no_feedback,
+            )
+        )
+    if not parts:
+        return None
+    return parts[0] if len(parts) == 1 else CombinedSources(*parts)
+
+
 def cmd_ladder(args: argparse.Namespace) -> int:
     store = Store(args.root)
     settings = _settings(args)
     submissions = Path(args.submissions) if args.submissions else None
     sync_stop = None
-    if args.teams:
-        teams = TeamsFile(args.teams)
-        try:
-            sources = teams.current()
-        except TeamsFileError as exc:
-            print(f"cannot use {args.teams}:\n{exc}")
-            return 2
+    try:
+        teams = _team_sources(args, store)
+        sources = teams.current() if teams is not None else None
+    except TeamsFileError as exc:
+        print(f"cannot use the teams: {exc}")
+        return 2
+    if teams is not None:
         sync_args = dict(
             move_timeout=args.move_timeout, clone_timeout=args.clone_timeout
         )
@@ -266,11 +295,14 @@ def cmd_ladder(args: argparse.Namespace) -> int:
 
 def cmd_sync(args: argparse.Namespace) -> int:
     store = Store(args.root)
-    teams = TeamsFile(args.teams)
     try:
+        teams = _team_sources(args, store)
+        if teams is None:
+            print("give --teams FILE, --registry OWNER/REPO, or both")
+            return 2
         teams.current()
     except TeamsFileError as exc:
-        print(f"cannot use {args.teams}:\n{exc}")
+        print(f"cannot use the teams: {exc}")
         return 2
     reporter = Reporter()
     options = dict(
@@ -434,6 +466,7 @@ def cmd_export(args: argparse.Namespace) -> int:
         max_replay_hands=args.max_replay_hands,
         submit_text=submit_text,
         guide=guide,
+        registry_repo=args.registry_repo or "",
     )
     try:
         options.validate()
@@ -472,6 +505,31 @@ def cmd_export(args: argparse.Namespace) -> int:
         if server is not None:
             server.shutdown()
     return 0
+
+
+def _registry_options(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "--registry",
+        metavar="OWNER/REPO",
+        help="GitHub repository whose issues are team registrations",
+    )
+    sub.add_argument(
+        "--open-registration",
+        action="store_true",
+        help="accept registrations without the organiser's 'approved' label "
+        "(ownership of the repository is still checked)",
+    )
+    sub.add_argument(
+        "--max-per-user",
+        type=int,
+        default=1,
+        help="teams one GitHub account may register (default 1)",
+    )
+    sub.add_argument(
+        "--no-feedback",
+        action="store_true",
+        help="do not comment on registration issues",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -558,11 +616,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="seconds between pulls of the teams' repositories",
     )
     sub.add_argument("--clone-timeout", type=float, default=90.0)
+    _registry_options(sub)
 
     sub = organiser(
         "sync", "pull each team's bot from its git repository", cmd_sync
     )
-    sub.add_argument("--teams", required=True, help="teams file")
+    sub.add_argument("--teams", help="teams file")
+    _registry_options(sub)
     sub.add_argument("--once", action="store_true")
     sub.add_argument("--interval", type=float, default=60.0)
     sub.add_argument("--move-timeout", type=float, default=1.0)
@@ -613,6 +673,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--guide",
         help="markdown for the 'How to submit' page "
         "(default: SUBMITTING.md in the repository)",
+    )
+    sub.add_argument(
+        "--registry-repo",
+        metavar="OWNER/REPO",
+        help="show a Register page that opens an issue in this GitHub "
+        "repository",
     )
     sub.add_argument(
         "--no-guide",
