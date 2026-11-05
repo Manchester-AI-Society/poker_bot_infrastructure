@@ -408,3 +408,71 @@ def test_sync_once_exits_non_zero_when_a_team_has_a_problem(tmp_path, capsys):
     assert code == 1
     assert "alpha: unreachable" in out
     assert "1 of 1 teams have a problem" in out
+
+
+# -- the whole path, from a teams file to matches ----------------------
+
+
+@needs_git
+def test_ladder_with_a_teams_file_pulls_the_repos_and_plays_them(
+    tmp_path, monkeypatch, capsys
+):
+    import arena.sync as module
+
+    # Real teams files only allow https; local repos use file:// here.
+    monkeypatch.setattr(module, "ALLOWED_SCHEMES", ("https://", "file://"))
+    teams = tmp_path / "teams.txt"
+    teams.write_text(
+        f"alpha {make_repo(tmp_path / 'a', CALLER)}\n"
+        f"beta  {make_repo(tmp_path / 'b', FOLDER)}\n"
+        f"ghost {(tmp_path / 'missing').as_uri()}\n"
+    )
+    root = tmp_path / "arena_data"
+
+    code = main(
+        [
+            "ladder",
+            "--teams",
+            str(teams),
+            "--root",
+            str(root),
+            "--deals",
+            "6",
+            "--workers",
+            "2",
+            "--once",
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "[sync] alpha: valid" in out and "[sync] beta: valid" in out
+    assert "[sync] ghost: unreachable" in out
+    assert "pairings 1/1" in out  # the two good teams played each other
+    store = Store(root)
+    assert {v.team for v in store.current_versions()} == {"alpha", "beta"}
+    assert store.sync_statuses()["ghost"]["status"] == "unreachable"
+
+
+@needs_git
+def test_sync_once_then_freeze_and_final_needs_no_ladder(
+    tmp_path, monkeypatch, capsys
+):
+    # The all-at-once flow: ingest with `sync`, then freeze and play the final.
+    import arena.sync as module
+
+    monkeypatch.setattr(module, "ALLOWED_SCHEMES", ("https://", "file://"))
+    teams = tmp_path / "teams.txt"
+    teams.write_text(
+        f"alpha {make_repo(tmp_path / 'a', CALLER)}\n"
+        f"beta  {make_repo(tmp_path / 'b', FOLDER)}\n"
+    )
+    root = str(tmp_path / "arena_data")
+
+    assert main(["sync", "--teams", str(teams), "--root", root, "--once"]) == 0
+    assert main(["freeze", "--root", root]) == 0
+    code = main(["final", "--root", root, "--deals", "6", "--workers", "2"])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "FINAL" in out and "alpha" in out and "beta" in out

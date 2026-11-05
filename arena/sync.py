@@ -65,13 +65,14 @@ def _repo_key(url: str) -> str:
 
 
 def parse_teams(
-    text: str, *, allowed: Tuple[str, ...] = ALLOWED_SCHEMES
+    text: str, *, allowed: Optional[Tuple[str, ...]] = None
 ) -> List[TeamSource]:
     """Parses a teams file. Every problem is reported, with its line number.
 
     URLs are restricted (https only, no credentials) because they end up on a
     ``git clone`` command line and in logs.
     """
+    allowed = allowed or ALLOWED_SCHEMES  # read now, so tests can widen it
     sources: List[TeamSource] = []
     problems: List[str] = []
     teams: Dict[str, int] = {}
