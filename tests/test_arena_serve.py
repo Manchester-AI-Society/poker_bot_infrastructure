@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import threading
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from arena.cli import main
-from arena.serve import make_server
+from arena.serve import SiteServer, make_server
 from arena.store import Store
 
 
@@ -92,3 +94,43 @@ def test_export_command_writes_the_site_and_reports_missing_data(
     )
     assert manifest["title"] == "Cup"
     assert manifest["submit_text"] == "Push to git"
+
+
+def test_the_listen_backlog_is_deep_enough_for_a_page_load():
+    # Measured on Windows: with the stock backlog of 5, 12 full page loads in
+    # Edge took 140 ms each except two that stalled for 29 s and 39 s; with
+    # this backlog all 12 took 122-155 ms. Timing varies too much by machine
+    # to assert in a test, so the cause is pinned instead.
+    assert SiteServer.request_queue_size >= 128
+
+
+def test_connections_are_kept_alive_so_a_page_load_needs_few_of_them(served):
+    host, port = served.removeprefix("http://").split(":")
+    connection = http.client.HTTPConnection(host, int(port), timeout=10)
+    try:
+        connection.request("GET", "/data/m.json")
+        first = connection.getresponse()
+        first.read()
+        connection.request("GET", "/index.html")  # same socket, second request
+        second = connection.getresponse()
+        second.read()
+    finally:
+        connection.close()
+
+    assert first.status == second.status == 200
+    assert (
+        first.version == 11
+    )  # HTTP/1.1, not 1.0 with a fresh socket each time
+
+
+def test_a_burst_of_simultaneous_requests_all_complete(served):
+    def get(index):
+        with urllib.request.urlopen(
+            f"{served}/data/m.json?i={index}", timeout=60
+        ) as response:
+            return response.read()
+
+    with ThreadPoolExecutor(max_workers=60) as pool:
+        bodies = list(pool.map(get, range(60)))
+
+    assert all(json.loads(body) == {"a": 1} for body in bodies)

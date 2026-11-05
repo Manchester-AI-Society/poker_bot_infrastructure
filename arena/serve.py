@@ -1,10 +1,18 @@
 """A tiny static file server for previewing or showing the exported site.
 
-It exists for two reasons the standard ``python -m http.server`` does not
-cover: it sends ``Cache-Control: no-store`` so a page that polls the data
-files always sees the latest export, and it pins MIME types, because on
-Windows Python reads them from the registry, which often maps ``.js`` to
-``text/plain`` and browsers refuse to run an ES module served that way.
+It exists for three reasons the standard ``python -m http.server`` does not
+cover:
+
+* it sends ``Cache-Control: no-store`` so a page that polls the data files
+  always sees the latest export;
+* it pins MIME types, because on Windows Python reads them from the
+  registry, which often maps ``.js`` to ``text/plain`` and browsers refuse to
+  run an ES module served that way;
+* it copes with a page load. A page opens a dozen or more connections at
+  once, but the standard server listens with a backlog of 5. On Windows the
+  overflow is dropped and retried with exponential back-off: measured here,
+  60 simultaneous requests took 19 seconds and some were refused or cut
+  short. A deep backlog and keep-alive connections fix that.
 """
 
 from __future__ import annotations
@@ -28,8 +36,17 @@ MIME_TYPES = {
 }
 
 
+class SiteServer(ThreadingHTTPServer):
+    request_queue_size = 256  # the default of 5 drops a page load's burst
+    daemon_threads = True
+
+
 class SiteHandler(SimpleHTTPRequestHandler):
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map, **MIME_TYPES}
+    # Keep-alive: a page load reuses a few connections instead of opening
+    # one per file. Idle connections are closed after `timeout` seconds.
+    protocol_version = "HTTP/1.1"
+    timeout = 30
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
@@ -44,7 +61,7 @@ def make_server(
 ) -> ThreadingHTTPServer:
     """Builds (does not start) a server for ``directory``."""
     handler = functools.partial(SiteHandler, directory=str(directory))
-    return ThreadingHTTPServer((host, port), handler)
+    return SiteServer((host, port), handler)
 
 
 def lan_address() -> Optional[str]:
