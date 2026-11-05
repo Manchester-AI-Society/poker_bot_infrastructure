@@ -27,6 +27,20 @@ Your bot is one file, `bot.py`, with exactly one `PokerBot` class. Read the top
 of `bots/starter/bot.py`: it explains the three things a bot can do (fold, call,
 raise) and what information it gets.
 
+### What your bot is given
+
+`act(game_state)` receives a `GameState`. These are the details that are easy
+to guess wrong:
+
+| | |
+|---|---|
+| **Cards** | Two-character strings: rank then suit, both upper case, with `T` for ten: `AS`, `TD`, `7H`, `2C`. The suits are `S`, `H`, `D`, `C`. |
+| **pot_size** | The chips in the middle right now, including bets already made this round. At the start of a hand it is 30 (the two blinds). |
+| **call_amount** | The chips you must add to stay in. Zero means you can check. |
+| **legal_actions** | Only the moves you may make, from `fold`, `check`, `call`, `bet`, `raise_to`. `bet` appears only when nobody has bet this round. |
+| **action_history** | This hand so far. Each record has `player_id`, `action`, `amount` and `street`. Actions are `post_small_blind`, `post_big_blind`, `fold`, `check`, `call`, `bet` and `raise_to`. For `call` and `bet` the amount is the chips added; for `raise_to` it is the total you have in this round. |
+| **Your class** | Exactly one `PokerBot` subclass, with a constructor that takes no arguments. |
+
 ## 2. Test it locally
 
 ```bash
@@ -37,7 +51,12 @@ python -m arena match bots/myteam bots/equity_calc --deals 300
 
 This is the same code and the same scoring the competition uses. If `validate`
 says **OK**, your bot will be accepted. If a match shows `faults:` above zero,
-read the log in `arena_logs/`.
+read the log in `arena_logs/` (or in the folder you give with `--log-dir`).
+
+You do not have to keep your bot inside `bots/`: you can point `validate` and
+`match` straight at your own repository folder, for example
+`python -m arena validate ../my-poker-bot`. The name shown in the results is the
+folder's name, so name the folder after your team.
 
 ## 3. Put it in your own repository
 
@@ -46,7 +65,10 @@ read the log in `arena_logs/`.
 2. Put your `bot.py` at the **top level** of it, not in a folder. Any other files
    your bot needs (data files, helper modules) can sit next to it. Keep the
    whole repository under 25 MB.
-3. Push it.
+3. Push it to the branch your repository uses by default, normally `main`. A new
+   local repository may start on `master`: run `git branch -M main` before your
+   first push. (If the organiser fetches `main` and you pushed `master`, they get
+   nothing.)
 
 Your repository should look like this:
 
@@ -106,7 +128,7 @@ last fetch:
 
 | | |
 |---|---|
-| **Time** | 1 second hard limit per move. Do slow set-up (loading files) when your bot starts, not in `act`. There is also a small thinking-time budget over a match; going over it disables your bot for that match. |
+| **Time** | 1 second hard limit per move. Do slow set-up (loading files) when your bot starts, not in `act`. There is also a thinking-time budget over a match of 0.2 seconds per hand on average (100 hands allow 20 seconds in total); going over it disables your bot for that match. |
 | **Mistakes** | A crash, a timeout or an illegal move plays a safe default (check, otherwise fold) and counts as a fault. After 20 faults your bot is replaced by an always-fold stub for that match. |
 | **Memory between hands** | Your bot keeps running across many hands, so you may keep opponent statistics. It restarts for the second half of a match, so do not rely on memory beyond that. |
 | **Libraries** | Python's standard library, and what `requirements.txt` installs. Ask the organiser before relying on anything else. |

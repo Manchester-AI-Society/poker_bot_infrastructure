@@ -125,7 +125,7 @@ test('SUBMITTING.md is read into the structure it was written with', () => {
   assert.equal(inlineText(blocks[0].inline), 'How to submit your bot');
   assert.ok(count('heading') >= 8, 'a heading per step');
   assert.ok(count('code') >= 4, 'the command blocks');
-  assert.equal(count('table'), 2, 'the problems table and the rules table');
+  assert.equal(count('table'), 3, 'what the bot is given, the problems table, the rules table');
   assert.ok(count('list') >= 3);
 });
 
