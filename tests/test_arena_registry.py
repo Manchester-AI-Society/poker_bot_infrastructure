@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+
 import pytest
 
 from arena.registry import (
     GitHubError,
+    GitHubIssues,
     Registration,
     Registry,
     decide,
@@ -643,3 +648,50 @@ def test_a_teams_file_and_the_registry_work_together_first_listing_wins(
         ("owl", "https://github.com/bob/owl-bot", None),
     ]
     assert "fox is listed twice" in capsys.readouterr().out
+
+
+# -- the real ``gh`` command: its bytes are UTF-8, whatever the console says --
+
+
+def fake_gh(tmp_path, monkeypatch, payload):
+    """Run ``gh`` as a real child process that prints UTF-8 bytes.
+
+    The command is redirected to a small script, but the call keeps whatever
+    arguments the code passes to ``subprocess.run`` (including how to decode
+    the output), so a wrong decoding shows up here.
+    """
+    script = tmp_path / "fake_gh.py"
+    script.write_text(
+        "import sys\n"
+        "sys.stdout.buffer.write(open(sys.argv[1], 'rb').read())\n",
+        encoding="utf-8",
+    )
+    data = tmp_path / "answer.json"
+    data.write_bytes(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    real_run = subprocess.run
+
+    def run(command, **kwargs):
+        assert command[0] == "gh"
+        return real_run([sys.executable, str(script), str(data)], **kwargs)
+
+    monkeypatch.setattr("arena.registry.subprocess.run", run)
+    monkeypatch.setattr(GitHubIssues, "_gh_ready", staticmethod(lambda: True))
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+
+
+def test_gh_output_with_non_ascii_text_is_read(tmp_path, monkeypatch):
+    # Found against real GitHub: issues with an emoji or an accented name
+    # broke the read on Windows, where text defaults to a legacy code page.
+    page = [issue(3, "alice", team="fox", title="Ünïcode 🦊 ok")]
+    fake_gh(tmp_path, monkeypatch, [page])
+    got = GitHubIssues("org/registry").issues()
+    assert [i["number"] for i in got] == [3]
+    assert got[0]["title"] == "Ünïcode 🦊 ok"
+
+
+def test_gh_output_that_is_not_json_is_a_github_error(tmp_path, monkeypatch):
+    fake_gh(tmp_path, monkeypatch, "not a list")
+    (tmp_path / "answer.json").write_bytes(b"\xff\xfe garbage")
+    with pytest.raises(GitHubError):
+        GitHubIssues("org/registry").issues()

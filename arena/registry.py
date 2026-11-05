@@ -286,13 +286,17 @@ class GitHubIssues:
                 f"repos/{self.repo}/issues?state=open&per_page=100",
             ],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
             stdin=subprocess.DEVNULL,
         )
         if done.returncode != 0:
             raise GitHubError((done.stderr or done.stdout).strip()[-300:])
-        pages = json.loads(done.stdout)
+        try:
+            pages = json.loads(done.stdout or "[]")
+        except ValueError as exc:
+            raise GitHubError("gh gave an answer that is not JSON") from exc
         return [i for page in pages for i in page if "pull_request" not in i]
 
     def _via_http(self) -> List[Dict[str, Any]]:
@@ -339,7 +343,8 @@ class GitHubIssues:
                 body,
             ],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
             stdin=subprocess.DEVNULL,
         )
