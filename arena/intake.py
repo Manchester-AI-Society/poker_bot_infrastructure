@@ -9,18 +9,20 @@ result can name exactly which code produced it.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from .store import Store
 from .validate import smoke_test
 
 TEAM_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$")
 MAX_FILES = 2000
 MAX_BYTES = 25 * 1024 * 1024
 IGNORED = ("__pycache__", ".git", ".venv", "venv", ".DS_Store")
@@ -43,9 +45,27 @@ class SubmitResult:
 
 
 def is_git_url(source: str) -> bool:
-    return source.startswith(("http://", "https://", "git@", "ssh://")) or (
-        source.endswith(".git") and not Path(source).exists()
+    return source.startswith(
+        ("http://", "https://", "git@", "ssh://", "file://")
+    ) or (source.endswith(".git") and not Path(source).exists())
+
+
+def _git_environment() -> dict:
+    """An environment in which git can never wait for a person.
+
+    A private repository would otherwise ask for a password. On Windows that
+    is a pop-up window from Git Credential Manager, and a loop that clones
+    twenty repositories would sit waiting on it. With these set, git fails
+    straight away with an authentication error instead.
+    """
+    environment = dict(os.environ)
+    environment.update(
+        GIT_TERMINAL_PROMPT="0",
+        GCM_INTERACTIVE="never",
+        GIT_ASKPASS="echo",
+        SSH_ASKPASS="echo",
     )
+    return environment
 
 
 def _bot_files(root: Path) -> List[Path]:
@@ -83,20 +103,43 @@ def content_hash(root: Path) -> str:
     return digest.hexdigest()[:12]
 
 
-def _materialise(source: str, workdir: Path) -> Path:
+def _materialise(
+    source: str,
+    workdir: Path,
+    branch: Optional[str] = None,
+    clone_timeout: float = 90.0,
+) -> Path:
     """Returns a directory with ``bot.py`` for the given source."""
+    if source.startswith("-"):
+        # Would be read by git as an option, not as a repository.
+        raise SubmissionError("a source cannot start with '-'")
+    if branch is not None and not BRANCH.match(branch):
+        raise SubmissionError(f"not a usable branch name: {branch!r}")
     if is_git_url(source):
         target = workdir / "clone"
+        command = ["git", "-c", "protocol.ext.allow=never", "clone"]
+        command += ["--depth", "1", "--no-tags", "--single-branch"]
+        if branch:
+            command += ["--branch", branch]
+        command += [
+            "--",
+            source,
+            str(target),
+        ]  # "--": source is never an option
         try:
             subprocess.run(
-                ["git", "clone", "--depth", "1", source, str(target)],
+                command,
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=180,
+                stdin=subprocess.DEVNULL,
+                env=_git_environment(),
+                timeout=clone_timeout,
             )
         except subprocess.CalledProcessError as exc:
-            raise SubmissionError(f"git clone failed: {exc.stderr[-300:]}")
+            raise SubmissionError(
+                f"git clone failed: {exc.stderr[-300:]}"
+            ) from exc
         except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
             raise SubmissionError(f"git clone failed: {exc}") from exc
         path = target
@@ -122,6 +165,8 @@ def submit(
     *,
     validate: bool = True,
     move_timeout: float = 1.0,
+    branch: Optional[str] = None,
+    clone_timeout: float = 90.0,
 ) -> SubmitResult:
     """Adds a version of ``team``'s bot; activates it when it validates.
 
@@ -135,7 +180,9 @@ def submit(
         )
 
     with tempfile.TemporaryDirectory() as tmp:
-        folder = _materialise(source, Path(tmp))
+        folder = _materialise(
+            source, Path(tmp), branch=branch, clone_timeout=clone_timeout
+        )
         digest = content_hash(folder)
         existing = store.get_version(digest)
         if existing and existing.team == team:
