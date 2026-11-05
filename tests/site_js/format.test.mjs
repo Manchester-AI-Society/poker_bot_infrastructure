@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { cellColors, matrixMax, scoreAxisMax } from '../../arena/site/js/charts.js';
+import { cellColors, isClipped, matrixMax, scoreAxisMax } from '../../arena/site/js/charts.js';
 import {
   MINUS,
   ago,
@@ -44,6 +44,9 @@ test('ago words', () => {
   assert.equal(ago(null), '');
   assert.equal(plural(1, 'team'), '1 team');
   assert.equal(plural(3, 'team'), '3 teams');
+  assert.equal(plural(190, 'match'), '190 matches');
+  assert.equal(plural(0, 'hand'), '0 hands');
+  assert.equal(plural(1, 'match'), '1 match');
 });
 
 test('hash routes parse and rebuild', () => {
@@ -116,6 +119,18 @@ test('matrix cell text is always readable against its background', () => {
       );
     }
   }
+});
+
+test('one extreme bot cannot squash the score plot', () => {
+  const field = Array.from({ length: 19 }, (_, i) => ({ score: 0.1 * (i - 9) / 3, ci95: 0.15 }));
+  field.push({ score: 12, ci95: 1 }); // an always-shove against a folder
+
+  const max = scoreAxisMax(field);
+
+  assert.ok(max <= 1, `axis limit ${max} should follow the typical teams`);
+  assert.equal(isClipped(12, max), true);
+  assert.equal(isClipped(0.2, max), false);
+  assert.equal(isClipped(null, max), false);
 });
 
 test('axis limits fit every interval and one outlier cannot wash out a matrix', () => {

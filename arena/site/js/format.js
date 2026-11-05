@@ -35,7 +35,9 @@ export function ago(seconds) {
 }
 
 export function plural(count, word) {
-  return `${count} ${word}${count === 1 ? '' : 's'}`;
+  if (count === 1) return `${count} ${word}`;
+  const suffix = /(s|x|z|ch|sh)$/.test(word) ? 'es' : 's';
+  return `${count} ${word}${suffix}`;
 }
 
 export function shortHash(hash) {

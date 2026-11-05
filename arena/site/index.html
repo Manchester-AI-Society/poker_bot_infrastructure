@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Poker Bot Competition</title>
+  <meta name="description" content="Live results for the poker bot competition: leaderboard, head-to-head matrix, matches and hand replays.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white'%3E%E2%99%A0%3C/text%3E%3C/svg%3E">
+  <script>
+    // Apply a saved theme before first paint so the page does not flash.
+    try {
+      var saved = localStorage.getItem('arena-theme');
+      if (saved === 'light' || saved === 'dark') {
+        document.documentElement.setAttribute('data-theme', saved);
+      }
+    } catch (e) { /* storage can be blocked; follow the OS setting */ }
+  </script>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="top" id="top">
+    <a class="brand" href="#/" id="brand">Poker Bot Competition</a>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#/" data-route="">Leaderboard</a>
+      <a href="#/matrix" data-route="matrix">Head-to-head</a>
+      <a href="#/matches" data-route="matches">Matches</a>
+      <a href="#/submissions" data-route="submissions">Submissions</a>
+      <a href="#/tv" data-route="tv">TV mode</a>
+    </nav>
+    <div class="tools">
+      <div class="seg" id="kind-switch" role="group" aria-label="Which results" hidden>
+        <button type="button" data-kind="final">Final</button>
+        <button type="button" data-kind="ladder">Ladder</button>
+      </div>
+      <button type="button" class="ghost" id="theme" aria-label="Switch light and dark theme">Theme</button>
+      <span class="updated" id="updated" role="status" aria-live="polite"></span>
+    </div>
+  </header>
+  <main id="main" tabindex="-1">
+    <p class="loading">Loading results&hellip;</p>
+  </main>
+  <noscript><p class="page">This page needs JavaScript to show the results.</p></noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

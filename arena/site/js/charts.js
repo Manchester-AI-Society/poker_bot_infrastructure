@@ -4,14 +4,22 @@
 import { svg } from './dom.js';
 import { fmtBB, fmtPlain, inkFor, mixHex, niceMax, quantile } from './format.js';
 
-/** Symmetric axis limit that fits every score and its interval. */
+/**
+ * Symmetric axis limit for the score plot. It fits most teams, not every
+ * team: one extreme bot (say, an always-shove against a folder) must not
+ * squash everyone else into a dot at zero. Teams beyond the limit are drawn
+ * as an arrow at the edge, and their exact score stays in the table.
+ */
 export function scoreAxisMax(teams) {
-  let widest = 0;
-  for (const t of teams) {
-    if (t.score == null) continue;
-    widest = Math.max(widest, Math.abs(t.score) + (t.ci95 ?? 0));
-  }
-  return niceMax(Math.max(widest, 0.1));
+  const reach = teams
+    .filter((t) => t.score != null)
+    .map((t) => Math.abs(t.score) + (t.ci95 ?? 0));
+  return niceMax(Math.max(quantile(reach, 0.85), 0.1));
+}
+
+/** True when a score falls outside the axis and is drawn as an edge arrow. */
+export function isClipped(score, max) {
+  return score != null && Math.abs(score) > max;
 }
 
 /**
@@ -73,12 +81,24 @@ export function ciPlot({ score, ci, max, width = 260, height = 30, label }) {
         svg('line', { x1: hi, x2: hi, y1: mid - 4, y2: mid + 4, stroke: 'var(--series)', 'stroke-width': 2 }),
       );
     }
-    children.push(
-      svg('circle', {
-        cx: scaleX(Math.max(-max, Math.min(max, score)), max, width), cy: mid, r: 5,
-        fill: 'var(--series)', stroke: 'var(--surface)', 'stroke-width': 2,
-      }),
-    );
+    if (isClipped(score, max)) {
+      // Off the scale: a triangle pointing outwards at the edge.
+      const dir = score > 0 ? 1 : -1;
+      const edge = scaleX(dir * max, max, width);
+      children.push(
+        svg('polygon', {
+          points: `${edge},${mid} ${edge - dir * 10},${mid - 6} ${edge - dir * 10},${mid + 6}`,
+          fill: 'var(--series)',
+        }),
+      );
+    } else {
+      children.push(
+        svg('circle', {
+          cx: scaleX(score, max, width), cy: mid, r: 5,
+          fill: 'var(--series)', stroke: 'var(--surface)', 'stroke-width': 2,
+        }),
+      );
+    }
   }
   return svg(
     'svg',
