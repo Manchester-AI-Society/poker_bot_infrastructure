@@ -246,3 +246,14 @@ Deviations from the plan above, and what is not built:
   roughly 0.1-0.2 bb/hand per team.
 * H8 (complete hand history) is solved for the arena only; the server's event
   log is unchanged.
+
+### Phase 3 (built)
+
+The results frontend is a **static site** written by `python -m arena export`
+(no server code; shown from the laptop or pushed to any static host), not a web
+application. Pages, hosting options, what is and is not published, and measured
+sizes are in [ARCHITECTURE.md](ARCHITECTURE.md#9-the-results-website). Two
+choices worth knowing: there is no submission form (this harness has no sandbox,
+so a public upload page would let anyone run code on the organiser's machine),
+and replays are published for the final only by default, because they reveal how
+a bot plays.
