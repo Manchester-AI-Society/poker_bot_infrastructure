@@ -235,6 +235,35 @@ python -m arena sync --teams teams.txt --once              # just fetch and chec
 * **Trust:** a team's code runs on your computer with no sandbox, so only add
   teams you trust to follow the rules.
 
+### Timed cycles: replay everything every few minutes
+
+By default the ladder plays a pairing once, and re-plays only the pairings of a
+bot that changed. With `--cycle SECONDS` it instead runs in **rounds**: every
+SECONDS it plays **every** pairing again, on fresh cards, and adds the result to
+what that pairing already has. A pairing's results are pooled exactly as if all
+its deals had been played together, so the confidence intervals keep tightening
+as the event goes on (a bot that pushes a new version starts again from zero,
+because the old hands describe different code).
+
+```bash
+# test: a round every 2 minutes. Event: 300 (5 minutes).
+python -m arena ladder --teams teams.txt --cycle 120 --deals 100
+python -m arena export --out arena_site --loop 30 --git-push
+```
+
+* `--deals` is the number of deals **per pairing per round**. A round must
+  finish inside the cycle; if it does not, the next one starts at once and the
+  command says so. Measured here: 21 pairings of 100 deals take about 6 seconds
+  on a 22-core machine (bot start-up dominates), so size it for your hardware.
+* **One deploy per cycle.** The results of a round stay hidden until the round is
+  complete, so the export only changes (and `--git-push` only pushes) when a
+  whole round has finished, however often `--loop` looks. The site never shows
+  half a round. At 5 minutes over 7 hours that is about 84 deployments.
+* A bot that arrives mid-round joins at the next round.
+* Hand histories: only the newest round of each pairing is kept (older files are
+  deleted), so disk use does not grow with the number of cycles. Scores are not
+  affected.
+
 ### Show the results (website)
 
 `export` turns the results into a **static website**: leaderboard with confidence

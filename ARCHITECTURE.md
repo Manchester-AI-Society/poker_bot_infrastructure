@@ -403,6 +403,28 @@ outcome. The export lists waiting and rejected registrations in
 `teams.json`, and `--registry-repo` makes the site show a Register page whose
 button opens the pre-filled issue form.
 
+### Timed cycles
+
+`ladder --cycle SECONDS` runs rounds instead of a one-off ladder. A job's key is
+now (kind, freeze, **round**, pair), and the round is part of the pairing's
+seed, so each round is a fresh sample (round 0 keeps its old seed). Each round
+queues every pairing of the current versions. `Store.results` pools a pairing's
+rounds: total deals, deal-weighted mean, and a standard error recovered from each
+round's own, which equals the statistics of all deals together (tested against
+the direct computation). Pooling is keyed by bot version hash, so a new version
+starts fresh.
+
+The store records the last finished round (`ladder_round_done`) and hides
+results of later rounds, so a published table is always whole rounds. This is
+what makes the site redeploy once per cycle: the export's fingerprint only
+changes when a round completes. Older rounds' hand files are pruned after each
+round. Databases from before cycles are upgraded in place (the job table gains a
+`round` column, existing jobs are round 0).
+
+Limits: a round that overruns the cycle delays the next (it starts at once);
+a bot pushed mid-round waits for the next round; `--replays all` would publish a
+new replay file per pairing per cycle, so keep the default during cycling.
+
 ### Where to host it
 
 | Option | Notes |
