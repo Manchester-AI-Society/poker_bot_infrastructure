@@ -156,6 +156,85 @@ class Store:
             for row in rows
         }
 
+    # -- registrations (teams that signed up through the registry) -----
+
+    def team_claim(self, team: str) -> Optional[Dict[str, Any]]:
+        """Who first had ``team`` accepted, or None. Names stay claimed."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key=?", (f"claim:{team}",)
+            ).fetchone()
+        return json.loads(row["value"]) if row else None
+
+    def claim_team(self, team: str, user: str, issue: int) -> bool:
+        """Claims a team name for an account; the first claim wins."""
+        value = json.dumps({"user": user, "issue": issue, "at": time.time()})
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO meta(key, value) VALUES (?, ?)",
+                (f"claim:{team}", value),
+            )
+        return cursor.rowcount == 1
+
+    def set_registration(self, issue: int, record: Dict[str, Any]) -> None:
+        """Saves the latest decision for a registration issue.
+
+        The marker for which outcome was already commented on is kept, so a
+        registrant is not told the same thing every pass.
+        """
+        key = f"reg:{issue}"
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key=?", (key,)
+            ).fetchone()
+            previous = json.loads(row["value"]) if row else {}
+            merged = {**record, "feedback": previous.get("feedback")}
+            if previous and all(
+                previous.get(k) == merged.get(k) for k in merged
+            ):
+                return  # nothing changed: leave the stored time alone
+            merged["at"] = time.time()
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, json.dumps(merged)),
+            )
+
+    def set_registration_feedback(self, issue: int, marker: str) -> None:
+        key = f"reg:{issue}"
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key=?", (key,)
+            ).fetchone()
+            if row is None:
+                return
+            record = json.loads(row["value"])
+            record["feedback"] = marker
+            conn.execute(
+                "UPDATE meta SET value=? WHERE key=?",
+                (json.dumps(record), key),
+            )
+
+    def registrations(self) -> Dict[int, Dict[str, Any]]:
+        """Latest decision per registration issue number."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT key, value FROM meta WHERE key LIKE 'reg:%'"
+            ).fetchall()
+        return {
+            int(row["key"].removeprefix("reg:")): json.loads(row["value"])
+            for row in rows
+        }
+
+    def drop_registrations_except(self, issues: set) -> None:
+        """Forgets registrations whose issue is gone or closed (withdrawn)."""
+        for number in list(self.registrations()):
+            if number not in issues:
+                with self._conn() as conn:
+                    conn.execute(
+                        "DELETE FROM meta WHERE key=?", (f"reg:{number}",)
+                    )
+
     # -- versions -------------------------------------------------------
 
     def add_version(
