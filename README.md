@@ -81,6 +81,7 @@ first bot is winning; the interval says how sure we are.
 ### For participants: write and test a bot
 
 1. Copy the starter: `cp -r bots/starter bots/myteam` (a folder with a `bot.py`).
+   Six more example bots with different styles are in `bots/` ([bots/README.md](bots/README.md)).
 2. Your `bot.py` must define **exactly one** `PokerBot` subclass with a
    no-argument constructor. `act(game_state)` returns `Action.fold()`,
    `Action.call()` (checks when nothing is owed) or `Action.raise_to(total)`
@@ -646,7 +647,7 @@ python benchmarks/run_benchmarks.py --json-output benchmarks/latest.json
 ```
 arena/          Competition harness: bot host, duplicate matches, ladder, final, CLI
 arena/site/     The results website (HTML, CSS, JavaScript), copied out by `arena export`
-bots/           Starter bot (copy it to begin)
+bots/           Starter bot and six example bots with different styles (see bots/README.md)
 player_sdk/     Player SDK: play(), PokerBot interface, WS + HTTP transports, CLI
 admin_sdk/      Admin SDK: match lifecycle management
 server/         FastAPI routers, auth, websocket gateway

@@ -218,3 +218,5 @@ __marimo__/
 arena_data/
 arena_site/
 arena_logs/
+# Local test teams for trying the ladder (copy bots/ examples in here)
+submissions/
