@@ -1,0 +1,336 @@
+# Competition architecture
+
+This describes how the **bot competition** works: the `arena/` package.
+Nothing in it uses HTTP, WebSockets or any network service. Bots are ordinary
+child processes on the organiser's machine, and all state is local files plus
+one SQLite database.
+
+The older HTTP/WebSocket match server (`server/`, `player_sdk.play()`,
+`admin_sdk`) still exists in the repository for live network matches, but the
+competition does not use it. See [the last section](#what-the-competition-does-not-use).
+
+Related documents: [README.md](README.md) (quick start),
+[DESIGN.md](DESIGN.md) (why this design was chosen),
+[AUDIT.md](AUDIT.md) (rules and robustness audit).
+
+## 1. The picture
+
+```mermaid
+flowchart TB
+    subgraph People
+        T["Teams<br/>write bot.py"]
+        O["Organiser<br/>runs python -m arena ..."]
+    end
+
+    subgraph Machine["One machine: laptop or one HPC node"]
+        CLI["arena.cli<br/>match / validate / submit / ladder / freeze / final / leaderboard"]
+
+        subgraph Intake["Intake"]
+            IN["intake.py<br/>copy, hash, validate"]
+        end
+
+        subgraph State["State on disk (arena_data/)"]
+            DB[("arena.sqlite<br/>versions, jobs, results")]
+            VER["versions/team/hash/<br/>immutable copies"]
+            HND["hands/*.jsonl.gz<br/>full hand histories"]
+            LOG["logs/team/hash/*.log<br/>private bot output"]
+            RES["results/*.json<br/>leaderboard, final"]
+        end
+
+        subgraph Sched["Scheduler (arena.scheduler)"]
+            Q["job queue<br/>one job = one pairing"]
+            POOL["process pool<br/>one worker per pairing"]
+        end
+
+        subgraph Pairing["Inside one worker"]
+            DUEL["duel.py<br/>seeded deals, played twice"]
+            TAB["table.py<br/>one hand at a time"]
+            ENG["game/ engine<br/>rules, pots, showdown"]
+            C1["Contestant A<br/>fault guard"]
+            C2["Contestant B<br/>fault guard"]
+        end
+
+        subgraph Procs["Bot processes"]
+            P1["python -m arena.bothost<br/>team A bot.py"]
+            P2["python -m arena.bothost<br/>team B bot.py"]
+        end
+    end
+
+    T -->|folder, file or git URL| IN
+    O --> CLI
+    CLI --> IN --> VER
+    IN --> DB
+    CLI --> Q
+    Q <--> DB
+    Q --> POOL --> DUEL --> TAB --> ENG
+    TAB <--> C1 <-->|JSON lines on stdin/stdout| P1
+    TAB <--> C2 <-->|JSON lines on stdin/stdout| P2
+    DUEL --> HND
+    P1 -.stderr.-> LOG
+    P2 -.stderr.-> LOG
+    POOL --> DB
+    DB --> RES
+```
+
+The only network use anywhere is `git clone` when a team submits a git URL.
+
+## 2. Components
+
+| File | Job |
+|---|---|
+| `arena/bothost.py` | The child process that hosts one bot: imports `bot.py`, then loops reading one JSON line and writing one JSON line. Its `print` output is redirected to stderr, so it can never corrupt the protocol. |
+| `arena/agents.py` | `ProcessAgent` (talks to a real child process, kills it on timeout, never raises when closing) and `LocalAgent` (in-process, for the built-in baselines and tests). |
+| `arena/contestant.py` | The **fault guard**. Turns an exception, timeout, crash, garbage reply or illegal action into a legal fallback (check if free, else fold) and records a fault. After 20 faults, or after overdrawing the thinking-time bank, replaces the bot with an always-fold stub. |
+| `arena/table.py` | Plays one hand: asks the engine whose turn it is, asks that contestant, applies the action, repeats until the hand ends. Asserts chips are conserved. Returns a full hand record. |
+| `arena/duel.py` | Plays a **pairing**: N seeded deals, each played twice with the seats swapped, bots restarted between the two halves. Produces mean bb/hand and a 95% confidence interval. |
+| `arena/stats.py` | Mean, standard error and Student-t confidence intervals. |
+| `arena/baselines.py` | `@fold`, `@call`, `@random`, `@shove`. |
+| `arena/specs.py` | Turns `@name` or a path into a contestant. |
+| `arena/validate.py` | The smoke test every submission must pass (a short match against `@call`). |
+| `arena/intake.py` | Submission: copy to `versions/<team>/<hash>/`, content-hash, validate, make current only if valid. |
+| `arena/store.py` | SQLite storage (WAL mode) and the job queue. |
+| `arena/scheduler.py` | Queues pairings, runs them in a process pool, handles freeze and final. |
+| `arena/leaderboard.py` | Ranks teams and writes `results/leaderboard.json` and `final.json`. |
+| `arena/history.py` | Reads and writes gzip JSON-lines hand histories. |
+| `arena/cli.py` | The `python -m arena` command line. |
+| `game/` | The rules engine, shared with the old server: actions, betting, pots, showdown. |
+| `player_sdk/` | What bot authors import: `PokerBot`, `Action`, `GameState`. The arena reuses its parser and action translation. |
+
+## 3. The bot protocol
+
+Each bot process is started as `python -m arena.bothost <bot.py or folder>` and
+speaks one JSON object per line.
+
+```
+host   -> bot:  {"type": "act", "state": {...}, "hero_index": 0, "action_history": [...]}
+bot    -> host: {"type": "action", "action": "raise_to", "amount": 60}
+bot    -> host: {"type": "error", "message": "..."}      the bot raised; it stays alive
+host   -> bot:  {"type": "quit"}
+```
+
+The first line from the bot is `{"type": "ready"}` once the file imported. If the
+import fails the bot sends a fatal `error` instead, and the contestant is
+disabled immediately. Bot authors never see this: they implement
+`act(game_state) -> Action` and the host does the translation.
+
+## 4. How one pairing is scored
+
+1. A seed picks a shuffle. The same seed always gives the same cards.
+2. **Orientation 0:** bot A sits in seat 0, bot B in seat 1. Play the hand.
+3. **Orientation 1:** same cards, seats swapped. Play the hand.
+4. The deal's value for A is the average of its two net results, in big blinds.
+5. Repeat for N deals. Score = mean over deals, with a Student-t 95% interval.
+
+Stacks reset to 2000 chips (100 big blinds) each hand, blinds 10/20. Both bots
+are restarted between the two halves so they cannot remember cards from one
+orientation to the other. Two properties follow and are tested:
+
+* identical deterministic strategies score exactly 0;
+* a bot that folds every hand scores exactly -0.75 bb/hand against a bot that
+  never folds.
+
+Limits: 1 s hard limit per move, 0.2 s of thinking per deal per half in total,
+20 faults maximum. Defaults can be changed with the `--move-timeout`,
+`--think-budget` and `--max-faults` options.
+
+## 5. The competition life cycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Submitted: submit (folder, file, git URL)
+    Submitted --> Valid: smoke test passes
+    Submitted --> Invalid: fails, previous version kept
+    Valid --> Ladder: ladder queues pairings that include this version
+    Ladder --> Ladder: new version replaces old, only its pairings re-run
+    Ladder --> Frozen: freeze (re-validates every bot, snapshots versions)
+    Frozen --> Final: final (larger round robin, different seed)
+    Final --> [*]: results/final.json
+```
+
+* **Submit.** Code is copied to `versions/<team>/<hash12>/`. The hash covers the
+  file contents, so identical code is a no-op for the same team and is
+  **rejected if another team already submitted it**. A failing version is
+  recorded but never replaces a working one.
+* **Ladder.** Provisional results while the event runs. Each pairing is one job
+  (default 200 deals, 400 hands). A new version only queues the pairings it takes
+  part in; jobs for versions that were replaced are discarded when they are
+  claimed. Jobs left "running" by a crashed scheduler are put back in the queue.
+* **Freeze.** Re-validates every team's current bot and snapshots exactly which
+  versions will play the final. Later submissions are ignored.
+* **Final.** A round robin on the frozen versions only (default 1000 deals,
+  2000 hands per pairing), with different seeds from the ladder. Only this
+  decides the result.
+* **Leaderboard.** A team's score is its mean bb/hand across opponents, each
+  opponent weighted equally, with a combined 95% interval. The win/draw/loss
+  record counts only statistically clear pairings, and `~` marks neighbours that
+  cannot be separated.
+
+## 6. What is stored where
+
+Everything lives under one folder, `arena_data/` by default (`--root` changes it).
+
+```
+arena_data/
+  arena.sqlite                          versions, current, freezes, jobs, results
+  versions/<team>/<hash12>/             immutable copy of each submitted version
+  hands/<kind>-<jobid>.jsonl.gz         every hand: seeds, cards, board, actions
+  logs/<team>/<hash12>/<kind>-vs-<opp>.log   the bot's own prints and tracebacks
+  results/leaderboard.json              current ladder ranking
+  results/final.json                    final ranking, after the final runs
+```
+
+The SQLite tables are `meta`, `versions`, `current`, `freezes`,
+`freeze_members`, `jobs` and `results`. A unique index stops the same pairing
+being queued twice. Each team's bot output goes to its own `logs/<team>/`
+folder and is never mixed into results or hand histories. Nothing enforces
+access control on those files yet: whoever can read `arena_data/` can read
+every team's logs, so team-only access would have to come from a frontend.
+
+A hand record in `hands/*.jsonl.gz` looks like this (shortened):
+
+```json
+{"hand_index": 0, "deal_seed": 11990938716539812860, "seats": ["starter", "@call"],
+ "stacks": [2000, 2000], "hole_cards": [["3D","4C"], ["8H","2C"]],
+ "board": ["2H","8D","QS","6H","5C"], "dealer_seat": 0,
+ "actions": [{"seat": 0, "action": "post_small_blind", "amount": 10, "street": "preflop", "fault": null}, ...],
+ "ended_by": "fold", "net": [-10, 10], "faults": 0, "orientation": 0, "deal": 0}
+```
+
+`leaderboard.json` holds `teams` (rank, score, `ci95`, W/D/L, faults,
+`tied_with_next`), and a `matrix` of pairwise results. A future frontend reads
+these files directly.
+
+## 7. How to run it
+
+Setup once (Python 3.11+, from the repository root):
+
+```bash
+python -m venv .venv
+source .venv/bin/activate              # Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+**A participant testing a bot** (no state is kept):
+
+```bash
+cp -r bots/starter bots/myteam
+python -m arena validate bots/myteam
+python -m arena match bots/myteam @call --deals 200
+python -m arena match bots/myteam bots/starter --deals 500 --hands hands.jsonl.gz
+```
+
+**The organiser, during the event:**
+
+```bash
+# Either watch a folder of <team>/bot.py directories (re-scanned every 10 s)...
+python -m arena ladder --submissions submissions/ --deals 200
+
+# ...or submit explicitly, then run the queue
+python -m arena submit alpha path/to/alpha-bot
+python -m arena submit beta https://github.com/team/beta-bot.git
+python -m arena ladder
+
+python -m arena status
+python -m arena leaderboard
+```
+
+**At the deadline:**
+
+```bash
+python -m arena freeze
+python -m arena final --deals 1000
+python -m arena retry-failed && python -m arena final    # only if a pairing crashed
+```
+
+`ladder` keeps running and updating results until you stop it (Ctrl+C);
+`--once` plays what is queued and exits. `--workers N` sets the process-pool
+size (default: CPUs minus one).
+
+**On an HPC node:** run the same commands inside the job and pass
+`--workers $SLURM_CPUS_PER_TASK`. Nothing needs the network except fetching
+git submissions beforehand. Keep `arena_data/` on a local or POSIX filesystem
+that supports SQLite locking.
+
+## 8. How to check it works
+
+**Is the install healthy?** This should print `OK: played 40 hands vs @call with no faults`:
+
+```bash
+python -m arena validate bots/starter
+```
+
+**Do the tests pass?**
+
+```bash
+pytest -m "not integration" -q                    # about 40 s; expect 178 passed, 6 xfailed
+ruff check . && ruff format --check .
+POKER_ADMIN_API_KEY=admin-dev-key pytest -m integration -q   # old server only, about 2 min
+```
+
+The 6 xfails are known bugs in the **old server** (see AUDIT.md), kept as
+strict expected failures. The integration tests cover the old server only; the
+competition path is covered by the `tests/test_arena_*.py` files.
+
+**Rehearse a whole event** with a throwaway root (about a minute; bash shown,
+on Windows use any scratch folder in place of `/tmp`):
+
+```bash
+for t in alpha beta gamma; do
+  mkdir -p /tmp/field/$t
+  cp bots/starter/bot.py /tmp/field/$t/
+  echo "# team $t" >> /tmp/field/$t/bot.py     # identical code is rejected as copied
+done
+python -m arena ladder --submissions /tmp/field --root /tmp/rehearsal --deals 20 --once
+python -m arena freeze      --root /tmp/rehearsal
+python -m arena final       --root /tmp/rehearsal --deals 50
+python -m arena leaderboard --root /tmp/rehearsal --kind final
+```
+
+Expected: three `valid` submissions, `pairings 3/3`, and every score exactly
+`+0.000` (the bots are identical, so duplicate scoring cannot separate them).
+
+**Inspect a result during a real event:**
+
+| Question | Command |
+|---|---|
+| Which version is each team running, and what is queued? | `python -m arena status` |
+| What is the ranking now? | `python -m arena leaderboard` (also rewrites `results/leaderboard.json`) |
+| Why did a team get a low score? | open `arena_data/logs/<team>/<hash>/` and read the log; check the `faults` column |
+| Did a pairing fail? | `status` shows job counts per state (for example `failed: 1`); `retry-failed` re-queues them |
+| What happened in a hand? | read `arena_data/hands/<kind>-<job>.jsonl.gz` (see below) |
+
+Replay or audit hands from Python:
+
+```python
+from arena.history import read_hands
+
+for hand in read_hands("arena_data/hands/final-12.jsonl.gz"):
+    print(hand["hand_index"], hand["hole_cards"], hand["board"], hand["net"])
+```
+
+## 9. Known limits
+
+* **No sandbox.** Bots run as the organiser's user. Treat it as trust-based, or
+  run the whole thing in a container or under a restricted account.
+* **No memory or CPU limits are enforced.** Only time and fault limits are. Use
+  `ulimit` or a container on an HPC.
+* **No tie-break stage** for a close final. The leaderboard flags statistically
+  tied neighbours; extend those pairings by hand with more deals.
+* **Short all-in raise simplification.** A short all-in raise still re-opens the
+  betting for players who already acted.
+* Tested on Windows with Python 3.14. CI targets Python 3.11 on Linux, which
+  has not been observed running; nothing has been run on an HPC yet.
+* **No web frontend yet.** Results are the CLI table and the JSON files above.
+
+## What the competition does not use
+
+The following still exist in the repository and are not part of the competition:
+
+| Part | What it is | Status |
+|---|---|---|
+| `server/` | FastAPI HTTP and WebSocket match server | Works, but several audit findings are open (unauthenticated `viewer_id`, turn-timer stall after an illegal action, WebSocket amount validation, `.env` load order, dead-bot forfeits). Do not expose it to untrusted networks. |
+| `player_sdk.play()` and the `poker-bot` CLI | Connect a bot to the server over HTTP or WebSocket | Unchanged. |
+| `admin_sdk/` | Create and start server matches | Unchanged. |
+
+The engine in `game/` is shared by both, which is why the rules fixes from the
+audit apply to the arena and the server alike.

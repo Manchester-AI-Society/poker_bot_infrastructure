@@ -177,6 +177,14 @@ python -m arena retry-failed && python -m arena final   # if any pairing crashed
 
 ## Architecture
 
+> **The competition does not use this diagram.** The diagram below is the
+> *legacy network server* (HTTP and WebSocket). The bot competition runs bots as
+> local subprocesses with no network at all: see
+> [ARCHITECTURE.md](ARCHITECTURE.md) for the competition architecture and how to
+> run and check it.
+
+### Legacy match server
+
 ```mermaid
 flowchart LR
     subgraph Clients
@@ -601,6 +609,7 @@ tests/          pytest unit + integration suites
 benchmarks/     engine hot-path benchmarks
 AUDIT.md        Phase 1 audit (bugs, robustness, fairness) and fix status
 DESIGN.md       Competition design options and the chosen architecture
+ARCHITECTURE.md How the competition works, and how to run and check it
 ```
 
 **Server mode vs arena.** The FastAPI server and `play()` remain for live
