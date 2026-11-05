@@ -8,6 +8,7 @@ import { ago, parseHash } from './format.js';
 import { leaderboardView } from './views/leaderboard.js';
 import { matchesView } from './views/matches.js';
 import { matrixView } from './views/matrix.js';
+import { replayView } from './views/replay.js';
 import { submissionsView } from './views/submissions.js';
 import { teamView } from './views/team.js';
 
@@ -49,6 +50,7 @@ const ROUTES = {
   matches: { view: matchesView, live: true },
   team: { view: teamView, live: true },
   submissions: { view: submissionsView, live: true },
+  replay: { view: replayView, live: false },
 };
 
 function chooseKind(requested) {
