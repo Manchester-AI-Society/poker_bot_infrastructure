@@ -6,12 +6,12 @@ Its standard error combines the independent per-pairing standard errors.
 
 from __future__ import annotations
 
-import json
 import math
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .jsonutil import dumps, write_atomic
 from .stats import ci95
 from .store import Store, Version
 
@@ -169,11 +169,8 @@ def _overlaps(upper: Dict[str, Any], lower: Dict[str, Any]) -> bool:
 
 
 def write_json(board: Dict[str, Any], path: Path) -> None:
-    """Writes the payload atomically for a frontend to poll."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(board, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    """Writes the payload atomically, as valid JSON, for a frontend."""
+    write_atomic(path, dumps(board, indent=2))
 
 
 def format_table(board: Dict[str, Any]) -> str:
