@@ -441,6 +441,31 @@ def test_short_message_blanks_file_paths_inside_the_exception_text():
     )
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "fatal: repository 'https://github.com/alpha/bot/' not found",
+        "fatal: unable to access 'https://github.com/a/b.git/': Could not "
+        "resolve host: github.com",
+        "error: pathspec 'ssh://git@host/x/y' did not match",
+    ],
+)
+def test_web_addresses_in_a_message_are_not_mistaken_for_file_paths(message):
+    # "https://host/a/b" contains "s:/" and "/a/b"; an earlier pattern turned
+    # it into "http<path>" and made git errors useless.
+    assert short_message(message) == message
+
+
+def test_a_path_next_to_a_url_is_still_blanked():
+    text = (
+        "error: cannot write C:\\Users\\me\\x.txt for https://github.com/a/b"
+    )
+
+    assert short_message(text) == (
+        "error: cannot write <path> for https://github.com/a/b"
+    )
+
+
 def test_disabled_reasons_become_categories():
     assert disabled_kind(None) is None
     assert disabled_kind("time budget exceeded (1.2s > 1.0s)") == "time"

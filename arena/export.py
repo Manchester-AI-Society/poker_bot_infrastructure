@@ -88,8 +88,13 @@ class ExportSummary:
 # -- sanitising --------------------------------------------------------
 
 
+# A Windows drive path (C:\x or C:/x) or a Unix path (/home/x/y). Web URLs
+# must survive: "https://host/a/b" contains "s:/" and "/a/b", so a drive
+# letter has to stand alone (not end a word) and not be followed by "//", and
+# a Unix path cannot start right after ":" or "/" or a word character.
 _PATH = re.compile(
-    r"([A-Za-z]:[\\/][^\s'\"]*|(?<![\w.])/(?:[\w.-]+/)+[\w.-]*)"
+    r"((?<!\w)[A-Za-z]:(?:\\|/(?!/))[^\s'\"]*"
+    r"|(?<![\w.:/])/(?:[\w.-]+/)+[\w.-]*)"
 )
 
 
