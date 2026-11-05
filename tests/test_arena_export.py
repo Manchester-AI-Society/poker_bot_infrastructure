@@ -717,3 +717,41 @@ def test_the_status_time_moves_only_when_the_outcome_changes(tmp_path):
     assert same["at"] == first["at"]  # unchanged outcome: same time
     assert same["checked_at"] > first["checked_at"]  # but it was re-checked
     assert changed["at"] > first["at"]  # a new outcome: new time
+
+
+def test_a_damaged_hand_file_costs_only_that_replay_not_the_export(
+    competition, tmp_path
+):
+    """Regression: a corrupt hand file (BadGzipFile) used to crash the export,
+    and with it the publishing loop, so the website froze."""
+    copy = tmp_path / "copy"
+    shutil.copytree(competition.root, copy)
+    victim = sorted((copy / "hands").glob("final-*.jsonl.gz"))[0]
+    data = bytearray(victim.read_bytes())
+    data[0:2] = b"gg"  # the damage seen in the real run
+    victim.write_bytes(bytes(data))
+
+    out = tmp_path / "site"
+    summary = export_site(copy, out, ExportOptions(replays="final"))
+
+    pairings = load(out / "data" / "pairings-final.json")
+    by_id = {p["id"]: p for p in pairings}
+    victim_id = victim.name.removesuffix(".jsonl.gz")
+    assert by_id[victim_id]["replay"] is None  # that match has no replay ...
+    others = [p for p in pairings if p["id"] != victim_id]
+    assert others and all(p["replay"] for p in others)  # ... the rest do
+    assert summary.final_pairings == len(pairings)
+
+
+def test_a_truncated_hand_file_is_also_survived(competition, tmp_path):
+    copy = tmp_path / "copy"
+    shutil.copytree(competition.root, copy)
+    victim = sorted((copy / "hands").glob("final-*.jsonl.gz"))[0]
+    victim.write_bytes(victim.read_bytes()[:40])  # cut off mid-stream
+
+    out = tmp_path / "site"
+    export_site(copy, out, ExportOptions(replays="final"))
+
+    victim_id = victim.name.removesuffix(".jsonl.gz")
+    pairings = load(out / "data" / "pairings-final.json")
+    assert {p["id"]: p for p in pairings}[victim_id]["replay"] is None

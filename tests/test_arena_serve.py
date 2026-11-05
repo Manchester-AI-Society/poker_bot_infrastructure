@@ -203,3 +203,92 @@ def test_export_command_can_leave_the_guide_out_or_use_another(
     ) == "# Our own rules\n"
     assert code == 1
     assert "cannot read the guide" in capsys.readouterr().out
+
+
+# -- the publishing loop must survive anything a pass throws -----------
+
+
+class StopLoop(Exception):
+    pass
+
+
+def run_export_loop(tmp_path, monkeypatch, behaviours):
+    """Runs `export --loop`, each pass doing the next behaviour, then stops.
+
+    A behaviour is an exception to raise or None for a good pass. Sleeping is
+    replaced so the test does not wait, and the loop is ended by Ctrl+C.
+    """
+    import arena.cli as cli
+
+    calls = []
+    plan = iter(behaviours)
+
+    def fake_pass(args, options):
+        calls.append(1)
+        outcome = next(plan, StopLoop())
+        if isinstance(outcome, BaseException):
+            raise outcome
+
+    def fake_sleep(seconds):
+        if len(calls) >= len(behaviours):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "_export_once", fake_pass)
+    monkeypatch.setattr(cli.time, "sleep", fake_sleep)
+    code = main(
+        [
+            "export",
+            "--root",
+            str(tmp_path),
+            "--out",
+            str(tmp_path / "o"),
+            "--loop",
+            "1",
+        ]
+    )
+    return code, len(calls)
+
+
+def test_an_unexpected_error_in_a_pass_does_not_end_the_loop(
+    tmp_path, monkeypatch, capsys
+):
+    """Regression: only ExportError was caught, so one BadGzipFile ended the
+    publisher and the website froze with nobody noticing."""
+    code, passes = run_export_loop(
+        tmp_path,
+        monkeypatch,
+        [None, OSError("Not a gzipped file"), RuntimeError("boom"), None],
+    )
+
+    out = capsys.readouterr().out
+    assert code == 0 and passes == 4  # it kept going through both failures
+    assert "unexpected problem, will retry: OSError" in out
+    assert "unexpected problem, will retry: RuntimeError: boom" in out
+
+
+def test_a_failing_first_pass_in_a_loop_does_not_stop_it(
+    tmp_path, monkeypatch, capsys
+):
+    # For example the network is down when the event starts.
+    from arena.export import ExportError
+
+    code, passes = run_export_loop(
+        tmp_path, monkeypatch, [ExportError("git push failed"), None]
+    )
+
+    assert code == 0 and passes == 2
+    assert "problem, will retry: git push failed" in capsys.readouterr().out
+
+
+def test_a_single_run_still_fails_loudly_on_an_unexpected_error(
+    tmp_path, monkeypatch
+):
+    import arena.cli as cli
+
+    def explode(args, options):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "_export_once", explode)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        main(["export", "--root", str(tmp_path), "--out", str(tmp_path / "o")])

@@ -384,6 +384,35 @@ def _export_once(args: argparse.Namespace, options: ExportOptions) -> None:
             print(f"[export {stamp}] pushed to git")
 
 
+def _export_pass(
+    args: argparse.Namespace, options: ExportOptions, *, keep_going: bool
+) -> bool:
+    """One export pass; True if it worked.
+
+    With ``keep_going`` (running in a loop) no error may escape: a dropped
+    network, a busy database or one unreadable file must not end an event.
+    The problem is printed and the next pass tries again. Without it, an
+    unexpected error is raised so a one-off run fails loudly.
+    """
+    try:
+        _export_once(args, options)
+        return True
+    except ExportError as exc:
+        label = (
+            "[export] problem, will retry" if keep_going else "export failed"
+        )
+        print(f"{label}: {exc}", flush=True)
+    except Exception as exc:
+        if not keep_going:
+            raise
+        print(
+            f"[export] unexpected problem, will retry: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+    return False
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     from .serve import lan_address, make_server
 
@@ -408,9 +437,13 @@ def cmd_export(args: argparse.Namespace) -> int:
     )
     try:
         options.validate()
-        _export_once(args, options)
     except ExportError as exc:
         print(f"export failed: {exc}")
+        return 1
+    # In a loop nothing a pass does may end it, including the first pass
+    # (the network can be down at the start); a single run still fails.
+    first_ok = _export_pass(args, options, keep_going=bool(args.loop))
+    if not first_ok and not args.loop:
         return 1
 
     server = None
@@ -432,12 +465,7 @@ def cmd_export(args: argparse.Namespace) -> int:
         while True:
             time.sleep(args.loop or 3600)
             if args.loop:
-                try:
-                    _export_once(args, options)
-                except ExportError as exc:
-                    # A dropped network or a busy database must not end an
-                    # event: report it and try again next time round.
-                    print(f"[export] problem, will retry: {exc}")
+                _export_pass(args, options, keep_going=True)
     except KeyboardInterrupt:
         print("stopped")
     finally:

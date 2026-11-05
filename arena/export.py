@@ -25,6 +25,7 @@ import re
 import shutil
 import subprocess
 import time
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -248,7 +249,12 @@ def build_replay(
     path = store.root / row["hands_path"]
     if not path.exists():
         return None
-    hands = list(read_hands(path))
+    try:
+        hands = list(read_hands(path))
+    except (OSError, EOFError, ValueError, zlib.error):
+        # A damaged hand file costs that match its replay, never the whole
+        # publisher (a bad file here once killed the export loop).
+        return None
     if not hands:
         return None
     chosen = select_hands(hands, options.max_replay_hands)
