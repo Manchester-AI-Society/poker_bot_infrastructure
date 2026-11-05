@@ -13,6 +13,10 @@ EXTERNAL = re.compile(r"""(?:src|href)=["'](https?:)?//""", re.IGNORECASE)
 REMOTE_URL = re.compile(r"https?://")
 # The SVG namespace is an identifier, not something the page fetches.
 ALLOWED_URLS = ("http://www.w3.org/2000/svg",)
+# The Register page sends the visitor to GitHub (a link they click, and example
+# text). Only these two files may name it, and never to fetch anything.
+GITHUB_LINK = "https://github.com/"
+GITHUB_LINK_FILES = ("register-core.js", "register.js")
 
 
 def js_files():
@@ -26,8 +30,11 @@ def code_only(text: str) -> str:
     return re.sub(r"\s//\s.*$", "", text, flags=re.MULTILINE)
 
 
-def remote_urls_in(code: str) -> bool:
-    for allowed in ALLOWED_URLS:
+def remote_urls_in(code: str, name: str = "") -> bool:
+    allowed_here = ALLOWED_URLS
+    if name in GITHUB_LINK_FILES:
+        allowed_here += (GITHUB_LINK,)
+    for allowed in allowed_here:
         code = code.replace(allowed, "")
     return bool(REMOTE_URL.search(code))
 
@@ -57,7 +64,10 @@ def test_the_page_loads_nothing_from_the_internet():
     assert not EXTERNAL.search(html)
     for source in js_files():
         code = code_only(source.read_text(encoding="utf-8"))
-        assert not remote_urls_in(code), source.name
+        assert not remote_urls_in(code, source.name), source.name
+        if source.name in GITHUB_LINK_FILES:
+            assert "fetch(" not in code, source.name
+            assert "XMLHttpRequest" not in code, source.name
 
 
 def test_the_url_check_can_actually_fail():
@@ -66,6 +76,11 @@ def test_the_url_check_can_actually_fail():
     assert remote_urls_in(code_only("fetch('https://cdn.example.com/a.js');"))
     assert not remote_urls_in(code_only("// see https://example.com\nlet a;"))
     assert not remote_urls_in("createElementNS('http://www.w3.org/2000/svg')")
+    # The GitHub link is allowed only in the Register files, and no other host.
+    link = "const u = 'https://github.com/a/b';"
+    assert not remote_urls_in(link, "register-core.js")
+    assert remote_urls_in(link, "main.js")
+    assert remote_urls_in("x = 'https://evil.example/a';", "register-core.js")
 
 
 def test_the_page_never_writes_data_into_the_document_as_markup():

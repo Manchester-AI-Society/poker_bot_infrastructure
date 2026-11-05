@@ -7,6 +7,11 @@ export function submissionsView(ctx) {
   const page = h('div', { class: 'page' });
   page.appendChild(h('header', {}, h('h1', {}, 'Submissions')));
 
+  if (ctx.data.manifest.registry_repo) {
+    page.appendChild(
+      h('p', {}, 'Not on the list? ', h('a', { href: '#/register' }, 'Register your team'), '.'),
+    );
+  }
   if (ctx.data.manifest.has_guide) {
     page.appendChild(
       h('p', {}, 'New here? ', h('a', { href: '#/submit' }, 'Read how to submit your bot'), '.'),

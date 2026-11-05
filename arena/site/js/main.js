@@ -9,6 +9,7 @@ import { guideView } from './views/guide.js';
 import { leaderboardView } from './views/leaderboard.js';
 import { matchesView } from './views/matches.js';
 import { matrixView } from './views/matrix.js';
+import { registerView } from './views/register.js';
 import { replayView } from './views/replay.js';
 import { submissionsView } from './views/submissions.js';
 import { teamView } from './views/team.js';
@@ -53,6 +54,7 @@ const ROUTES = {
   team: { view: teamView, live: true },
   submissions: { view: submissionsView, live: true },
   submit: { view: guideView, live: true },
+  register: { view: registerView, live: true },
   replay: { view: replayView, live: false },
   tv: { view: tvView, live: false },
 };
@@ -114,6 +116,7 @@ async function render({ keepScroll = false } = {}) {
     else link.removeAttribute('aria-current');
   }
   paintKindSwitch();
+  paintRegisterTab();
   if (keepScroll) window.scrollTo(0, scrollY);
   else {
     window.scrollTo(0, 0);
@@ -122,6 +125,12 @@ async function render({ keepScroll = false } = {}) {
 }
 
 // ---- header controls --------------------------------------------------
+
+function paintRegisterTab() {
+  // The Register tab exists only when the organiser set up a registry.
+  const tab = document.getElementById('nav-register');
+  if (tab) tab.hidden = !(data.manifest && data.manifest.registry_repo);
+}
 
 function paintKindSwitch() {
   const kinds = (data.manifest && data.manifest.kinds) || [];

@@ -7,6 +7,7 @@ export const data = {
   boards: {},
   pairings: {},
   teams: [],
+  registrations: [],
   lastOk: 0, // wall-clock ms of the last successful poll
   error: null,
 };
@@ -56,6 +57,7 @@ async function loadAll(manifest) {
     data.pairings[kind] = rest[index * 2 + 1];
   });
   data.teams = teams.teams;
+  data.registrations = teams.registrations || [];
   data.manifest = manifest;
   replayCache.clear(); // replay files may have been rebuilt
 }

@@ -350,6 +350,25 @@ select {
 }
 .guide .card { padding: 1.25rem 1.5rem; }
 
+/* ---- registration form -------------------------------------------------- */
+
+.form { display: grid; gap: 0.35rem; max-width: 36rem; margin: 1rem 0; }
+.form label { font-weight: 600; margin-top: 0.6rem; }
+.form input {
+  font: inherit; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--axis); border-radius: 8px; padding: 0.55rem 0.7rem; width: 100%;
+}
+.field-msg { min-height: 1.3em; font-size: 0.85rem; color: var(--ink-2); }
+.field-msg.good { color: var(--good); }
+.field-msg.bad { color: var(--critical); }
+.btn-primary {
+  display: inline-block; justify-self: start; margin-top: 0.9rem; padding: 0.65rem 1.2rem;
+  border-radius: 8px; background: var(--ink); color: var(--bg); font-weight: 700;
+  text-decoration: none; border: 2px solid var(--ink);
+}
+.btn-primary[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.btn-primary:hover { text-decoration: underline; }
+
 /* ---- TV mode --------------------------------------------------------- */
 
 html.tv { font-size: clamp(16px, 1.3vw, 28px); }
