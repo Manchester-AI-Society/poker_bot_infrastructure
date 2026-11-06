@@ -15,6 +15,16 @@ class CreateMatchRequest(BaseModel):
     event_log_limit: int = Field(default=2000, ge=100, le=100000)
     max_hands: Optional[int] = Field(default=None, ge=1)
     wait_for_players: bool = True
+    blind_increase_every_hands: Optional[int] = Field(default=None, ge=1)
+
+
+class TournamentStartRequest(BaseModel):
+    starting_stack: int = Field(default=1000, ge=1)
+    small_blind: int = Field(default=10, ge=1)
+    big_blind: int = Field(default=20, ge=2)
+    turn_timeout_seconds: int = Field(default=15, ge=2, le=120)
+    blind_increase_every_hands: Optional[int] = Field(default=10, ge=1)
+    max_hands: Optional[int] = Field(default=500, ge=1)
 
 
 class SubmitActionRequest(BaseModel):
@@ -39,6 +49,12 @@ class EndMatchRequest(BaseModel):
 class CreatePlayerRequest(BaseModel):
     player_id: str = Field(min_length=1)
     api_key: Optional[str] = Field(default=None, min_length=8)
+
+
+class RegisterRequest(BaseModel):
+    # Same charset as scripts/event.sh so names stay .env-safe.
+    player_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,32}$")
+    code: str = ""
 
 
 class RotatePlayerKeyRequest(BaseModel):

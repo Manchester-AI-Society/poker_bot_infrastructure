@@ -22,6 +22,13 @@ def main() -> None:
         POKER_API_KEY=dev-key-1 POKER_MATCH_ID=<match-id> \
             python examples/bots/remote/run_remote_bot.py
 
+    On campus Wi-Fi (eduroam) the server is reached through its tunnel
+    URL instead of an IP (see README "Run on restricted Wi-Fi"):
+
+        POKER_SERVER_URL=https://<random>.trycloudflare.com \
+            POKER_API_KEY=... POKER_MATCH_ID=<match-id> \
+            python examples/bots/remote/run_remote_bot.py
+
     Equivalent CLI (which resolves the same variables itself):
 
         POKER_API_KEY=dev-key-1 POKER_MATCH_ID=<match-id> \

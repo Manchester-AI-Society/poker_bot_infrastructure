@@ -148,3 +148,81 @@ class TestPlayOverWebsocket:
         state = admin.get_full_match_state(match_id)["state"]
         assert state["hand_number"] >= 2
         assert state["end_reason"] == "opponents_eliminated"
+
+
+class TestTournamentOverWebsocket:
+    def test_twelve_remote_bots_play_a_two_round_tournament(
+        self, server_url, admin
+    ):
+        import time
+
+        from player_sdk import play_tournament
+
+        keys = {}
+        for index in range(12):
+            player_id = f"tourney-bot-{index}"
+            created = admin.create_player(
+                player_id, api_key=f"{player_id}-key"
+            )
+            assert created["player_id"] == player_id
+            keys[player_id] = f"{player_id}-key"
+
+        results: dict[str, dict] = {}
+        errors: dict[str, BaseException] = {}
+
+        def run(player_id: str) -> None:
+            try:
+                results[player_id] = play_tournament(
+                    ExampleConservativeBot(),
+                    api_key=keys[player_id],
+                    server_url=server_url,
+                    verbose=False,
+                )
+            except BaseException as exc:  # noqa: BLE001
+                errors[player_id] = exc
+
+        threads = [
+            threading.Thread(target=run, args=(pid,), daemon=True)
+            for pid in keys
+        ]
+        for thread in threads:
+            thread.start()
+
+        deadline = time.time() + 30
+        while set(keys) - set(admin.get_lobby()["players"]):
+            assert time.time() < deadline, "bots never reached the lobby"
+            time.sleep(0.1)
+
+        bracket = admin.start_tournament(
+            starting_stack=200,
+            small_blind=5,
+            big_blind=10,
+            turn_timeout_seconds=8,
+            blind_increase_every_hands=3,
+            max_hands=200,
+        )
+        assert bracket["round"] == 1
+        assert (
+            sorted(len(t["player_ids"]) for t in bracket["tables"]) == [2] * 6
+        )
+
+        for thread in threads:
+            thread.join(timeout=300)
+        assert not errors, f"bot threads failed: {errors}"
+        assert set(results) == set(keys)
+
+        final = admin.get_tournament()
+        assert final["status"] == "finished"
+        round_one_winners = [t["winner"] for t in final["completed_rounds"][0]]
+        assert len(round_one_winners) == 6
+        assert sorted(final["tables"][0]["player_ids"]) == sorted(
+            round_one_winners
+        )
+        champion = final["champion"]
+        assert champion in round_one_winners
+
+        assert results[champion]["type"] == "tournament_ended"
+        assert results[champion]["champion"] == champion
+        for player_id, outcome in results.items():
+            if player_id != champion:
+                assert outcome["type"] == "eliminated", player_id

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import os
 import secrets
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, HTTPException
 
 from server.api.shared_runtime_dependencies import (
     api_keys,
@@ -12,6 +13,7 @@ from server.api.shared_runtime_dependencies import (
 )
 from server.api_request_models import (
     CreatePlayerRequest,
+    RegisterRequest,
     RotatePlayerKeyRequest,
 )
 
@@ -47,6 +49,29 @@ async def whoami(
     """
     player_id = require_player_id(authorization, x_api_key)
     return {"player_id": player_id}
+
+
+@router.post("/register")
+async def register(request: RegisterRequest) -> dict:
+    """Self-service signup: claim a name, get a key. No admin needed.
+
+    Off unless ``REGISTRATION_CODE`` is set; the code is shared in the
+    room so randoms who find the public tunnel URL can't join. Each
+    name can be claimed once.
+
+    # ponytail: keys live in memory — a server restart frees every
+    # name and players re-register; persist to disk if that hurts.
+    """
+    expected = os.getenv("REGISTRATION_CODE", "")
+    if not expected:
+        raise HTTPException(403, "Self-registration is disabled")
+    if not secrets.compare_digest(request.code.encode(), expected.encode()):
+        raise HTTPException(403, "Wrong registration code")
+    if request.player_id in api_keys.values():
+        raise HTTPException(409, f"Name '{request.player_id}' is taken")
+    api_key = secrets.token_hex(16)
+    api_keys[api_key] = request.player_id
+    return {"player_id": request.player_id, "api_key": api_key}
 
 
 @router.post("/admin/players")

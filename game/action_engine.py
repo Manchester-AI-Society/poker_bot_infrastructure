@@ -58,6 +58,12 @@ def apply_action(
     to_call = max(0, runtime.engine.call_amount - seat.curr_bet_amount)
     legal = legal_actions(runtime, actor_index)
 
+    # "bet" and "raise_to" both mean "make my street total X"; which name
+    # applies depends on whether a bet (e.g. the big blind) already stands,
+    # which clients easily get wrong on the big blind's preflop option.
+    if action in ("bet", "raise_to"):
+        action = "raise_to" if runtime.engine.call_amount > 0 else "bet"
+
     if action not in legal:
         raise InvalidActionError(
             f"Illegal action '{action}'. Legal actions: {legal}"

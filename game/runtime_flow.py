@@ -155,7 +155,8 @@ def eliminate_busted_players(
     """
     eliminated: List[str] = []
     for seat in runtime.players:
-        if seat.curr_balance > 0:
+        # A seat that went all-in posting a blind is still in the hand.
+        if seat.curr_balance > 0 or seat.curr_bet_amount > 0:
             continue
         seat.is_folded = True
         if not seat.is_eliminated:
@@ -177,8 +178,21 @@ def begin_next_hand(
 
     Returns (broadcast_events, turn_player_id, turn_event).
     """
-    runtime.min_raise_size = int(runtime.engine.big_blind_amount)
-    runtime.engine.start_hand()
+    engine = runtime.engine
+    every = runtime.blind_increase_every_hands
+    if every and engine.hand_number > 0 and engine.hand_number % every == 0:
+        engine.small_blind_amount *= 2
+        engine.big_blind_amount *= 2
+        log_event(
+            runtime,
+            "blinds_increased",
+            {
+                "small_blind": engine.small_blind_amount,
+                "big_blind": engine.big_blind_amount,
+            },
+        )
+    runtime.min_raise_size = int(engine.big_blind_amount)
+    engine.start_hand()
     # Busted seats are folded AFTER the hand reset (which clears
     # is_folded) so every eligibility and contender check keeps
     # excluding them for the rest of the match.
@@ -210,17 +224,38 @@ def resolve_match_progression(
     Returns (match_ended_event, broadcast_events, turn_player_id,
     turn_event). ``match_ended_event`` is set when the match is over;
     otherwise the remaining values describe the next hand's opening.
+    A hand where every live seat is all-in from the blinds alone has no
+    one to act, so it is run out and settled here and the next hand dealt.
     """
+    broadcasts: List[Dict[str, Any]] = []
+    while True:
+        match_ended_event = _finish_match_if_over(runtime, log_event)
+        if match_ended_event is not None:
+            return match_ended_event, broadcasts, None, None
+
+        blind_events, turn_player_id, turn_event = begin_next_hand(
+            runtime, log_event
+        )
+        broadcasts.extend(blind_events)
+        if turn_player_id is not None:
+            return None, broadcasts, turn_player_id, turn_event
+
+        showdown = advance_and_settle_if_ready(runtime, log_event)
+        if showdown is None:  # defensive: never spin on an unsettleable hand
+            return None, broadcasts, None, None
+        broadcasts.append(showdown)
+
+
+def _finish_match_if_over(
+    runtime: MatchRuntime, log_event: LogEventCallback
+) -> Optional[Dict[str, Any]]:
+    """Marks the match finished and builds its end event when it is over."""
     contenders = [seat for seat in runtime.players if seat.curr_balance > 0]
     hand_limit = runtime.max_hands is not None and (
         runtime.engine.hand_number >= runtime.max_hands
     )
-
     if len(contenders) > 1 and not hand_limit:
-        broadcasts, turn_player_id, turn_event = begin_next_hand(
-            runtime, log_event
-        )
-        return None, broadcasts, turn_player_id, turn_event
+        return None
 
     runtime.status = "finished"
     if len(contenders) == 1:
@@ -242,7 +277,7 @@ def resolve_match_progression(
         "match_ended",
         {"reason": runtime.end_reason, "winner_ids": runtime.winner_ids},
     )
-    match_ended_event = {
+    return {
         "type": "match_ended",
         "match_id": runtime.match_id,
         "reason": runtime.end_reason,
@@ -255,7 +290,6 @@ def resolve_match_progression(
             for seat in runtime.players
         ],
     }
-    return match_ended_event, [], None, None
 
 
 def build_blind_events(runtime: MatchRuntime) -> List[Dict[str, Any]]:

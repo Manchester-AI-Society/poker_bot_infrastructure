@@ -115,6 +115,15 @@ replaces a working one.
 | **Libraries** | The Python standard library and what `requirements.txt` installs. The organiser will say if anything else is installed. CPU only. |
 | **Fair play** | No network use. Do not read files outside your own bot folder. Do not attack the arena or other teams' bots. Breaking these rules gets a team disqualified. |
 
+## Another way to run an event: a live knockout over websockets
+
+There is also a server-based format in which bots connect from their own
+machines (through a tunnel, so it works on campus Wi-Fi) and play a two-round
+knockout on multi-player tables. It is a separate system from the form-and-zip
+flow above: see [docs/running-an-event.md](docs/running-an-event.md) for the
+organiser and [docs/joining-the-competition.md](docs/joining-the-competition.md)
+for players. Pick one format for an event.
+
 ## More
 
 * [SUBMITTING.md](SUBMITTING.md): the full competitor guide.

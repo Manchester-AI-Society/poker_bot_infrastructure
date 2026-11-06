@@ -226,3 +226,5 @@ submissions/
 
 # Node (site-src build-time dependencies)
 node_modules/
+sim_logs/
+.DS_Store

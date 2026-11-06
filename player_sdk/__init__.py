@@ -3,7 +3,7 @@ from ._http import (
     PlayerSDKBadRequestError,
     PlayerSDKError,
 )
-from ._run import load_bot_from_file, play, run_bot
+from ._run import load_bot_from_file, play, play_tournament, run_bot
 from .bot_interface import PokerBot
 from .client import PokerEngineClient, translate_action
 from .config import PlayerConfig
@@ -27,6 +27,7 @@ __all__ = [
     "__version__",
     "load_bot_from_file",
     "play",
+    "play_tournament",
     "run_bot",
     "translate_action",
 ]

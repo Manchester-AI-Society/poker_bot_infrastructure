@@ -15,6 +15,7 @@ class MatchCreationOptions:
     event_log_limit: int = 2000
     max_hands: Optional[int] = None
     wait_for_players: bool = True
+    blind_increase_every_hands: Optional[int] = None
 
 
 @dataclass

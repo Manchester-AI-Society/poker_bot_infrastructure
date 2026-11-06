@@ -174,10 +174,7 @@ def test_c3_state_endpoint_does_not_leak_other_players_hole_cards():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="AUDIT C4: timer cancelled before validation"
-)
-def test_c4_turn_timer_survives_an_illegal_action():
+def test_c4_turn_timer_survives_an_illegal_action():  # AUDIT C4 (fixed)
     async def scenario():
         service, runtime = await new_match([1000, 1000], timeout=1)
         with pytest.raises(InvalidActionError):

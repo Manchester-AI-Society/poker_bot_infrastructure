@@ -60,6 +60,7 @@ async def create_match(
             event_log_limit=request.event_log_limit,
             max_hands=request.max_hands,
             wait_for_players=request.wait_for_players,
+            blind_increase_every_hands=request.blind_increase_every_hands,
         )
     except MatchStateError as exc:
         raise HTTPException(
