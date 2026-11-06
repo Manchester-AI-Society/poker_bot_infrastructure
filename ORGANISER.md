@@ -155,12 +155,13 @@ Admin key:         ...   (keep private)
 
 Options: `-Protocol quic|http2`, `-Cloudflared PATH`, `-NoTunnel`, `-Delay 360`
 (seconds the site runs behind the game), `-Interval 300` (seconds between
-publications), `-PublishCode` (show the join code on the Info page; off by
+publications), `-HideCode` (keep the join code off the Info page; it is shown by
 default), `-Port 8000`. Other commands: `status`, `url`, `start`, `down`.
 
-The join code is for the teams: give it to them (or pass `-PublishCode` to put it
-on the Info page). The Info page always shows the public address and tells people
-how to register and connect.
+The Info page shows the public address and the join code, and tells people how
+to register and connect. Anyone who finds the site's address can therefore
+register a bot; pass `-HideCode` and read the code out in the room if you do not
+want that.
 
 ## 6. The website on Vercel
 

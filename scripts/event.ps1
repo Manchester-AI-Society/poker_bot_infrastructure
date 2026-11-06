@@ -19,7 +19,7 @@
 #   -FormUrl URL           the backup submission form (shown on the Info page)
 #   -RegisterForm URL      the team-name registration form's prefilled link
 #   -Registrations SRC     that form's sheet (CSV file or published https address)
-#   -PublishCode           show the join code on the website's Info page
+#   -HideCode              do not show the join code on the website's Info page
 #   -Port N                server port (default 8000)
 # Options for `backups`:
 #   -All                   run every imported team, even ones already connected live
@@ -41,7 +41,7 @@ param(
     [string]$FormUrl = '',
     [string]$RegisterForm = '',
     [string]$Registrations = '',
-    [switch]$PublishCode,
+    [switch]$HideCode,
     [int]$Port = 8000,
     [switch]$All,
     [switch]$TakeOver
@@ -189,7 +189,7 @@ switch ($Command) {
             $liveArgs = @('-m', 'arena', 'live', '--server', "http://127.0.0.1:$Port", '--out', $Site,
                           '--delay', "$Delay", '--interval', "$Interval")
             if ($url) { $liveArgs += @('--server-url', $url) }
-            if ($PublishCode) { $liveArgs += @('--join-code', $s['JOIN_CODE']) }
+            if (-not $HideCode) { $liveArgs += @('--join-code', $s['JOIN_CODE']) }
             if ($FormUrl) { $liveArgs += @('--form-url', $FormUrl) }
             if ($RegisterForm) { $liveArgs += @('--register-form', $RegisterForm) }
             if ($Registrations) { $liveArgs += @('--registrations', $Registrations) }
