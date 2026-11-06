@@ -68,6 +68,6 @@ Three layers with a strict dependency direction: **SDKs → HTTP/WS → server �
 
 ## Conventions
 
-- Examples and benchmarks bootstrap `sys.path` themselves (E402 is ignored there), so run them from the repo root as plain scripts.
+- Examples bootstrap `sys.path` themselves (E402 is ignored there), so run them from the repo root as plain scripts.
 - Deliberate simplifications are marked with `# ponytail:` comments that name the limit and the upgrade path.
 - The websocket protocol pairs the server and SDK from the same checkout. Change both together.

@@ -73,14 +73,14 @@ return a `Response`:
 Anything else, or an illegal amount, is a mistake (see the rules below). The
 starter bot explains what information `game_state` holds, and
 [SUBMITTING.md](SUBMITTING.md) has a table of the details that are easy to get
-wrong. Seven working example bots are described in [bots/README.md](bots/README.md).
+wrong. `bots/starter` is the template to copy ([bots/README.md](bots/README.md)).
 
 ## Test it locally
 
 ```bash
 python -m arena validate bots/myteam
 python -m arena match bots/myteam call --deals 200
-python -m arena match bots/myteam bots/equity_calc --deals 300
+python -m arena match bots/myteam random --deals 300
 ```
 
 `validate` checks that your bot loads and plays legally. `match` plays your bot
@@ -133,7 +133,7 @@ letters, digits, `-` and `_`, up to 32 characters).
 ## More
 
 * [SUBMITTING.md](SUBMITTING.md): the full competitor guide (also on the website).
-* [bots/README.md](bots/README.md): the example bots and how to use them.
+* [bots/README.md](bots/README.md): the bot template and how to use it.
 * [ORGANISER.md](ORGANISER.md): how the live event is run (for the organiser).
 * [docs/running-an-event.md](docs/running-an-event.md): the Docker version of the
   event runbook.

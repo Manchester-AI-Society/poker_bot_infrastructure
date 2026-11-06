@@ -4,7 +4,7 @@
 > with zip submissions: see [README.md](../README.md) for competitors and
 > [ORGANISER.md](../ORGANISER.md) for the organiser. This page keeps the
 > documentation of the older HTTP/WebSocket match server (`server/`),
-> `player_sdk.play()`, `admin_sdk/`, Docker and benchmarks, and of the older
+> `player_sdk.play()`, `admin_sdk/` and Docker, and of the older
 > arena modes (rolling ladder, git sync, timed cycles), which still exist in
 > the repository. Several server findings from
 > [the audit](history/AUDIT.md) are still open: do not expose the server to
@@ -18,10 +18,6 @@ An authoritative **no-limit Texas Hold'em match server** for running poker games
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-
-![Demo GIF](demo.gif)
-
-*A full hand played by three demo bots on the match server (all hole cards shown). To capture a new hand and regenerate the GIF: `python examples/visualisation/capture_demo_hand.py && python examples/visualisation/render_demo_gif.py` (GIF rendering additionally needs [Pillow](https://python-pillow.org): `pip install pillow`).*
 
 ## The 30-Second Version
 
@@ -104,7 +100,7 @@ flowchart LR
 
 Running a bot poker competition without a trusted server means every participant re-implements the rules — and disputes over illegal actions, mis-dealt cards, and incorrect payouts are inevitable. This project solves that by making the **server authoritative**: all rules, state transitions, and settlements are validated centrally, so bots can only ever submit an action and observe the result.
 
-It stands out because it is batteries-included — a complete hand engine, admin and player SDKs, per-turn timeouts, real-time WebSocket updates, and a benchmark suite for the engine hot paths — with no database or external services required to run a match.
+It stands out because it is batteries-included — a complete hand engine, admin and player SDKs, per-turn timeouts, real-time WebSocket updates — with no database or external services required to run a match.
 
 ## Key Features
 
@@ -120,7 +116,6 @@ It stands out because it is batteries-included — a complete hand engine, admin
 - **Admin SDK** — match lifecycle (create, start, pause, resume, end) with separate admin keys
 - **Local test harness** — `play_local_match([bot_a, bot_b])` auto-starts a server and runs a full game for fast iteration
 - **Test suite** — pytest unit tests plus end-to-end integration tests that play real matches
-- **Benchmark suite** — measures action validation, state projection, hand evaluation, and broadcast fanout
 
 ## Quick Start
 
@@ -479,29 +474,18 @@ together.
 | Others cannot open the site on your Wi-Fi | Use `--host 0.0.0.0`, allow Python through the firewall, and check the venue network lets devices reach each other |
 | Integration tests fail on authentication or admin-key errors | Set `POKER_ADMIN_API_KEY=admin-dev-key` (the value in `exampleenv`) in the environment before running them |
 
-## Benchmarks
-
-Measure engine hot paths before and after optimisations:
-
-```bash
-python benchmarks/run_benchmarks.py                                   # full suite
-python benchmarks/run_benchmarks.py --only showdown_evaluator_7card   # one scenario
-python benchmarks/run_benchmarks.py --json-output benchmarks/latest.json
-```
-
 ## Project Layout
 
 ```
 arena/          Competition harness: bot host, duplicate matches, ladder, final, CLI
 arena/site/     The results website (HTML, CSS, JavaScript), copied out by `arena export`
-bots/           Starter bot and six example bots with different styles (see bots/README.md)
+bots/           The bot template (starter)
 player_sdk/     Player SDK: play(), PokerBot interface, WS + HTTP transports, CLI
 admin_sdk/      Admin SDK: match lifecycle management
 server/         FastAPI routers, auth, websocket gateway
 game/           Authoritative engine: actions, streets, showdown, timeouts
-examples/       bots, remote play, local testing, admin flows, visualisation
+examples/       remote play, local testing, admin flows
 tests/          pytest unit + integration suites
-benchmarks/     engine hot-path benchmarks
 docs/history/AUDIT.md   Phase 1 audit (bugs, robustness, fairness) and fix status
 docs/history/DESIGN.md  Competition design options and the chosen architecture
 ARCHITECTURE.md How the competition works, and how to run and check it

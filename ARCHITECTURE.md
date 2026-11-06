@@ -313,9 +313,8 @@ The `integration` tests cover the older server only (they need
 `POKER_ADMIN_API_KEY=admin-dev-key`); the competition path is covered by the
 `tests/test_arena_*.py` files and `tests/site_js/`.
 
-**Rehearse a whole event** with the example bots: see "Run them as a small
-competition" in [bots/README.md](bots/README.md). It packs six bots, imports
-them, draws, plays both rounds and takes about a minute.
+**Rehearse a whole event** with [ORGANISER.md](ORGANISER.md) (section 10): it
+starts the server and a few bots on your own machine and plays both rounds.
 
 **Inspect a result during a real event:**
 
