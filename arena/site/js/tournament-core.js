@@ -230,7 +230,7 @@ export function teamStanding(name, t) {
 /** The "last updated" label for the header, and when the link is stale. */
 export function updatedText(manifest, ageSeconds, { stale = false } = {}) {
   const changed = ago(ageSeconds);
-  if (isTournament(manifest) || (manifest && manifest.mode === 'live')) {
+  if (isTournament(manifest)) {
     // There is no live result in this format, so never claim a "last result".
     return stale ? `Connection lost – showing data from ${changed}` : `Updated ${changed}`;
   }

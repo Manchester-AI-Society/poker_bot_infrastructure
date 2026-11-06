@@ -153,8 +153,10 @@ def _materialise(
         folder.mkdir()
         shutil.copy2(path, folder / "bot.py")
         return folder
-    if not (path / "bot.py").is_file():
-        raise SubmissionError("the bot directory must contain bot.py")
+    if not (path / "bot.py").is_file() and not (path / "bot.pkl").is_file():
+        raise SubmissionError(
+            "the bot directory must contain bot.py (or bot.pkl)"
+        )
     return path
 
 

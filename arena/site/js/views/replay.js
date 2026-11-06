@@ -1,9 +1,21 @@
 import { findPairing, loadReplay } from '../api.js';
 import { h } from '../dom.js';
 import { buildHash, fmtChips, plural } from '../format.js';
-import { buildFrames, swingFor } from '../replay-core.js';
-import { cardBack, cardEl, cardSlot } from './cards.js';
+import { buildFrames, parseCard, swingFor } from '../replay-core.js';
 import { resultText } from './matches.js';
+
+function cardEl(code) {
+  const card = parseCard(code);
+  return h(
+    'span',
+    { class: `card-pl${card.red ? ' red' : ''}`, 'aria-label': card.text },
+    h('b', {}, card.rank),
+    h('i', { 'aria-hidden': 'true' }, card.glyph),
+  );
+}
+
+const cardBack = () => h('span', { class: 'card-pl back', 'aria-label': 'hidden card' });
+const cardSlot = () => h('span', { class: 'card-pl empty', 'aria-hidden': 'true' });
 
 function seatEl(index, frame, hand, replay) {
   const seat = frame.seats[index];

@@ -103,10 +103,7 @@ export function registerLink(form, raw) {
 export function listedTeam(teams, raw) {
   const name = foldName(raw);
   const entry = (teams || []).find((t) => t.team === name);
-  if (!entry) return null;
-  // The live format has more statuses than the tournament's two: keep its words.
-  const own = ['in the lobby', 'playing', 'out', 'champion'].includes(entry.status) ? entry.status : entryStatus(entry);
-  return { team: entry.team, status: own };
+  return entry ? { team: entry.team, status: entryStatus(entry) } : null;
 }
 
 /**

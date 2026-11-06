@@ -1,33 +1,35 @@
 # Poker bot competition
 
-Write a Python poker bot. On the day it connects to the organiser's server over
-the internet and plays a no-limit Texas Hold'em knockout against everyone
-else's bots. The server deals the cards and enforces the rules; your bot only
-decides what to do each turn. Your bot runs **on your own computer**, so any
-library, model or file you have is fine.
+Write a Python poker bot, test it on your own computer, pack it into one
+`.pkl` file and upload it through the submission form. The organiser plays
+everyone's bot on one machine. **The prize pot is £300.**
 
-If you cannot connect, there is a backup: hand your bot in as a zip file and the
-organiser plays it for you (see "If you cannot connect").
+## The event
 
-## How the event works
+| Time | What happens |
+|---|---|
+| **12:00** | Hacking starts. Set up, write your bot, test it. |
+| **16:00** | Submission deadline. Upload your `.pkl` in the form; the last working one you upload is the one that plays. |
+| **18:00** | Finals. |
 
-* **Round 1.** Everyone connected when the organiser starts is shuffled onto
-  tables of up to 23 bots. Every table plays at the same time, until one bot
-  holds all the chips on its table.
-* **The final.** The winner of each table plays at the final table. The winner of
-  the final is the champion.
-* **Blinds go up.** They double every few hands, so waiting for perfect cards
-  loses. If a table reaches its hand limit, the bot with the most chips goes
-  through.
-* **Only bots in the lobby at the start get a seat.** Connect early and leave
-  your bot running.
-* **The event website** shows the play a few minutes behind the real game, with
-  your cards shown only when a hand reaches a showdown. Its Info page has the
-  server address, the join code, the timeline and the prize.
+* **Round 1, groups.** Teams are drawn at random into groups of at most 8. Each
+  group plays a round robin of heads-up matches.
+* **Round 2, finals.** The best 2 bots of each group play a round robin. The
+  final table decides the winner.
+* **No live standings.** Nothing about results is published until a round is
+  finished. The group tables appear when Round 1 ends, the final table when
+  Round 2 ends.
+
+Each deal is played twice with the two bots swapping seats, so card luck mostly
+cancels. A score is the average number of big blinds won per hand, with a 95%
+confidence interval. Blinds are 10/20 and stacks are 2000 chips, reset every
+hand.
 
 ## 1. Set up
 
-You need Python 3.11 or newer and git.
+You need **Python 3.14** and git. A pickle holds Python bytecode, so you must
+pack with the same Python version the organiser plays with, and `arena pack`
+refuses any other.
 
 ```bash
 git clone https://github.com/Manchester-AI-Society/poker_bot_infrastructure.git
@@ -35,7 +37,6 @@ cd poker_bot_infrastructure
 python -m venv venv
 venv\Scripts\activate          # macOS and Linux: source venv/bin/activate
 python -m pip install -r requirements.txt
-python -m pip install -e .
 ```
 
 Check that it works. This should print `OK: played 40 hands vs @call with no faults`:
@@ -63,9 +64,7 @@ must return a `Response`:
 | `Response.raise_to(total)` | Bet or raise. `total` is the total chips you want in this betting round, between `game_state.min_raise_to` and `game_state.max_raise_to`. |
 | `Response.all_in()` | Put in everything you have left. |
 
-If your bot crashes, returns something that is not a `Response`, or raises by an
-illegal amount, it is **not** knocked out: a safe move is played (check, or fold
-if you are facing a bet) and the reason is printed in your terminal.
+Anything else, or an illegal amount, is a mistake (see the rules below).
 
 What `game_state` holds (the details that are easy to guess wrong):
 
@@ -82,92 +81,87 @@ What `game_state` holds (the details that are easy to guess wrong):
 
 The docstring at the top of `bots/starter/bot.py` explains the rest.
 
+**Your bot travels as a pickle.** `arena pack` saves the *object* your class
+makes (everything in `bot.py` and any helper `.py` files next to it are stored
+inside the file). So:
+
+* Load models and data in `__init__` and keep them in plain attributes. Files on
+  disk are **not** available when the organiser plays your bot, and open files,
+  sockets and locks cannot be pickled.
+* Libraries stay installed on the organiser's machine, not in your file: use the
+  Python standard library and what `requirements.txt` installs, CPU only.
+
 ## 3. Test it on your computer
 
 ```bash
 python -m arena validate bots/myteam
 python -m arena match bots/myteam call --deals 200
+python -m arena match bots/myteam random --deals 300
 ```
 
-`validate` checks that your bot loads and plays legally. `match` plays it against
-a built-in opponent (`call`, `fold`, `random` or `shove`) or against another bot
-folder, and prints how many big blinds per hand it won. If it shows `faults:`
-above zero, the first fault and its reason are printed.
+`validate` checks that your bot loads and plays legally. `match` plays your bot
+against a built-in opponent (`call`, `fold`, `random`, `shove`) or against
+another bot folder, with the same engine and scoring as the competition. If a
+match shows `faults:` above zero, the first fault is printed with its reason (for
+example `raise_to(1) is outside the allowed range: the total must be between 40
+and 2000 chips`). The folder `arena_logs/` holds what your bot printed and any
+crash output.
 
-## 4. Join the event
+## 4. Pack and submit
 
-When the event opens, the **Info** page of the event website shows the server
-address and the join code.
-
-**Get your key.** Pick a team name (letters, digits, `-` and `_`) and run one of
-these, putting in the server address and the join code:
-
-```powershell
-Invoke-RestMethod -Method Post SERVER_URL/v1/register -ContentType 'application/json' -Body '{"player_id":"YOUR-TEAM-NAME","code":"JOIN-CODE"}'
-```
-
-```bash
-curl -X POST SERVER_URL/v1/register -H 'Content-Type: application/json' -d '{"player_id": "YOUR-TEAM-NAME", "code": "JOIN-CODE"}'
-```
-
-You get back an `api_key`. **Save it**: it cannot be looked up again.
-
-**Connect your bot** and leave it running:
-
-```bash
-python -m player_sdk bots/myteam/bot.py --tournament --server-url SERVER_URL --api-key YOUR_KEY
-```
-
-You should see `Playing as YOUR-TEAM-NAME (websocket)` and `Waiting in the
-tournament lobby`. When the organiser starts the event your terminal shows each
-hand and ends with `Eliminated in round N` or `Tournament over; champion: ...`.
-If your connection drops, run the same command again; it picks up where it was.
-
-## If you cannot connect
-
-If you cannot get a connection (a blocked network, a laptop problem), hand your
-bot in as a file instead. Websockets come first: the backup is used only if you
-are **not** connected when the event starts.
+Pack your bot into one `.pkl` file. This checks it again, the way the organiser
+will run it (loaded from the pickle alone, in a fresh process), and writes
+`myteam.pkl` in the current folder:
 
 ```bash
 python -m arena pack bots/myteam --team myteam
 ```
 
-That checks your bot and writes `myteam.zip`. Upload it in the backup form (the
-link is on the Info page). You can upload again: the newest zip that works is the
-one used. Use the same team name everywhere. A backup bot runs on the
-organiser's machine, so keep it small: the Python standard library and what
-`requirements.txt` installs, CPU only, at most 25 MB.
+Choose your team name once: lowercase letters, digits, `-` and `_`, up to 32
+characters. Then upload `myteam.pkl` in the submission form (the link is on the
+event website). You can submit again until 16:00: pack again and upload the new
+file. The newest file that works is the one that plays, and a newer file that is
+broken never replaces a working one.
 
 ## The rules
 
-* **Be quick.** Every turn has a time limit (about 15 seconds). If it runs out,
-  the server checks for you, or folds if checking is not allowed. Load models and
-  files when your bot starts, not inside `act`.
-* **Illegal or broken answers** cost you the turn (a safe move is played), never
-  your seat.
-* **One bot per team.**
-* **Fair play.** Do not attack the server, the website, or other teams'
-  connections, and do not try to find out other teams' cards.
+| | |
+|---|---|
+| **Time** | 1 second per move. Your average thinking time is also limited to 0.2 seconds per deal per half; going over disables your bot for that match. Load files at start-up (in `__init__`), not inside `act`. |
+| **Mistakes** | An exception, a timeout, an illegal move, or a return value that is not a `Response` is a fault. A safe default is played (check, otherwise fold) and the reason is reported (`validate` and `pack` print it). After 20 faults your bot is replaced by an always-fold stub for that match. |
+| **Memory** | The arena does not limit it, but several matches run at once on one machine. Keep your bot small. Your bot is restarted for each half of a match, so it starts each half fresh. |
+| **Size** | The `.pkl` file must be at most 25 MB. |
+| **Fair play** | No network use. Do not read files outside your own bot. Do not attack the arena or other teams' bots. Breaking these rules gets a team disqualified. |
 
 ## If something goes wrong
 
 | What you see | What to do |
 |---|---|
-| `Invalid API key` or `401` | A typo in the key, or the server was restarted. Register again (the same name is free again after a restart). |
-| `403` when registering | The join code is wrong. Check it on the Info page. |
-| `409` when registering | That team name is taken. Pick another. |
-| `Could not reach server` | Use the address exactly as shown (it starts with `https://`, with no `:8000`). Open `SERVER_URL/health` in a browser: `{"ok":true}` means the server is up. |
-| `Expected exactly one PokerBot subclass` | Keep only one `PokerBot` class in your file, with no constructor arguments. |
-| The terminal says a safe move was played | Your bot crashed or answered illegally; the message says why. Fix it and run the same command again. |
-| Your bot keeps folding or checking without your code running | `act` is too slow, so the turn timer acted for you. |
+| `pack with Python 3.14` | You are on another Python version. Install 3.14 and make a new venv with it. |
+| `your bot does not load` | `bot.py` raised an error on import; the message says where. |
+| `cannot be pickled` | Your bot holds an open socket or lock. Create it only inside `act`, or drop it, and keep plain data in `__init__`. |
+| `Expected exactly one PokerBot subclass` | Keep only one `PokerBot` class in `bot.py`, with no constructor arguments. |
+| `your bot fails its check` | The message gives the first fault (a crash, an illegal raise, or a slow move). `python -m arena validate bots/myteam` shows the same check. |
+| The organiser says your file was rejected | It was not made by `arena pack`, was damaged or edited, or was packed with another Python version. Pack it again and upload it again. |
 
 ## For the organiser
 
-`scripts/event.ps1` runs a live event from a Windows laptop with no Docker
-(`up`, `status`, `url`, `backups`, `start`, `down`): the poker server, a
-Cloudflare tunnel and the live site feed. It needs `cloudflared.exe` in `tools\`.
-The Home page text is `event.json`. The operator runbook and the architecture
-notes are on the `try/ammar-websockets` branch (`ORGANISER.md`, `ARCHITECTURE.md`).
+State lives under `arena_data/` (the downloaded form uploads go in any folder).
+
+```bash
+python -m arena import downloads                       # read every .pkl, check each bot
+python -m arena tournament draw --group-size 8 --advance 2
+python -m arena tournament start-groups --deals 100
+python -m arena tournament run                         # leave running; Ctrl+C when done
+python -m arena tournament start-finals --deals 200    # when status says "between"
+python -m arena tournament status
+python -m arena export --out arena_site --git-push     # publish the results site
+```
+
+Unpickling runs the team's code, so bots are not sandboxed: run the event on a
+machine you can spare. A file's label is read without running anything, and the
+bot inside is only ever unpickled in the child process that plays it. The
+earlier docs (organiser runbook, architecture notes) and the websocket
+version are on the `try/ammar-websockets` branch.
 
 This project is licensed under the [MIT License](LICENSE).

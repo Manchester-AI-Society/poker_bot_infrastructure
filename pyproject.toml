@@ -5,18 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "poker-player-sdk"
 version = "0.1.0"
-description = "Player SDK for poker bot infrastructure: write a bot, call play(), done."
+description = "Poker bot competition: write a PokerBot, pack it, enter it."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Manchester AI Society" }]
 license = { text = "MIT" }
 dependencies = [
-    "python-dotenv>=1.0",
-    "websockets>=13",
+    "cloudpickle==3.1.2",
 ]
-
-[project.scripts]
-poker-bot = "player_sdk._run:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
@@ -26,9 +22,6 @@ include = ["player_sdk*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = [
-    "integration: end-to-end tests that start a local match server",
-]
 
 [tool.ruff]
 line-length = 79
@@ -40,6 +33,7 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 # Scripts bootstrap sys.path before importing repo packages.
+"examples/*" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

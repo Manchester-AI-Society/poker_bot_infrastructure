@@ -1,7 +1,7 @@
 """Child process that hosts one participant bot.
 
-Run as ``python -m arena.bothost <bot.py | bot_dir>``. Speaks JSON lines
-on stdin/stdout:
+Run as ``python -m arena.bothost <bot.py | bot.pkl | bot_dir>``. Speaks
+JSON lines on stdin/stdout:
 
     -> {"type": "act", "state": {...}, "hero_index": 0,
         "action_history": [...]}
@@ -23,27 +23,32 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, Mapping
 
-from player_sdk._run import load_bot_from_file
+from arena.pickling import BOT_FILE, load_pickled_bot
 from player_sdk.bot_interface import PokerBot
-from player_sdk.client import translate_action
+from player_sdk.loader import load_bot_from_file
 from player_sdk.parser import GameStateParser
 from player_sdk.response import InvalidResponse, validate_response
+from player_sdk.translate import translate_action
 
 
 def resolve_bot_file(target: Path) -> Path:
-    """Returns the bot module for a file or a bot directory."""
+    """Returns the bot for a file or a bot directory.
+
+    A folder holds ``bot.py`` (source) or ``bot.pkl`` (a submitted pickle).
+    """
     if target.is_dir():
-        candidate = target / "bot.py"
-        if not candidate.is_file():
-            raise FileNotFoundError(f"{target} has no bot.py")
-        return candidate
+        for name in ("bot.py", BOT_FILE):
+            candidate = target / name
+            if candidate.is_file():
+                return candidate
+        raise FileNotFoundError(f"{target} has no bot.py or {BOT_FILE}")
     if not target.is_file():
         raise FileNotFoundError(f"Bot not found: {target}")
     return target
 
 
 def load_bot(target: Path) -> PokerBot:
-    """Imports and instantiates the single PokerBot in ``target``."""
+    """Loads the single PokerBot in ``target`` (source or pickle)."""
     bot_file = resolve_bot_file(target)
     bot_dir = str(bot_file.parent)
     if bot_dir not in sys.path:
@@ -51,6 +56,8 @@ def load_bot(target: Path) -> PokerBot:
         # module must not shadow the standard library.
         sys.path.append(bot_dir)
     os.chdir(bot_dir)
+    if bot_file.suffix == ".pkl":
+        return load_pickled_bot(bot_file)
     return load_bot_from_file(bot_file)
 
 

@@ -4,10 +4,10 @@ Commands for participants:
     match A B     play a duplicate match locally (the same code path and
                   scoring the competition uses)
     validate BOT  check that a bot loads and plays legally on time
-    pack BOT      check a bot and write the zip you upload in the form
+    pack BOT      check a bot and write the .pkl you upload in the form
 
 Commands for the organiser (state lives under --root, default arena_data):
-    import FOLDER     import the submission zips the form collected
+    import FOLDER     import the .pkl files the form collected
     submit TEAM SRC   add a bot version from a folder, file or git URL
     sync              pull every team's bot from its own git repository, as
                       listed in a teams file (and keep doing it)
@@ -20,8 +20,8 @@ Commands for the organiser (state lives under --root, default arena_data):
     retry-failed      re-queue pairings whose job crashed
     export            write the static results site (optionally serve it
                       or push it to a git host)
-    tournament ...    the two-round websocket tournament (keys, draw, serve,
-                      start-groups, start-finals, status)
+    tournament ...    the two-round tournament (draw, start-groups, run,
+                      start-finals, status, remove)
 """
 
 from __future__ import annotations
@@ -67,8 +67,13 @@ from .sync import (
 from .tournament_cli import add_tournament_parser
 from .validate import smoke_test
 
-DEFAULT_GUIDE = Path(__file__).resolve().parents[1] / "SUBMITTING.md"
-DEFAULT_EVENT = Path(__file__).resolve().parents[1] / "event.json"
+_ROOT = Path(__file__).resolve().parents[1]
+# The 'How to submit' page: SUBMITTING.md when there is one, else the README.
+DEFAULT_GUIDE = next(
+    (p for p in (_ROOT / "SUBMITTING.md", _ROOT / "README.md") if p.is_file()),
+    _ROOT / "README.md",
+)
+ORGANISER_HEADING = "\n## For the organiser"
 
 
 def _fmt_bb(value: Optional[float]) -> str:
@@ -158,118 +163,6 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
-def cmd_backup_run(args: argparse.Namespace) -> int:
-    import os
-
-    from . import backup
-    from .backup import AdminServer, BackupError, BackupRunner, plan
-
-    admin_key = args.admin_key or os.environ.get("POKER_ADMIN_API_KEY", "")
-    if not admin_key:
-        print("give the admin key with --admin-key (or POKER_ADMIN_API_KEY)")
-        return 2
-    store = Store(args.root)
-    try:
-        server = AdminServer(args.server, admin_key)
-        connected = server.lobby()
-    except Exception as exc:
-        print(f"cannot reach the poker server at {args.server}: {exc}")
-        return 2
-    chosen = plan(
-        store,
-        connected,
-        only_missing=not args.all,
-        teams=args.team or None,
-    )
-    for team, reason in chosen.skipped:
-        print(f"  skipping {team}: {reason}")
-    if not chosen.run:
-        print(
-            "no backup bots to run (import the submissions first, "
-            "or use --all)"
-        )
-        return 0
-    print("starting backup bots for: " + ", ".join(t for t, _ in chosen.run))
-    runner = BackupRunner(store, server, args.server, spawn=backup.spawn_bot)
-    try:
-        problems = runner.start(chosen.run, take_over=args.take_over)
-        for team, reason in problems:
-            print(f"  cannot run {team}: {reason}")
-        if not runner.running:
-            return 1
-        print(
-            "bots are in the lobby; start the tournament when everyone is "
-            "in. Press Ctrl+C to stop them."
-        )
-        runner.supervise()
-        print("the tournament is finished")
-        return 0
-    except KeyboardInterrupt:
-        print("stopping")
-        return 0
-    except BackupError as exc:
-        print(str(exc))
-        return 1
-    finally:
-        runner.stop_all()
-
-
-def cmd_live(args: argparse.Namespace) -> int:
-    from .live import LiveOptions, describe, load_event, run_live
-
-    guide = ""
-    if not args.no_guide:
-        try:
-            guide = Path(args.guide or DEFAULT_GUIDE).read_text(
-                encoding="utf-8-sig"
-            )
-        except OSError as exc:
-            if args.guide:
-                print(f"cannot read the info page text: {exc}")
-                return 2
-            print("note: no SUBMITTING.md, so the Info page has no guide")
-    event = None
-    event_path = args.event_file or (
-        str(DEFAULT_EVENT) if DEFAULT_EVENT.exists() else ""
-    )
-    if event_path and not args.no_event:
-        try:
-            event = load_event(event_path)
-        except ExportError as exc:
-            print(f"cannot do that: {exc}")
-            return 2
-    options = LiveOptions(
-        server=args.server,
-        delay=args.delay,
-        interval=args.interval,
-        title=args.title,
-        server_url=args.server_url or "",
-        join_code=args.join_code or "",
-        form_url=args.form_url or "",
-        register_form=args.register_form or "",
-        registrations=args.registrations or "",
-        note=args.note or "",
-        guide=guide,
-        event=event,
-    )
-    try:
-        options.validate()
-    except ExportError as exc:
-        print(f"cannot do that: {exc}")
-        return 2
-    for line in describe(options.delay, options.interval):
-        print(line)
-    if options.join_code:
-        print("note: the join code will be PUBLISHED on the website")
-    return run_live(
-        options,
-        Path(args.out),
-        git_push=args.git_push,
-        once=args.once,
-        store=None,
-    )
-
-
 def cmd_pack(args: argparse.Namespace) -> int:
     from .package import PackError, pack
 
@@ -285,8 +178,8 @@ def cmd_pack(args: argparse.Namespace) -> int:
         print(f"cannot pack: {exc}")
         return 1
     print(
-        f"OK: {result.path} ({result.files} files, "
-        f"{result.bytes / 1024:.0f} KB, checksum {result.digest}).\n"
+        f"OK: {result.path} ({result.bytes / 1024:.0f} KB, "
+        f"checksum {result.digest}).\n"
         "Upload that file in the submission form. To change your bot, pack "
         "it again and upload the new file: the newest one is played."
     )
@@ -294,14 +187,14 @@ def cmd_pack(args: argparse.Namespace) -> int:
 
 
 def cmd_import(args: argparse.Namespace) -> int:
-    from .package import find_zips, import_submissions
+    from .package import find_submissions, import_submissions
 
     folder = Path(args.folder)
     if not folder.exists():
         print(f"not found: {folder}")
         return 2
-    if not find_zips(folder):
-        print(f"no .zip files under {folder}")
+    if not find_submissions(folder):
+        print(f"no .pkl files under {folder}")
         return 2
     from .tournament import ensure_tournament
 
@@ -680,7 +573,10 @@ def cmd_export(args: argparse.Namespace) -> int:
     if not args.no_guide:
         guide_path = Path(args.guide) if args.guide else DEFAULT_GUIDE
         if guide_path.is_file():
-            guide = guide_path.read_text(encoding="utf-8-sig")
+            # The organiser's notes are not for the public page.
+            guide = guide_path.read_text(encoding="utf-8-sig").split(
+                ORGANISER_HEADING
+            )[0]
         elif args.guide:
             print(f"export failed: cannot read the guide {guide_path}")
             return 1
@@ -797,74 +693,13 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--log-dir", default="arena_logs")
     validate.set_defaults(handler=cmd_validate)
 
-    live = commands.add_parser(
-        "live",
-        help="publish the poker server's play, delayed, to the website",
-    )
-    live.add_argument(
-        "--server", default="http://127.0.0.1:8000", help="the poker server"
-    )
-    live.add_argument("--out", default="arena_site", help="site folder")
-    live.add_argument(
-        "--delay",
-        type=float,
-        default=360.0,
-        help="seconds the site runs behind the game (default 360)",
-    )
-    live.add_argument(
-        "--interval",
-        type=float,
-        default=300.0,
-        help="seconds between publications (default 300; at least 60)",
-    )
-    live.add_argument("--title", default="Poker Bot Competition")
-    live.add_argument(
-        "--server-url",
-        metavar="URL",
-        help="the public address bots connect to (shown on the Info page)",
-    )
-    live.add_argument(
-        "--join-code",
-        metavar="CODE",
-        help="the join code to show on the Info page",
-    )
-    live.add_argument(
-        "--form-url", metavar="URL", help="the backup submission form"
-    )
-    live.add_argument(
-        "--register-form",
-        metavar="URL",
-        help="the team-name registration form's prefilled link",
-    )
-    live.add_argument(
-        "--registrations",
-        metavar="CSV_FILE_OR_URL",
-        help="that form's sheet (CSV file or published https address)",
-    )
-    live.add_argument("--note", help="a line for the top of the Info page")
-    live.add_argument(
-        "--guide", help="markdown for the Info page (default SUBMITTING.md)"
-    )
-    live.add_argument("--no-guide", action="store_true")
-    live.add_argument(
-        "--event-file",
-        metavar="FILE",
-        help="the Home page text (default event.json in the repository)",
-    )
-    live.add_argument("--no-event", action="store_true")
-    live.add_argument("--git-push", action="store_true")
-    live.add_argument(
-        "--once", action="store_true", help="publish once and stop"
-    )
-    live.set_defaults(handler=cmd_live)
-
     pack = commands.add_parser(
         "pack",
-        help="check your bot and write the zip you upload in the form",
+        help="check your bot and write the .pkl you upload in the form",
     )
     pack.add_argument("bot", help="bot folder (with bot.py) or a .py file")
     pack.add_argument("--team", required=True, help="your team name")
-    pack.add_argument("--out", default=".", help="folder for the zip")
+    pack.add_argument("--out", default=".", help="folder for the .pkl")
     pack.add_argument("--no-validate", action="store_true")
     pack.set_defaults(handler=cmd_pack)
 
@@ -891,32 +726,10 @@ def build_parser() -> argparse.ArgumentParser:
         return sub
 
     sub = organiser(
-        "import", "import the submission zips the form collected", cmd_import
+        "import", "import the .pkl files the form collected", cmd_import
     )
-    sub.add_argument("folder", help="folder with the downloaded zips")
+    sub.add_argument("folder", help="folder with the downloaded .pkl files")
     sub.add_argument("--no-validate", action="store_true")
-
-    sub = organiser(
-        "backup-run",
-        "play imported (zip) bots in the live tournament",
-        cmd_backup_run,
-    )
-    sub.add_argument("--server", default="http://127.0.0.1:8000")
-    sub.add_argument("--admin-key", help="or set POKER_ADMIN_API_KEY")
-    sub.add_argument(
-        "--all",
-        action="store_true",
-        help="run every imported team, even ones already connected live",
-    )
-    sub.add_argument(
-        "--team", action="append", help="only this team (repeatable)"
-    )
-    sub.add_argument(
-        "--take-over",
-        action="store_true",
-        help="replace the key of a team that is already a player on the "
-        "server (it must not be playing live)",
-    )
 
     sub = organiser("submit", "add a bot version", cmd_submit)
     sub.add_argument("team")
@@ -1009,7 +822,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument(
         "--guide",
         help="markdown for the 'How to submit' page "
-        "(default: SUBMITTING.md in the repository)",
+        "(default: SUBMITTING.md or README.md in the repository)",
     )
     sub.add_argument(
         "--registry-repo",
