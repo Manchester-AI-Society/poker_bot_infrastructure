@@ -51,5 +51,11 @@ class CreatePlayerRequest(BaseModel):
     api_key: Optional[str] = Field(default=None, min_length=8)
 
 
+class RegisterRequest(BaseModel):
+    # Same charset as scripts/event.sh so names stay .env-safe.
+    player_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,32}$")
+    code: str = ""
+
+
 class RotatePlayerKeyRequest(BaseModel):
     api_key: Optional[str] = Field(default=None, min_length=8)

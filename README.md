@@ -11,6 +11,10 @@ An authoritative **no-limit Texas Hold'em match server** for running poker games
 
 *A full hand played by three demo bots on the match server (all hole cards shown). To capture a new hand and regenerate the GIF: `python examples/visualisation/capture_demo_hand.py && python examples/visualisation/render_demo_gif.py` (GIF rendering additionally needs [Pillow](https://python-pillow.org): `pip install pillow`).*
 
+> **Entering a competition?** Start with [`docs/joining-the-competition.md`](docs/joining-the-competition.md): setup, writing your bot, getting your key, and joining on the day.
+>
+> **Organising one?** See [`docs/running-an-event.md`](docs/running-an-event.md).
+
 ## The 30-Second Version
 
 Write a bot, then play it with one call — credentials resolve from keyword arguments or environment variables, exactly like the OpenAI SDK:
@@ -94,6 +98,7 @@ It stands out because it is batteries-included — a complete hand engine, admin
 - **Turn timeouts** — players who stall are auto-checked, or auto-folded when checking is illegal
 - **HTTP + WebSocket APIs** — poll match state or receive turn events in real time at `ws://…/v1/ws`
 - **OpenAI-style player SDK** — `play(model=MyBot(), api_key=...)` joins a match and plays to completion over a realtime websocket, with automatic HTTP-polling fallback and auto-discovery of identity, match, and seat
+- **Works on any network** — an optional Cloudflare tunnel (`docker compose --profile tunnel up`) exposes the server at a public HTTPS URL, so bots connect even on eduroam / campus Wi-Fi that blocks device-to-device traffic
 - **Admin SDK** — match lifecycle (create, start, pause, resume, end) with separate admin keys
 - **Local test harness** — `play_local_match([bot_a, bot_b])` auto-starts a server and runs a full game for fast iteration
 - **Test suite** — pytest unit tests plus end-to-end integration tests that play real matches
@@ -147,6 +152,52 @@ The image (`Dockerfile`) contains only the server and engine — the SDKs, examp
 docker build -t poker-bot-server .
 docker run --rm -p 8000:8000 --env-file .env poker-bot-server
 ```
+
+### Run on restricted Wi-Fi (eduroam, hotel, conference)
+
+**Running an event? Follow the organiser runbook: [`docs/running-an-event.md`](docs/running-an-event.md)** (setup, the day-of steps, and fixes when things go wrong).
+
+**Shortcut:** [`scripts/event.sh`](scripts/event.sh) wraps everything below —
+
+```bash
+./scripts/event.sh up         # start server + tunnel, health-check, print the signup command to share
+./scripts/event.sh url        # re-print the URL
+./scripts/event.sh key alice   # issue a key as people turn up — live instantly, saved to .env
+./scripts/event.sh rehearse   # 10 bots play a full tournament through the tunnel
+./scripts/event.sh reset      # restart server: clears test bots + tournament, URL unchanged
+./scripts/event.sh logs       # follow server logs
+./scripts/event.sh down       # stop everything
+```
+
+The manual steps it runs:
+
+Campus networks like eduroam block inbound and device-to-device traffic, so bots can't reach `http://<your-ip>:8000`. The `tunnel` profile adds a [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) that exposes the server at a public HTTPS URL using only outbound port 443 — no account needed:
+
+```bash
+# 1. Start the server + tunnel
+docker compose --profile tunnel up --build -d
+
+# 2. Get the public URL (may take ~10s to appear)
+docker compose logs tunnel | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com'
+
+# 3. Check it's reachable (expect 200)
+curl https://<that-url>/health
+
+# 4. Point a bot at it, from any network (the SDK switches to wss:// automatically)
+POKER_SERVER_URL=https://<that-url> python examples/bots/remote/run_remote_bot.py
+```
+
+Without Docker: `brew install cloudflared && cloudflared tunnel --protocol http2 --url http://localhost:8000`.
+
+Rehearse an event before the real thing — 10 bots, each in its own process (like 10 laptops), play a full tournament through the tunnel:
+
+```bash
+POKER_SERVER_URL=https://<that-url> python examples/bots/remote/simulate_devices.py --bots 10
+```
+
+It prints the bracket and champion and exits non-zero if any bot failed; per-bot logs land in `sim_logs/`. Expect ~45s through the tunnel vs ~1s on localhost — that's network round-trips, well inside the turn timer. The `device-*` bots it registers stay until the server restarts (`docker compose restart poker-server`).
+
+> The URL is public and changes on every restart. Set real `BOT_API_KEYS` / `ADMIN_API_KEYS` in `.env` before tunnelling — the dev keys are in this README.
 
 
 **Fastest path to a full game** — example scripts auto-start the server if needed:
@@ -350,14 +401,26 @@ curl "http://127.0.0.1:8000/v1/matches/<MATCH_ID>/events?offset=0&limit=100"
 
 ## Running a Tournament
 
-A two-round knockout for bots connecting from anywhere:
+A two-round knockout for bots connecting from anywhere. Below, `HOST:8000` is wherever the server runs — at an event on campus Wi-Fi, use the `https://….trycloudflare.com` URL from [Run on restricted Wi-Fi](#run-on-restricted-wi-fi-eduroam-hotel-conference) instead (no port).
 
 1. **Round 1:** every bot in the lobby is shuffled onto `min(10, players // 2)` tables, with sizes as even as possible (23 bots → three tables of 3 and seven of 2). All tables play in parallel until one bot holds every chip.
 2. **Final:** the table winners play one final table. Its winner is the champion. (With 3 or fewer bots there is only the final.)
 
 Blinds double every `blind_increase_every_hands` hands so tables finish. If `max_hands` is reached, the chip leader advances. A bot that disconnects mid-table is auto-checked/folded by the turn timer.
 
-**1. Admin: issue each entrant a key**
+**1. Entrants get a key — self-service, no admin needed**
+
+`./scripts/event.sh up` prints a ready-to-share command containing the server URL and a join code (random, stored as `REGISTRATION_CODE` in `.env`). Each entrant runs it once with their own name:
+
+```bash
+curl -X POST https://<url>/v1/register -H 'Content-Type: application/json' \
+  -d '{"player_id": "alice-bot", "code": "<join-code>"}'
+# → {"player_id": "alice-bot", "api_key": "..."}
+```
+
+Each name can be claimed once (`409` if taken); a wrong code gets `403`. With `REGISTRATION_CODE` empty, signup is disabled. Self-registered keys live in memory: after a server restart, entrants just register again (their name is free again).
+
+Or issue keys yourself — `./scripts/event.sh key alice-bot` (saved to `.env`, survives restarts), or the admin API:
 
 ```bash
 curl -X POST http://HOST:8000/v1/admin/players -H "Authorization: Bearer admin-dev-key" \
@@ -384,6 +447,8 @@ curl -X POST http://HOST:8000/v1/tournament/start -H "Authorization: Bearer admi
   -d '{"starting_stack": 1000, "small_blind": 10, "big_blind": 20, "blind_increase_every_hands": 10, "max_hands": 500}'
 curl http://HOST:8000/v1/tournament                  # live bracket, winners, champion
 ```
+
+To dry-run the whole flow first, [`examples/bots/remote/simulate_devices.py`](examples/bots/remote/simulate_devices.py) does steps 1–3 with N local bot processes.
 
 From Python: `admin.get_lobby()`, `admin.start_tournament(...)`, `admin.get_tournament()`. Only bots connected at the moment of `start` are seated. One tournament runs at a time, and state lives in memory.
 
@@ -420,6 +485,9 @@ together.
 | `PlayerSDKAuthError: An API key is required to submit actions` | Submitting actions over HTTP without a key is no longer allowed — pass `api_key` to `play()`/the client |
 | `Player belongs to multiple matches` | Set `match_id` (or `POKER_MATCH_ID`) explicitly when using the CLI or `run_bot()` |
 | `Websocket unavailable …; using HTTP polling instead` | The server accepted HTTP but rejected the WS upgrade — everything still works, this is informational |
+| Bots on other laptops can't reach `http://<your-ip>:8000` (works on localhost) | The network (eduroam, most campus/hotel Wi-Fi) blocks device-to-device traffic — use the [tunnel](#run-on-restricted-wi-fi-eduroam-hotel-conference) and share its `https://` URL |
+| Tunnel log shows no `trycloudflare.com` URL / keeps reconnecting | Network blocks outbound to Cloudflare; try a phone hotspot for the server machine. The compose service already forces TCP 443 (`--protocol http2`) |
+| Tunnel URL suddenly stops working | Quick-tunnel URLs change whenever the `tunnel` container restarts — re-run the `logs` command and re-share the URL |
 | Bot folded without acting | Turn timer (`turn_timeout_seconds`) expired; make `act()` return faster or raise the match timeout |
 
 ## Benchmarks
@@ -440,6 +508,7 @@ admin_sdk/      Admin SDK: match lifecycle management
 server/         FastAPI routers, auth, websocket gateway
 game/           Authoritative engine: actions, streets, showdown, timeouts
 examples/       bots, remote play, local testing, admin flows, visualisation
+scripts/        event.sh: run server + public tunnel for an event
 tests/          pytest unit + integration suites
 benchmarks/     engine hot-path benchmarks
 ```

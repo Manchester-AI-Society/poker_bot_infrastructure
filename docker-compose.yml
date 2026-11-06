@@ -9,3 +9,15 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+
+  # Public HTTPS URL via an outbound Cloudflare quick tunnel (no account needed).
+  # Works on networks that block inbound/peer traffic, e.g. eduroam.
+  # Start with: docker compose --profile tunnel up --build -d
+  tunnel:
+    image: cloudflare/cloudflared:2024.12.2
+    # http2 = TCP 443 only; the default QUIC (UDP 7844) is often blocked on campus Wi-Fi
+    command: tunnel --no-autoupdate --protocol http2 --url http://poker-server:8000
+    depends_on:
+      - poker-server
+    profiles: [tunnel]
+    restart: unless-stopped
