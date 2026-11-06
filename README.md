@@ -1,28 +1,32 @@
 # Poker bot competition
 
-A heads-up no-limit Texas Hold'em competition for Python bots. You write a bot,
-test it on your own computer, pack it into one zip file and upload it through a
-form. The organiser plays everyone's bot on one machine.
+A no-limit Texas Hold'em knockout for Python bots. You write a bot, test it on
+your own computer, and on the day it connects to the organiser's server over
+the internet (a websocket) and plays everyone else's bot. If you cannot
+connect, you hand your bot in as a zip file and the organiser plays it for you.
 
-* **Round 1, groups.** Teams are drawn at random into groups of at most 8. Each
-  group plays a round robin.
-* **Round 2, finals.** The best 2 bots of each group play a round robin. The
-  final table decides the winner.
-* **No live standings.** Nothing about results is published until a round is
-  finished. The group tables appear when Round 1 ends, the final table when
-  Round 2 ends.
+* **Round 1.** Everyone connected when the organiser starts is shuffled onto
+  tables of up to 23 bots. Tables play at the same time until one bot holds all
+  the chips on its table.
+* **The final.** The winner of each table plays at the final table. Blinds
+  double every few hands, so waiting for perfect cards loses. If a table
+  reaches its hand limit, the bot with the most chips goes through.
+* **The website** shows the play as it happens, a few minutes behind the real
+  game on purpose, with your cards shown only when a hand reaches a showdown.
+  Its Info page has the server address, the join code and everything else a
+  team needs.
 
-Each deal is played twice with the two bots swapping seats, so card luck mostly
-cancels. A score is the average number of big blinds won per hand, with a 95%
-confidence interval. Blinds are 10/20 and stacks are 2000 chips, reset every
-hand.
+Start with [SUBMITTING.md](SUBMITTING.md): it is the full competitor guide,
+from setting up to joining the event.
 
 ## What you need
 
 * Python 3.11 or newer.
 * Git.
-* This repository. Nothing else: your bot runs on the organiser's machine, not
-  on yours.
+* This repository.
+* A network connection that can reach the organiser's server on the day. Your
+  bot runs on your own computer, so any library or model you have is fine. If
+  you cannot connect, use the zip backup below.
 
 ## Set up
 
@@ -87,50 +91,54 @@ example `raise_to(1) is outside the allowed range: the total must be between 40
 and 2000 chips`). `validate` prints it too. The folder `arena_logs/` holds what
 your bot printed, any crash output, and a line for each illegal response.
 
-## Pack and submit
+## Join the live event
 
-Pack your bot into one zip. This checks it again and writes `myteam.zip` in the
-current folder:
+When the event opens, the website's Info page shows the server address and the
+join code. Register a team name to get a key, then connect your bot and leave it
+running:
+
+```bash
+python -m player_sdk bots/myteam/bot.py --tournament --server-url SERVER_URL --api-key YOUR_KEY
+```
+
+[SUBMITTING.md](SUBMITTING.md) has the register command for PowerShell and
+`curl`, what to expect in the terminal, and a troubleshooting table. If your
+connection drops, run the same command again.
+
+## The backup: hand your bot in as a zip
+
+Websockets come first. If you cannot get a connection (a blocked network, a
+laptop problem), pack your bot and upload it in the backup form (the link is on
+the Info page):
 
 ```bash
 python -m arena pack bots/myteam --team myteam
 ```
 
-Choose your team name once: lowercase letters, digits, `-` and `_`, up to 32
-characters. Then upload `myteam.zip` in the submission form. The organiser will
-share the form link.
-
-You can submit again until the deadline. Pack again and upload the new zip: the
-newest zip that works is the one that plays. A newer zip that is broken never
-replaces a working one.
+This checks your bot again and writes `myteam.zip`. The organiser plays it on
+their own machine as an ordinary websocket client, **only if your team is not
+connected live when the event starts**. You can upload again: the newest zip
+that works is the one used. Use the same team name everywhere (lowercase
+letters, digits, `-` and `_`, up to 32 characters).
 
 ## The rules
 
 | | |
 |---|---|
-| **Time** | 1 second per move. Your average thinking time is also limited to 0.2 seconds per deal per half; going over disables your bot for that match. Load files at start-up, not inside `act`. |
-| **Mistakes** | An exception, a timeout, an illegal move, or a return value that is not a `Response` is a fault. A safe default is played (check, otherwise fold) and the reason is reported (`validate` and `pack` print it). After 20 faults your bot is replaced by an always-fold stub for that match. |
-| **Memory** | The arena does not limit it, but several matches run at once on one machine. Keep your bot small and do not hold on to large data. Your bot is restarted for each half of a match, so it starts each half fresh. |
-| **Size** | The bot folder, all files unzipped, must be at most 25 MB. |
-| **Libraries** | The Python standard library and what `requirements.txt` installs. The organiser will say if anything else is installed. CPU only. |
-| **Fair play** | No network use. Do not read files outside your own bot folder. Do not attack the arena or other teams' bots. Breaking these rules gets a team disqualified. |
-
-## Another way to run an event: a live knockout over websockets
-
-There is also a server-based format in which bots connect from their own
-machines (through a tunnel, so it works on campus Wi-Fi) and play a two-round
-knockout on multi-player tables. It is a separate system from the form-and-zip
-flow above: see [docs/running-an-event.md](docs/running-an-event.md) for the
-organiser and [docs/joining-the-competition.md](docs/joining-the-competition.md)
-for players. Pick one format for an event.
+| **Time** | Every turn has a time limit (about 15 seconds, set by the organiser). If it runs out, the server checks for you, or folds if checking is not allowed. Load models and files when your bot starts, not inside `act`. |
+| **Mistakes** | An exception, an illegal move, or a return value that is not a `Response` costs you the turn, never your seat: a safe move is played (check, otherwise fold) and the reason is printed in your terminal. |
+| **One bot per team** | Any library and any hardware you have. In the zip backup the bot runs on the organiser's machine, so keep it small: the Python standard library and what `requirements.txt` installs, CPU only, at most 25 MB. |
+| **Fair play** | Do not attack the server, the website, or other teams' connections, and do not try to find out other teams' cards. |
 
 ## More
 
-* [SUBMITTING.md](SUBMITTING.md): the full competitor guide.
+* [SUBMITTING.md](SUBMITTING.md): the full competitor guide (also on the website).
 * [bots/README.md](bots/README.md): the example bots and how to use them.
-* [ORGANISER.md](ORGANISER.md): how the event is run (for the organiser).
-* [ARCHITECTURE.md](ARCHITECTURE.md): how the arena works inside.
-* [docs/legacy-server.md](docs/legacy-server.md): the older network match
-  server and SDK, which the competition does not use.
+* [ORGANISER.md](ORGANISER.md): how the live event is run (for the organiser).
+* [docs/running-an-event.md](docs/running-an-event.md): the Docker version of the
+  event runbook.
+* [ARCHITECTURE.md](ARCHITECTURE.md): how it works inside.
+* [docs/legacy-server.md](docs/legacy-server.md): the match server and SDK in
+  detail.
 
 This project is licensed under the [MIT License](LICENSE).

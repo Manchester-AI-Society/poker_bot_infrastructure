@@ -1,16 +1,24 @@
 # Competition architecture
 
-This describes how the **bot competition** works: the `arena/` package.
-The event uses no HTTP, WebSocket or other network service. Teams hand in their
-bots as zip files collected by a form, the organiser imports them, and the bots
-run as ordinary child processes on the organiser's machine. All state is local
-files plus one SQLite database.
+This describes how the **bot competition** works. There are two ways to play
+it, and they share the rules engine in `game/`:
+
+* **The live event (the main one).** Bots connect to the organiser's poker
+  server over websockets and play a two-round knockout on multi-player tables.
+  The website shows it a few minutes behind the real play. Section 12 describes
+  it: `server/`, `game/tournament.py`, `arena/live.py`, `arena/backup.py`.
+* **The zip flow (the backup, and the original design).** Teams hand in their
+  bots as zip files collected by a form, the organiser imports them, and the
+  bots run as ordinary child processes on the organiser's machine. Sections 1
+  to 10 describe it: the `arena/` package, with all state in local files plus
+  one SQLite database. In the live event it is used for teams that cannot
+  connect: their imported bots are played as websocket clients.
 
 People see the results through a **static website**: `python -m arena export`
-turns the results into a folder of plain HTML, CSS, JavaScript and JSON that
-can be shown from the laptop or pushed to any static host (see
-[section 9](#9-the-results-website)). It contains no server code and never
-accepts uploads.
+(zip flow) or `python -m arena live` (live event) turns the results into a
+folder of plain HTML, CSS, JavaScript and JSON that can be shown from the laptop
+or pushed to any static host (see [section 9](#9-the-results-website)). It
+contains no server code and never accepts uploads.
 
 Related documents: [README.md](README.md) (for competitors),
 [SUBMITTING.md](SUBMITTING.md) (the competitor guide, also shown on the
@@ -499,8 +507,8 @@ browser test in the repository.
 
 ## 11. Older modes (not used for the event)
 
-These parts of the repository still exist and work, but the event does not use
-them. They are documented in [docs/legacy-server.md](docs/legacy-server.md).
+These parts of the repository still exist and work, but the event does not rely
+on them. They are documented in [docs/legacy-server.md](docs/legacy-server.md).
 
 * **The rolling ladder:** `submit`, `ladder` (with `--submissions`, `--teams`,
   `--cycle SECONDS`, `--registry`), `sync`, `freeze`, `final`, `leaderboard`,
@@ -512,11 +520,78 @@ them. They are documented in [docs/legacy-server.md](docs/legacy-server.md).
   minutes and pools the results (a round number is part of a job's key and seed).
   When a database has no tournament state, `export` writes the ladder site
   (leaderboard, matrix, matches) instead of the tournament view.
-* **The match server:** `server/` (FastAPI, HTTP and WebSocket), `player_sdk.play()`
-  and the `poker-bot` command, `admin_sdk/`. Several audit findings are open
-  (unauthenticated `viewer_id`, turn-timer stall after an illegal action,
-  WebSocket amount validation, `.env` load order, dead-bot forfeits); do not
-  expose it to untrusted networks. The `game/` engine is shared with the arena,
+* **The match server's older entry points:** `player_sdk.play()` (a single
+  match) and the `poker-bot` command. The server itself is now the live event's
+  engine (section 12), with the limits listed there; several older audit
+  findings are open (unauthenticated `viewer_id`, turn-timer stall after an
+  illegal action, `.env` load order), so do not expose it beyond an event. The `game/` engine is shared with the arena,
   so rules fixes apply to both.
-* **Dropped, in git history only:** the websocket gateway and its client, and
-  self-registration with join codes and keys (commits `1b1b94a` and `cb39457`).
+
+## 12. The live event
+
+```mermaid
+flowchart LR
+    B["Team bots<br/>player_sdk, on their own laptops"] -->|websocket /v1/ws<br/>through a Cloudflare tunnel| S
+    Z["Backup zips<br/>arena import"] --> BR["arena backup-run<br/>plays them as websocket clients"] --> S
+    subgraph Org["The organiser's machine"]
+        S["server/ + game/<br/>register, lobby, tables, final"]
+        L["arena live<br/>polls the server, delays and redacts"]
+    end
+    S -->|HTTP: tournament, lobby, match events| L
+    L -->|git push, every few minutes| V["Static site on Vercel<br/>live view and Info page"]
+    V --> W["Browsers"]
+```
+
+**The server.** `POST /v1/register` (needs the join code in `REGISTRATION_CODE`)
+gives a team a key; the bot opens `/v1/ws` and waits in the tournament lobby.
+`game/tournament.py` splits the lobby across `min(10, n // 2)` tables of at most
+23 bots, plays them at once, and seats the table winners at a final table.
+Blinds double every N hands; at the hand limit the chip leader goes through.
+State is in memory: a restart forgets registered teams and keys.
+
+**The SDK.** `python -m player_sdk bot.py --tournament --server-url U
+--api-key K` connects, reconnects, and recovers a missed turn over HTTP.
+`player_sdk/response.py` (`validate_response`, `safe_response`) means a crashing
+or illegal bot is played safely (check, or fold when facing a bet) and the reason
+is printed to its own terminal; a bot is never knocked out for a mistake.
+
+**What spectators can see.** The server logs a `hand_started` event (players,
+stacks, blinds), each `action` (with the actor's stack and bet) and a `showdown`
+event. Hole cards appear in the log only for players still in at a showdown with
+more than one player left. Tables keep up to 100,000 events.
+
+**The live feed (`arena/live.py`).** `python -m arena live` polls the server,
+accumulates events per table, and publishes a hand only after `--delay` seconds
+(default 360). Every `--interval` seconds (default 300, minimum 60: a free
+Vercel plan allows about 100 deploys a day) it writes `live.json`,
+`tables/<id>.json`, `teams.json`, `info.json`, `submitting.md` and a manifest
+with mode `live`, then optionally commits and pushes. The champion appears only
+when the delayed view reaches the final's end. The site's live view replays the
+delayed hands; the Info page shows the server address, join code, backup form
+and the player guide, so everything a team needs is on the site.
+
+**The backup (`arena/backup.py`).** `python -m arena backup-run` makes each
+imported team a player (`/v1/admin/players`) with a fresh key and starts its bot
+as a websocket client, in its own folder, restarting it up to three times. By
+default only teams not already connected are run; `--all` runs everyone and
+`--take-over` replaces the key of a name already on the server. The runner
+ignores a "finished" status left by an earlier event until it has seen this
+one run.
+
+**The organiser's tools.** `scripts/event.ps1` (Windows, no Docker: `up`,
+`status`, `url`, `backups`, `start`, `down`) and `scripts/event.sh` (Docker). The
+runbook is [ORGANISER.md](ORGANISER.md).
+
+**Known limits of the live event.**
+
+* The server's own read endpoints (`/v1/tournament`, `/v1/lobby`,
+  `/v1/matches/{id}/events`) are unauthenticated, so anyone with the tunnel
+  address can watch tables in real time, ahead of the delayed website. The join
+  code is not rate limited and registration has no cap.
+* A Cloudflare quick tunnel can drop and gets a new address when restarted.
+  `--protocol http2` (TCP 443) fails on networks that intercept HTTPS (an
+  `x509` error); `--protocol quic` (UDP 7844) worked. `TUNNEL_PROTOCOL` selects
+  it in Docker.
+* Zip backup bots run unsandboxed on the organiser's machine, like any imported
+  bot.
+* Registered teams and keys are lost when the server restarts.
