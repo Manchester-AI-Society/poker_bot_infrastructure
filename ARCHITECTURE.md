@@ -475,6 +475,46 @@ check alone missed. The pages themselves were checked by hand in headless Edge
 on Windows (desktop, 1080p TV, phone width, light and dark); there is no
 automated browser test in the repository.
 
+## The tournament (websocket bots)
+
+The event format: two rounds, no live standings, bots on the teams' own
+machines. It reuses the scoring engine unchanged and replaces how bots are
+reached and how pairings are chosen.
+
+**Gateway (`arena/gateway.py`).** A `websockets` server on its own thread and
+event loop. A team connects, sends `hello` with its key and the protocol
+version, and is answered `welcome` or `rejected`. The server then sends the
+same `act` message a child-process bot gets, now with an `id`; the reply must
+echo that id, so a late answer to an earlier move cannot be mistaken for the
+current one. `RemoteAgent` is the engine's ordinary `Agent` over that socket,
+so the fault guard, the per-move timeout, the thinking budget and the
+duplicate scoring are exactly those every bot gets. A second connection for a
+team replaces the first (reconnection after a drop). Keys are stored as
+SHA-256 hashes in `remote_teams`; frames are capped at 64 KiB.
+
+**Client (`arena/connect.py`).** Loads the team's bot with the same loader as
+`bothost`, answers `act`, and reconnects with backoff after any drop or cut-off
+handshake. It exits (code 3) on a refused key. If the bot defines
+`on_match_start()` it is called when a match begins.
+
+**Tournament (`arena/tournament.py`).** State is one JSON value in `meta`
+(phase, seed, groups with a `freeze` each, finalists, champion). Each group, and
+the finals, is a *freeze* (a set of teams) with jobs of kind `group` / `final`,
+so the existing result tables, leaderboard maths and replays are reused. A
+`Runner` thread pool plays queued jobs whose two teams are connected and free
+(a team plays one match at a time); a team still absent after the grace period
+forfeits (a disabled contestant that folds every hand). `settle` advances a
+round when its last job is done: the qualifiers are the top `advance` of each
+group's board. State lives in the database, so `serve` can be stopped and
+restarted; a job left running by a dead scheduler is re-queued.
+
+**What the site is told (`export.py`, `_tournament_built`).** Decided from the
+stored phase on every export. Before a round is complete only the draw and the
+phase are written: no scores, no pairings, no counts, no who-is-online. Group
+tables appear in `between`, the final table and champion in `done`. Because
+nothing changes while matches are played, a git host is redeployed at round
+boundaries, not per match.
+
 ## 10. Known limits
 
 * **No sandbox.** Bots run as the organiser's user. Treat it as trust-based, or
@@ -499,6 +539,27 @@ automated browser test in the repository.
   (anyone can open an issue) and `gh` or a token to read it; a GitHub outage
   keeps the last good list. Approval is a manual label, because a registered
   repository's code runs unsandboxed.
+* **A remote bot cannot be made to forget.** Duplicate scoring plays each deal
+  twice with the seats swapped, and a bot running on a team's own machine keeps
+  its memory across both halves. Such a bot could recognise a repeated flop,
+  and then know the turn, the river and the opponent's hole cards. Shuffling
+  the order of the second half does not help (the flop is the key). This is
+  forbidden by the rules and enforced by trust only. The alternative, plain
+  random deals, gives up the variance reduction.
+* **Time limits include the network and the team's own hardware.** A weak
+  Wi-Fi link costs a team faults. The gateway does not measure or subtract
+  network delay.
+* **Traffic is plain `ws://`.** Keys and moves are not encrypted on a local
+  network; over the internet a TLS tunnel is needed (not tried here).
+* **One gateway process.** All matches run as threads in it; a crash ends the
+  matches in progress (they are replayed on restart). A team that is
+  disconnected mid-match gets faults for the moves it misses; there is no
+  pause.
+* **Sporadic stalls were seen in local socket calls on the development
+  machine** (Windows): a gateway thread was caught inside `accept()` and
+  `close()`, delaying handshakes for seconds, and a plain `websockets` server
+  showed the same. The cause was not identified; clients retry, so teams
+  still connect, but test the venue network before the event.
 * **The website is read-only and public by construction.** There is no login,
   no upload, and no team-private page: a static host cannot tell teams apart.
   Team logs stay on the organiser's machine.
