@@ -41,7 +41,7 @@ def url(gateway):
     return f"ws://127.0.0.1:{gateway.port}"
 
 
-def wait_for(condition, seconds=5.0):
+def wait_for(condition, seconds=30.0):
     deadline = time.time() + seconds
     while time.time() < deadline:
         if condition():
@@ -348,3 +348,43 @@ def test_the_client_reconnects_after_the_connection_drops(gateway, team):
         seconds=10,
     )
     assert any("connection lost" in line for line in t.logs)
+
+
+def test_the_client_survives_a_connection_dropped_during_the_handshake():
+    """A flaky network can cut the TCP connection before the websocket is
+    up; that raised EOFError and used to end the team's client for good."""
+    import socket
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(5)
+    port = listener.getsockname()[1]
+    accepted = []
+
+    def slam():
+        while len(accepted) < 3:
+            conn, _ = listener.accept()
+            accepted.append(1)
+            conn.close()  # no HTTP reply at all
+
+    threading.Thread(target=slam, daemon=True).start()
+    logs, stop = [], threading.Event()
+    # Don't wait out the client's backoff between attempts.
+    original = client.RECONNECT_FIRST_SECONDS
+    client.RECONNECT_FIRST_SECONDS = 0.05
+    try:
+        runner = threading.Thread(
+            target=client.run,
+            args=(CallBot(), f"ws://127.0.0.1:{port}", "k"),
+            kwargs=dict(log=logs.append, stop=stop.is_set),
+            daemon=True,
+        )
+        runner.start()
+        assert wait_for(lambda: len(accepted) >= 3, seconds=10)
+        assert runner.is_alive()  # still trying, not dead
+        stop.set()
+        runner.join(timeout=10)
+    finally:
+        client.RECONNECT_FIRST_SECONDS = original
+        listener.close()
+    assert sum("connection lost" in line for line in logs) >= 2

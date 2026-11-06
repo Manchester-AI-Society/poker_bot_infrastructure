@@ -35,6 +35,8 @@ from .gateway import PROTOCOL
 EXIT_REJECTED = 3
 RECONNECT_FIRST_SECONDS = 1.0
 RECONNECT_MAX_SECONDS = 15.0
+# A connection attempt that stalls is abandoned and tried again.
+CONNECT_TIMEOUT_SECONDS = 5.0
 
 
 class Rejected(Exception):
@@ -105,13 +107,19 @@ def run(
     stop: Optional[Callable[[], bool]] = None,
 ) -> int:
     """Stays connected, reconnecting after any drop. Returns an exit code."""
-    from websockets.exceptions import ConnectionClosed, InvalidURI
+    from websockets.exceptions import (
+        ConnectionClosed,
+        InvalidHandshake,
+        InvalidURI,
+    )
     from websockets.sync.client import connect
 
     delay = RECONNECT_FIRST_SECONDS
     while stop is None or not stop():
         try:
-            with connect(url, max_size=64 * 1024, open_timeout=10) as ws:
+            with connect(
+                url, max_size=64 * 1024, open_timeout=CONNECT_TIMEOUT_SECONDS
+            ) as ws:
                 delay = RECONNECT_FIRST_SECONDS
                 serve_connection(ws, bot, key, log)
         except Rejected as exc:
@@ -120,7 +128,14 @@ def run(
         except InvalidURI as exc:
             log(f"that address is not a websocket URL: {exc}")
             return 2
-        except (ConnectionClosed, OSError, TimeoutError) as exc:
+        except (
+            ConnectionClosed,
+            InvalidHandshake,
+            OSError,
+            TimeoutError,
+            EOFError,
+            ValueError,
+        ) as exc:
             log(f"connection lost ({type(exc).__name__}); retrying")
         except KeyboardInterrupt:
             log("stopped")

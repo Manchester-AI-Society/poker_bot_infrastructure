@@ -18,6 +18,8 @@ Commands for the organiser (state lives under --root, default arena_data):
     retry-failed      re-queue pairings whose job crashed
     export            write the static results site (optionally serve it
                       or push it to a git host)
+    tournament ...    the two-round websocket tournament (keys, draw, serve,
+                      start-groups, start-finals, status)
 """
 
 from __future__ import annotations
@@ -60,6 +62,7 @@ from .sync import (
     start_background,
     sync_teams,
 )
+from .tournament_cli import add_tournament_parser
 from .validate import smoke_test
 
 DEFAULT_GUIDE = Path(__file__).resolve().parents[1] / "SUBMITTING.md"
@@ -609,6 +612,8 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--move-timeout", type=float, default=1.0)
     validate.add_argument("--log-dir", default="arena_logs")
     validate.set_defaults(handler=cmd_validate)
+
+    add_tournament_parser(commands)
 
     # -- organiser commands -------------------------------------------
     def organiser(name, help_text, handler, *, play=False):
