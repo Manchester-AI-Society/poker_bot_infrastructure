@@ -79,6 +79,24 @@ def test_keys_are_made_once_and_only_a_hash_is_kept(store):
     assert generate_keys(store, ["fox", "owl"]) == {}  # nothing new, no keys
 
 
+def test_a_key_never_starts_with_a_dash(store):
+    """A key starting with "-" is taken for a command-line option, so the
+    client could not even start (found when a real team's key did)."""
+    from arena.tournament import new_key
+
+    keys = [new_key() for _ in range(5000)]
+    assert not any(k.startswith("-") for k in keys)
+    assert len(set(keys)) == len(keys)
+    assert all(k.startswith("ak_") for k in keys)
+
+
+def test_a_dash_leading_key_still_works_with_equals_syntax():
+    """And if someone does hold such a key, --key=VALUE is accepted."""
+    from arena.connect import main
+
+    assert main(["--url", "ws://x", "--key=-abc"] + ["/no/such/bot"]) == 1
+
+
 def test_a_key_can_be_rotated_and_the_old_one_stops_working(store):
     old = generate_keys(store, ["fox"])["fox"]
     new = generate_keys(store, [], rotate=["fox"])["fox"]

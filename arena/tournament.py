@@ -64,6 +64,16 @@ class TournamentSettings:
     concurrency: int = 8
 
 
+def new_key() -> str:
+    """A secret key for one team.
+
+    The fixed prefix matters: a bare url-safe token can start with "-", and a
+    command line then reads ``--key -abc`` as a second option (the client
+    refused to start for the team that was given such a key).
+    """
+    return "ak_" + secrets.token_urlsafe(24)
+
+
 # -- teams and keys ----------------------------------------------------------
 
 
@@ -91,13 +101,13 @@ def generate_keys(
     for name in names:
         if name in existing:
             continue
-        key = secrets.token_urlsafe(24)
+        key = new_key()
         if store.add_remote_team(name, hash_key(key)):
             keys[name] = key
     for name in rotate:
         if name not in existing:
             raise TournamentError(f"no team called {name!r} to rotate")
-        key = secrets.token_urlsafe(24)
+        key = new_key()
         store.set_remote_key(name, hash_key(key))
         keys[name] = key
     if state is None and store.remote_teams():
