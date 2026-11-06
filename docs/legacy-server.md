@@ -672,7 +672,8 @@ The server can run a two-round knockout for bots that connect from anywhere (thi
 
 ```bash
 ./scripts/event.sh up         # start server + tunnel, health-check, print the signup command to share
-./scripts/event.sh url        # re-print the URL
+./scripts/event.sh url        # re-print the URL (warns if it's dead)
+./scripts/event.sh newurl     # tunnel died? fresh URL; keys + games survive
 ./scripts/event.sh key alice   # issue a key as people turn up — live instantly, saved to .env
 ./scripts/event.sh rehearse   # 10 bots play a full tournament through the tunnel
 ./scripts/event.sh reset      # restart server: clears test bots + tournament, URL unchanged

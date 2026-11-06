@@ -10,7 +10,8 @@ eduroam blocks connections between devices, so people's bots can't reach `http:/
 
 ```bash
 ./scripts/event.sh up         # start server + tunnel → prints URL + signup command
-./scripts/event.sh url        # re-print the URL
+./scripts/event.sh url        # re-print the URL (warns if it's dead)
+./scripts/event.sh newurl     # tunnel died → fresh URL; keys + games survive
 ./scripts/event.sh key NAME   # hand someone a key manually (saved to .env, survives restarts)
 ./scripts/event.sh rehearse   # 10 fake bots play a tournament through the tunnel
 ./scripts/event.sh reset      # restart server: wipes tournament + self-registered keys
@@ -102,7 +103,8 @@ curl -s localhost:8000/v1/tournament | python3 -m json.tool   # bracket, table w
 | Problem | What to do |
 |---|---|
 | A bot crashed or disconnected mid-game | Leave it. The turn timer auto-checks or auto-folds for it. |
-| Players say the URL stopped working | The tunnel container restarted and got a **new URL**. Run `./scripts/event.sh url` and put the new one on screen. Keys still work. |
+| Players say the URL stopped working | Cloudflare sometimes drops quick tunnels (log says `Tunnel not found`) and cloudflared never recovers by itself. Run `./scripts/event.sh newurl` and put the new URL on screen. Keys, the lobby and running games survive; bots must be restarted with the new `--server-url`. |
+| Your own laptop can't open a brand-new URL but phones can | macOS cached a "not found" from before the hostname existed. Wait a few minutes or run `sudo killall -HUP mDNSResponder`. |
 | You need to restart the server (`reset`) | Self-registered keys are **wiped**: everyone re-runs the signup curl (their name is free again). Keys from `event.sh key` survive. The URL stays the same. |
 | `up` never prints a URL | Network blocks Cloudflare. Use a phone hotspot for your laptop. |
 | Someone's key gets `401` | Check it with `curl https://<url>/v1/me -H "Authorization: Bearer <key>"`. If the server restarted, they re-register. |
