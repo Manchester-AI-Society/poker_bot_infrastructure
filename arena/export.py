@@ -90,7 +90,7 @@ class ExportOptions:
         if self.register_form and not REGISTER_FORM.match(self.register_form):
             raise ExportError(
                 "register_form must be a Google Form's prefilled link ending "
-                "in entry.NUMBER= (see ORGANISER.md)"
+                "in entry.NUMBER="
             )
 
     def fingerprint(self) -> str:

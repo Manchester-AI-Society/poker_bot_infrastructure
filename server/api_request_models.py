@@ -52,7 +52,7 @@ class CreatePlayerRequest(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    # Same charset as scripts/event.sh so names stay .env-safe.
+    # Letters, digits, - and _ only, so names stay .env-safe.
     player_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,32}$")
     code: str = ""
 

@@ -11,7 +11,6 @@ pip install -r requirements.txt && pip install -e ".[dev]"   # setup
 cp exampleenv .env                                            # dev keys
 
 uvicorn server.run_poker_server:app --reload --port 8000      # run server
-docker compose up --build -d                                  # or containerised
 
 pytest                                  # all tests (integration ones auto-start a server on :8000)
 pytest -m "not integration"             # fast unit suite
@@ -22,7 +21,7 @@ ruff check . && ruff format --check .   # what CI runs (also: python -m compilea
 
 CI (`.github/workflows/ci.yml`) runs **only** ruff lint, `ruff format --check`, and a compile check. It does not run pytest, so run the tests locally. Line length is 79.
 
-Integration tests and `player_sdk.testing.play_local_match` reuse whatever server already answers on `POKER_SERVER_URL` (default `127.0.0.1:8000`), including a running Docker container, and only spawn uvicorn if none is up.
+Integration tests and `player_sdk.testing.play_local_match` reuse whatever server already answers on `POKER_SERVER_URL` (default `127.0.0.1:8000`), and only spawn uvicorn if none is up.
 
 ## Architecture
 
@@ -60,14 +59,12 @@ Three layers with a strict dependency direction: **SDKs → HTTP/WS → server �
 
 ## Events and networking
 
-- `docker-compose.yml` has a `tunnel` profile: a Cloudflare quick tunnel that gives a public `https://*.trycloudflare.com` URL over outbound TCP 443. It exists because eduroam blocks device-to-device traffic.
-- `scripts/event.sh` wraps the operations: `up`, `url`, `newurl`, `key`, `rehearse`, `reset`, `logs`, `down`.
-- Quick tunnels can die (`Tunnel not found` in the logs) and never self-heal. `newurl` recreates only the tunnel container.
-- `examples/bots/remote/simulate_devices.py` rehearses a tournament with N separate bot processes.
-- Operator runbook: `docs/running-an-event.md`. Participant guide: `docs/joining-the-competition.md`. Keep both in sync with behaviour changes to registration, the CLI, or the tournament.
+- `scripts/event.ps1` runs a live event from a Windows laptop with no Docker: `up` (poker server, Cloudflare quick tunnel, live site feed), `status`, `url`, `backups`, `start`, `down`. State is in `.event/` (git-ignored).
+- `python -m arena live` publishes the delayed live view into a static site folder (a git clone pushed to Vercel); its Home text is `event.json` and its Info page shows `SUBMITTING.md`.
+- Quick tunnels can die and get a new address when restarted. `--protocol http2` (TCP 443) fails where HTTPS is intercepted (an `x509` error); `--protocol quic` (UDP 7844) worked.
+- Operator and architecture documents were removed for the competition; recover them with `git checkout aff2efb -- ORGANISER.md ARCHITECTURE.md docs scripts/event.sh docker-compose.yml Dockerfile`.
 
 ## Conventions
 
-- Examples bootstrap `sys.path` themselves (E402 is ignored there), so run them from the repo root as plain scripts.
 - Deliberate simplifications are marked with `# ponytail:` comments that name the limit and the upgrade path.
 - The websocket protocol pairs the server and SDK from the same checkout. Change both together.
