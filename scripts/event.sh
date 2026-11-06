@@ -2,7 +2,8 @@
 # Run the server for an event on any network (eduroam included).
 #
 #   ./scripts/event.sh up         start server + tunnel, print URL + signup command
-#   ./scripts/event.sh url        re-print the public URL
+#   ./scripts/event.sh url        re-print the public URL (warns if it's dead)
+#   ./scripts/event.sh newurl     tunnel died? get a fresh URL (keys + games survive)
 #   ./scripts/event.sh key NAME   issue a key on the spot (live + saved to .env)
 #   ./scripts/event.sh rehearse   10 bots play a tournament through the tunnel
 #   ./scripts/event.sh reset      restart server: wipes tournament + self-registered keys
@@ -24,6 +25,18 @@ url() {
   return 1
 }
 
+# Is the tunnel serving? Asks 1.1.1.1 directly: querying the system resolver
+# before a new hostname exists makes macOS cache "not found" for minutes.
+alive() {
+  local host=${1#https://} ip
+  for _ in $(seq "${2:-20}"); do
+    ip=$(dig +short "$host" @1.1.1.1 2>/dev/null | grep -m1 '^[0-9.]*$' || true)
+    [ -n "$ip" ] && curl -sf -m 10 --resolve "$host:443:$ip" "$1/health" >/dev/null && return
+    sleep 1
+  done
+  return 1
+}
+
 case "${1:-}" in
   up)
     [ -f .env ] || { cp exampleenv .env; echo "Created .env from exampleenv (dev keys — change before a real event)"; }
@@ -35,9 +48,7 @@ case "${1:-}" in
     code=$(grep '^REGISTRATION_CODE=' .env | cut -d= -f2-)
     compose up --build -d
     u=$(url)
-    # New hostnames take a few seconds to resolve.
-    for _ in $(seq 20); do curl -sf "$u/health" >/dev/null && break; sleep 1; done
-    curl -sf "$u/health" >/dev/null && echo "Health: OK" || echo "Health: not reachable yet, retry: curl $u/health"
+    alive "$u" 30 && echo "Health: OK" || echo "Health: not reachable yet — try ./scripts/event.sh url in a minute"
     echo
     echo "Server URL:  $u"
     echo
@@ -46,7 +57,18 @@ case "${1:-}" in
     echo "  curl -X POST $u/v1/register -H 'Content-Type: application/json' \\"
     echo "    -d '{\"player_id\": \"YOUR-TEAM-NAME\", \"code\": \"$code\"}'"
     ;;
-  url) url ;;
+  url)
+    u=$(url); echo "$u"
+    alive "$u" 1 \
+      || echo "Not responding — Cloudflare may have dropped it. Run: ./scripts/event.sh newurl" >&2
+    ;;
+  newurl)
+    # Recreate (not restart) so the old URL isn't left in the logs.
+    compose up -d --force-recreate tunnel
+    u=$(url)
+    alive "$u" 30 && echo "Health: OK" || echo "Health: not reachable yet — try ./scripts/event.sh url in a minute"
+    echo "New URL (re-share it): $u"
+    ;;
   key)
     name="${2:?usage: ./scripts/event.sh key <team-name>}"
     # Names go into a comma/colon-separated env var, keep them simple.
@@ -76,5 +98,5 @@ case "${1:-}" in
   reset) compose restart poker-server ;;
   logs) compose logs -f poker-server ;;
   down) compose down ;;
-  *) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

@@ -161,7 +161,8 @@ docker run --rm -p 8000:8000 --env-file .env poker-bot-server
 
 ```bash
 ./scripts/event.sh up         # start server + tunnel, health-check, print the signup command to share
-./scripts/event.sh url        # re-print the URL
+./scripts/event.sh url        # re-print the URL (warns if it's dead)
+./scripts/event.sh newurl     # tunnel died? fresh URL; keys + games survive
 ./scripts/event.sh key alice   # issue a key as people turn up — live instantly, saved to .env
 ./scripts/event.sh rehearse   # 10 bots play a full tournament through the tunnel
 ./scripts/event.sh reset      # restart server: clears test bots + tournament, URL unchanged
@@ -487,7 +488,7 @@ together.
 | `Websocket unavailable …; using HTTP polling instead` | The server accepted HTTP but rejected the WS upgrade — everything still works, this is informational |
 | Bots on other laptops can't reach `http://<your-ip>:8000` (works on localhost) | The network (eduroam, most campus/hotel Wi-Fi) blocks device-to-device traffic — use the [tunnel](#run-on-restricted-wi-fi-eduroam-hotel-conference) and share its `https://` URL |
 | Tunnel log shows no `trycloudflare.com` URL / keeps reconnecting | Network blocks outbound to Cloudflare; try a phone hotspot for the server machine. The compose service already forces TCP 443 (`--protocol http2`) |
-| Tunnel URL suddenly stops working | Quick-tunnel URLs change whenever the `tunnel` container restarts — re-run the `logs` command and re-share the URL |
+| Tunnel URL suddenly stops working (`Tunnel not found` in `docker compose logs tunnel`) | Cloudflare dropped the quick tunnel — `./scripts/event.sh newurl` gets a fresh one; re-share it |
 | Bot folded without acting | Turn timer (`turn_timeout_seconds`) expired; make `act()` return faster or raise the match timeout |
 
 ## Benchmarks

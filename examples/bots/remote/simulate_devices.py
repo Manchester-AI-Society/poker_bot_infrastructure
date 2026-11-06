@@ -46,9 +46,17 @@ def main() -> None:
     log_dir.mkdir(exist_ok=True)
     processes = {
         player_id: subprocess.Popen(
-            [sys.executable, "-m", "player_sdk", str(BOT_FILE),
-             "--tournament", "--server-url", config.base_url,
-             "--api-key", key],
+            [
+                sys.executable,
+                "-m",
+                "player_sdk",
+                str(BOT_FILE),
+                "--tournament",
+                "--server-url",
+                config.base_url,
+                "--api-key",
+                key,
+            ],
             cwd=PROJECT_ROOT,
             stdout=open(log_dir / f"{player_id}.log", "w"),
             stderr=subprocess.STDOUT,
