@@ -68,7 +68,7 @@ test('every phase has a plain-words banner', () => {
     assert.ok(info.known);
     assert.ok(info.label && info.text.endsWith('.'), info.phase);
   }
-  assert.match(phaseInfo('registration').text, /signing up/);
+  assert.match(phaseInfo('registration').text, /handing in their bots/);
   assert.match(phaseInfo('drawn').text, /drawn/);
   assert.match(phaseInfo('drawn').text, /not started/);
   assert.match(phaseInfo('groups').text, /Round 1.*in progress.*when the round ends/);
@@ -143,7 +143,7 @@ test('before the draw there is nothing to show', () => {
   assert.equal(groupsRevealed(t), false);
   assert.deepEqual(revealedBoards(t), []);
   assert.equal(finalsStage(t), 'unknown');
-  assert.match(roundOneNote(t), /drawn when registration closes/);
+  assert.match(roundOneNote(t), /drawn when submissions close/);
 });
 
 test('drawn and groups phases show the draw but no results', () => {

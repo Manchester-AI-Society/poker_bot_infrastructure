@@ -12,8 +12,8 @@ export const NOT_YET = 'Results are shown when the round is complete.';
 
 const PHASES = {
   registration: {
-    label: 'Registration',
-    text: 'Registration is open: teams are signing up.',
+    label: 'Submissions',
+    text: 'Submissions are open: teams are handing in their bots.',
   },
   drawn: {
     label: 'Groups drawn',
@@ -125,7 +125,7 @@ export function roundOneNote(t) {
   if (groupsRevealed(t)) return null;
   switch (t.phase) {
     case 'registration':
-      return 'The groups are drawn when registration closes.';
+      return 'The groups are drawn when submissions close.';
     case 'drawn':
       return `Round 1 has not started. ${NOT_YET}`;
     case 'groups':
