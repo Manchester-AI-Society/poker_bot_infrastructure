@@ -36,7 +36,7 @@ def state(**more) -> GameState:
     return GameState(**base)
 
 
-# -- the type ---------------------
+# -- the type ------------------
 
 
 def test_the_four_ways_to_respond():
@@ -63,7 +63,7 @@ def test_only_a_raise_carries_an_amount():
             Response(kind, 50)
 
 
-# -- validation ---------------------
+# -- validation ------------------
 
 
 def test_legal_responses_pass_through_unchanged():
@@ -115,7 +115,7 @@ def test_folding_or_calling_when_not_allowed_is_refused():
         validate_response(Response.call(), state(legal_actions=("fold",)))
 
 
-# -- all in ---------------------
+# -- all in ------------------
 
 
 def test_all_in_raises_to_the_maximum():
@@ -129,7 +129,7 @@ def test_all_in_when_you_can_only_call_calls():
     assert translate_action(Response.all_in(), only_call) == ("call", None)
 
 
-# -- in the arena: a mistake is a fault with a reason ---------------------
+# -- in the arena: a mistake is a fault with a reason ------------------
 
 
 class Bot(PokerBot):
@@ -211,3 +211,41 @@ def test_local_agent_reports_invalid_responses_as_agent_faults():
     agent = LocalAgent(Returns)
     with pytest.raises(AgentFault, match="must return a Response"):
         agent.request(engine_message(), 1.0)
+
+
+# -- safe_response: a live bot survives its own mistakes
+
+
+def test_safe_response_passes_a_good_answer_through():
+    from player_sdk.response import safe_response
+
+    class Good(PokerBot):
+        def act(self, game_state):
+            return Response.raise_to(100)
+
+    seen = []
+    assert safe_response(Good(), state(), seen.append) == Response.raise_to(
+        100
+    )
+    assert seen == []
+
+
+def test_safe_response_replaces_a_crash_and_an_illegal_answer():
+    from player_sdk.response import safe_move, safe_response
+
+    class Crashes(PokerBot):
+        def act(self, game_state):
+            raise ValueError("oops")
+
+    class Illegal(PokerBot):
+        def act(self, game_state):
+            return Response.raise_to(5)
+
+    for bot in (Crashes(), Illegal()):
+        seen = []
+        got = safe_response(bot, state(), seen.append)
+        assert got == Response.fold()  # facing a bet of 10
+        assert len(seen) == 1 and "safe move" in seen[0]
+    free = state(call_amount=0, legal_actions=("fold", "check", "raise_to"))
+    assert safe_move(free) == Response.call()  # a free check
+    assert safe_move(state()) == Response.fold()

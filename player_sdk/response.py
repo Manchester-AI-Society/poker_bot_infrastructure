@@ -7,11 +7,42 @@ team's private log, instead of surfacing later as an anonymous engine error.
 
 from __future__ import annotations
 
+from typing import Callable
+
 from .models import GameState, Response
 
 
 class InvalidResponse(ValueError):
     """The bot's move is not a legal ``Response`` for this turn."""
+
+
+def safe_move(state: GameState) -> Response:
+    """The move played when a bot's answer cannot be used: check, else fold."""
+    return Response.call() if state.call_amount == 0 else Response.fold()
+
+
+def safe_response(
+    bot, state: GameState, report: Callable[[str], None] = print
+) -> Response:
+    """The bot's move, or a safe one if it crashes or answers wrongly.
+
+    A bot that raises or returns something illegal must not take itself out of
+    a live tournament (every later turn would then time out). The problem is
+    reported in plain words and a safe move is played instead.
+    """
+    try:
+        response = bot.act(state)
+    except Exception as exc:
+        report(
+            f"your bot's act() raised {type(exc).__name__}: {exc}; "
+            "playing a safe move (check, or fold) instead"
+        )
+        return safe_move(state)
+    try:
+        return validate_response(response, state)
+    except InvalidResponse as exc:
+        report(f"{exc}; playing a safe move (check, or fold) instead")
+        return safe_move(state)
 
 
 def validate_response(response: object, state: GameState) -> Response:

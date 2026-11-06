@@ -12,7 +12,8 @@ from ._http import (
 )
 from .bot_interface import PokerBot
 from .client import PokerEngineClient, find_player_index, translate_action
-from .models import Action, GameState
+from .models import GameState
+from .response import safe_response
 
 try:
     from websockets.exceptions import ConnectionClosed, InvalidHandshake
@@ -200,9 +201,7 @@ class RealtimeBotRunner:
         if state.status in _TERMINAL_STATUSES:
             return self._final_state()
 
-        action = self.client.bot.act(state)
-        if not isinstance(action, Action):
-            raise TypeError("PokerBot.act must return an Action")
+        action = safe_response(self.client.bot, state, self.client._report)
 
         engine_action, amount = translate_action(action, state)
         outgoing: Dict[str, Any] = {

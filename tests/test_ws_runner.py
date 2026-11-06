@@ -240,3 +240,87 @@ class TestWebsocketUrl:
         runner = make_runner()
         runner.client.base_url = "https://poker.example.com"
         assert runner._websocket_url().startswith("wss://poker.example.com")
+
+
+class CrashingBot(PokerBot):
+    def act(self, game_state: GameState) -> Action:
+        raise RuntimeError("bug in my strategy")
+
+
+class WrongTypeBot(PokerBot):
+    def act(self, game_state: GameState):
+        return "call"
+
+
+class TooSmallRaiseBot(PokerBot):
+    def act(self, game_state: GameState) -> Action:
+        return Action.raise_to(5)  # the minimum is 40
+
+
+class BigRaiseBot(PokerBot):
+    def act(self, game_state: GameState) -> Action:
+        return Action.raise_to(500)
+
+
+def runner_with(bot: PokerBot) -> RealtimeBotRunner:
+    runner = make_runner()
+    runner.client.bot = bot
+    return runner
+
+
+def free_to_check_message() -> Dict[str, Any]:
+    message = your_turn_message()
+    message["state"]["players"] = [
+        {"id": "p1", "stack": 980, "bet": 20},
+        {"id": "p2", "stack": 980, "bet": 20},
+    ]
+    message["state"]["legal_actions"] = ["fold", "check", "raise_to"]
+    return message
+
+
+class TestABadAnswerNeverKillsTheBot:
+    """A live bot that crashes or answers wrongly must keep playing: the
+    process used to die and every later turn timed out."""
+
+    def test_a_crash_plays_a_safe_move_and_says_why(self, capsys):
+        socket = FakeWebSocket([])
+        runner_with(CrashingBot())._handle_your_turn(
+            socket, your_turn_message()
+        )
+        assert socket.sent[0]["action"] == "fold"  # facing a bet: fold
+        err = capsys.readouterr().err
+        assert "RuntimeError" in err and "bug in my strategy" in err
+        assert "safe move" in err
+
+    def test_a_crash_checks_when_checking_is_free(self):
+        socket = FakeWebSocket([])
+        runner_with(CrashingBot())._handle_your_turn(
+            socket, free_to_check_message()
+        )
+        assert socket.sent[0]["action"] == "check"
+
+    def test_the_wrong_type_is_replaced_and_explained(self, capsys):
+        socket = FakeWebSocket([])
+        runner_with(WrongTypeBot())._handle_your_turn(
+            socket, your_turn_message()
+        )
+        assert socket.sent[0]["action"] == "fold"
+        assert "must return a Response" in capsys.readouterr().err
+
+    def test_an_illegal_raise_is_not_sent_to_the_server(self, capsys):
+        socket = FakeWebSocket([])
+        runner_with(TooSmallRaiseBot())._handle_your_turn(
+            socket, your_turn_message()
+        )
+        sent = socket.sent[0]
+        assert sent["action"] == "fold" and "amount" not in sent
+        assert "between 40 and 1000" in capsys.readouterr().err
+
+    def test_a_legal_raise_is_sent_as_it_was(self, capsys):
+        socket = FakeWebSocket([])
+        runner_with(BigRaiseBot())._handle_your_turn(
+            socket, your_turn_message()
+        )
+        assert socket.sent[0]["action"] == "raise_to"
+        assert socket.sent[0]["amount"] == 500
+        assert capsys.readouterr().err == ""

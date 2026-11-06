@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import time
 import urllib.parse
 from typing import Any, Dict, Mapping, Optional, Tuple, Union
@@ -13,6 +14,7 @@ from ._http import (
 from .bot_interface import PokerBot
 from .models import Action, ActionRecord, GameState
 from .parser import GameStateParser
+from .response import safe_response
 
 _TERMINAL_STATUSES = frozenset({"finished"})
 _MAX_TRANSIENT_FAILURES = 5
@@ -76,6 +78,11 @@ class PokerEngineClient:
     its identity from the API key via ``GET /v1/me`` and discovers its
     seat from the match players list on the first state fetch.
     """
+
+    @staticmethod
+    def _report(message: str) -> None:
+        """Tells the bot's author about a problem with its answer."""
+        print(f"[player_sdk] {message}", file=sys.stderr, flush=True)
 
     def __init__(
         self,
@@ -233,9 +240,7 @@ class PokerEngineClient:
         if not self.is_bot_turn(self.last_state):
             return None
 
-        action = self.bot.act(self.last_state)
-        if not isinstance(action, Action):
-            raise TypeError("PokerBot.act must return an Action")
+        action = safe_response(self.bot, self.last_state, self._report)
 
         return self.send_action(action, game_state=self.last_state)
 
