@@ -4,8 +4,10 @@ Commands for participants:
     match A B     play a duplicate match locally (the same code path and
                   scoring the competition uses)
     validate BOT  check that a bot loads and plays legally on time
+    pack BOT      check a bot and write the zip you upload in the form
 
 Commands for the organiser (state lives under --root, default arena_data):
+    import FOLDER     import the submission zips the form collected
     submit TEAM SRC   add a bot version from a folder, file or git URL
     sync              pull every team's bot from its own git repository, as
                       listed in a teams file (and keep doing it)
@@ -153,6 +155,54 @@ def cmd_validate(args: argparse.Namespace) -> int:
     )
     print(("OK: " if report.ok else "FAILED: ") + report.message)
     return 0 if report.ok else 1
+
+
+def cmd_pack(args: argparse.Namespace) -> int:
+    from .package import PackError, pack
+
+    try:
+        result = pack(
+            Path(args.bot),
+            args.team,
+            Path(args.out),
+            validate=not args.no_validate,
+            log=print,
+        )
+    except PackError as exc:
+        print(f"cannot pack: {exc}")
+        return 1
+    print(
+        f"OK: {result.path} ({result.files} files, "
+        f"{result.bytes / 1024:.0f} KB, checksum {result.digest}).\n"
+        "Upload that file in the submission form. To change your bot, pack "
+        "it again and upload the new file: the newest one is played."
+    )
+    return 0
+
+
+def cmd_import(args: argparse.Namespace) -> int:
+    from .package import find_zips, import_submissions
+
+    folder = Path(args.folder)
+    if not folder.exists():
+        print(f"not found: {folder}")
+        return 2
+    if not find_zips(folder):
+        print(f"no .zip files under {folder}")
+        return 2
+    store = Store(args.root)
+    results = import_submissions(store, folder, validate=not args.no_validate)
+    bad = 0
+    for r in results:
+        who = r.team or "(unknown team)"
+        print(f"  {r.status.upper():<10} {who:<20} {r.file}: {r.message}")
+        bad += r.status in ("invalid", "rejected")
+    teams = {v.team for v in store.current_versions()}
+    print(
+        f"{len(results)} files read: {len(teams)} teams ready, "
+        f"{bad} problem(s)."
+    )
+    return 1 if bad else 0
 
 
 def _settings(args: argparse.Namespace) -> Settings:
@@ -627,6 +677,16 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--log-dir", default="arena_logs")
     validate.set_defaults(handler=cmd_validate)
 
+    pack = commands.add_parser(
+        "pack",
+        help="check your bot and write the zip you upload in the form",
+    )
+    pack.add_argument("bot", help="bot folder (with bot.py) or a .py file")
+    pack.add_argument("--team", required=True, help="your team name")
+    pack.add_argument("--out", default=".", help="folder for the zip")
+    pack.add_argument("--no-validate", action="store_true")
+    pack.set_defaults(handler=cmd_pack)
+
     add_tournament_parser(commands)
 
     # -- organiser commands -------------------------------------------
@@ -648,6 +708,12 @@ def build_parser() -> argparse.ArgumentParser:
                 help="wall-clock seconds allowed per pairing",
             )
         return sub
+
+    sub = organiser(
+        "import", "import the submission zips the form collected", cmd_import
+    )
+    sub.add_argument("folder", help="folder with the downloaded zips")
+    sub.add_argument("--no-validate", action="store_true")
 
     sub = organiser("submit", "add a bot version", cmd_submit)
     sub.add_argument("team")
