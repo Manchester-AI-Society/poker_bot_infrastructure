@@ -157,6 +157,49 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_live(args: argparse.Namespace) -> int:
+    from .live import LiveOptions, describe, run_live
+
+    guide = ""
+    if not args.no_guide:
+        try:
+            guide = Path(args.guide or DEFAULT_GUIDE).read_text(
+                encoding="utf-8-sig"
+            )
+        except OSError as exc:
+            print(f"cannot read the info page text: {exc}")
+            return 2
+    options = LiveOptions(
+        server=args.server,
+        delay=args.delay,
+        interval=args.interval,
+        title=args.title,
+        server_url=args.server_url or "",
+        join_code=args.join_code or "",
+        form_url=args.form_url or "",
+        register_form=args.register_form or "",
+        registrations=args.registrations or "",
+        note=args.note or "",
+        guide=guide,
+    )
+    try:
+        options.validate()
+    except ExportError as exc:
+        print(f"cannot do that: {exc}")
+        return 2
+    for line in describe(options.delay, options.interval):
+        print(line)
+    if options.join_code:
+        print("note: the join code will be PUBLISHED on the website")
+    return run_live(
+        options,
+        Path(args.out),
+        git_push=args.git_push,
+        once=args.once,
+        store=None,
+    )
+
+
 def cmd_pack(args: argparse.Namespace) -> int:
     from .package import PackError, pack
 
@@ -683,6 +726,61 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--move-timeout", type=float, default=1.0)
     validate.add_argument("--log-dir", default="arena_logs")
     validate.set_defaults(handler=cmd_validate)
+
+    live = commands.add_parser(
+        "live",
+        help="publish the poker server's play, delayed, to the website",
+    )
+    live.add_argument(
+        "--server", default="http://127.0.0.1:8000", help="the poker server"
+    )
+    live.add_argument("--out", default="arena_site", help="site folder")
+    live.add_argument(
+        "--delay",
+        type=float,
+        default=360.0,
+        help="seconds the site runs behind the game (default 360)",
+    )
+    live.add_argument(
+        "--interval",
+        type=float,
+        default=300.0,
+        help="seconds between publications (default 300; at least 60)",
+    )
+    live.add_argument("--title", default="Poker Bot Competition")
+    live.add_argument(
+        "--server-url",
+        metavar="URL",
+        help="the public address bots connect to (shown on the Info page)",
+    )
+    live.add_argument(
+        "--join-code",
+        metavar="CODE",
+        help="publish the join code on the Info page (off by default)",
+    )
+    live.add_argument(
+        "--form-url", metavar="URL", help="the backup submission form"
+    )
+    live.add_argument(
+        "--register-form",
+        metavar="URL",
+        help="the team-name registration form's prefilled link",
+    )
+    live.add_argument(
+        "--registrations",
+        metavar="CSV_FILE_OR_URL",
+        help="that form's sheet (CSV file or published https address)",
+    )
+    live.add_argument("--note", help="a line for the top of the Info page")
+    live.add_argument(
+        "--guide", help="markdown for the Info page (default SUBMITTING.md)"
+    )
+    live.add_argument("--no-guide", action="store_true")
+    live.add_argument("--git-push", action="store_true")
+    live.add_argument(
+        "--once", action="store_true", help="publish once and stop"
+    )
+    live.set_defaults(handler=cmd_live)
 
     pack = commands.add_parser(
         "pack",
