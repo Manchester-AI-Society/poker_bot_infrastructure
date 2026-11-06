@@ -9,6 +9,7 @@ from .action_engine import (
     remaining_players,
 )
 from .match_runtime import MatchRuntime
+from .poker_card import cards_to_codes
 from .showdown_resolver import settle_fold_win, settle_showdown
 from .state_projection import build_public_state
 
@@ -57,19 +58,48 @@ def prepare_turn_event(
     return seat.player_id, event
 
 
+def _log_showdown(
+    runtime: MatchRuntime,
+    log_event: LogEventCallback,
+    showdown: Dict[str, Any],
+) -> None:
+    """Logs a finished hand with what a spectator needs to replay it.
+
+    Added to the PUBLIC log (not to the message sent to the bots): every
+    seat's stack after the payout, the board, and, only when the hand really
+    went to a showdown, the hole cards of the players still in it (those
+    cards are turned face up at a showdown anyway). Cards of a hand that
+    ended in a fold are never logged.
+    """
+    payload: Dict[str, Any] = {
+        "results": showdown["results"],
+        "stacks": {s.player_id: s.curr_balance for s in runtime.players},
+    }
+    if "board" in showdown:  # settled by comparing hands, not by a fold
+        payload["board"] = showdown["board"]
+        shown = {
+            s.player_id: cards_to_codes(s.cards)
+            for s in runtime.players
+            if not s.is_folded
+        }
+        if len(shown) > 1:
+            payload["hole_cards"] = shown
+    log_event(runtime, "showdown", payload)
+
+
 def advance_and_settle_if_ready(
     runtime: MatchRuntime, log_event: LogEventCallback
 ) -> Optional[Dict[str, Any]]:
     """Advances streets and resolves showdown when rounds are complete."""
     if remaining_players(runtime) == 1:
         showdown = settle_fold_win(runtime)
-        log_event(runtime, "showdown", {"results": showdown["results"]})
+        _log_showdown(runtime, log_event, showdown)
         return showdown
 
     while not runtime.engine.round_has_pending_actions():
         if runtime.engine.curr_street == "showdown":
             showdown = settle_showdown(runtime)
-            log_event(runtime, "showdown", {"results": showdown["results"]})
+            _log_showdown(runtime, log_event, showdown)
             return showdown
 
         runtime.engine.advance_street()
@@ -88,13 +118,13 @@ def advance_and_settle_if_ready(
 
         if runtime.engine.curr_street == "showdown":
             showdown = settle_showdown(runtime)
-            log_event(runtime, "showdown", {"results": showdown["results"]})
+            _log_showdown(runtime, log_event, showdown)
             return showdown
 
         next_index = next_eligible_player(runtime, runtime.engine.turn_index)
         if next_index is None:
             showdown = settle_showdown(runtime)
-            log_event(runtime, "showdown", {"results": showdown["results"]})
+            _log_showdown(runtime, log_event, showdown)
             return showdown
 
         runtime.engine.turn_index = next_index
@@ -204,6 +234,18 @@ def begin_next_hand(
             "hand_number": runtime.engine.hand_number,
             "dealer_index": runtime.engine.dealer_index,
             "eliminated": eliminated,
+            # For spectators: the seats in order, each stack before the
+            # blinds, and who posted what.
+            "players": [s.player_id for s in runtime.players],
+            "stacks": {
+                s.player_id: s.curr_balance + s.total_committed
+                for s in runtime.players
+            },
+            "blinds": [
+                {"player_id": s.player_id, "amount": s.total_committed}
+                for s in runtime.players
+                if s.total_committed
+            ],
         },
     )
     blind_events = build_blind_events(runtime)

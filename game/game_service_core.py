@@ -391,6 +391,10 @@ class GameService:
                     "amount": emitted_amount,
                     "street": runtime.engine.curr_street,
                     "pot": runtime.engine.pot,
+                    # For spectators: what the player has left, and has in
+                    # this street, after the action.
+                    "stack": runtime.players[actor_index].curr_balance,
+                    "bet": runtime.players[actor_index].curr_bet_amount,
                 },
             )
 

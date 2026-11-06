@@ -169,6 +169,9 @@ class Tournament:
                 blind_increase_every_hands=self._settings.get(
                     "blind_increase_every_hands"
                 ),
+                # A long table must not drop its oldest events: the live
+                # website replays them.
+                event_log_limit=100_000,
             )
             self.tables.append(
                 {
