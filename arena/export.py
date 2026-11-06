@@ -28,7 +28,7 @@ import time
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from .history import read_hands
 from .jsonutil import dumps, write_atomic
@@ -97,6 +97,7 @@ class ExportSummary:
     replay_files: int
     replay_bytes: int
     generated_at: float
+    phase: Optional[str] = None  # set in tournament mode
 
 
 # -- sanitising --------------------------------------------------------
@@ -472,6 +473,214 @@ def _export_replays(
     return len(wanted), total, changed
 
 
+@dataclass
+class _Built:
+    """What a mode (ladder or tournament) wants written to the site."""
+
+    pairings: Dict[str, List[Dict[str, Any]]]
+    rows: Dict[str, Dict[str, Any]]
+    # Called after the replays are written (they add a link to each pairing).
+    render: Callable[[], Dict[str, str]]
+    # Data files that must not exist in this state (stale, or not yet public).
+    remove: List[str]
+    manifest: Dict[str, Any]
+    teams: int
+    ladder_pairings: int
+    final_pairings: int
+    final_available: bool
+    phase: Optional[str] = None
+
+
+def _ladder_built(store: Store) -> _Built:
+    """The live ladder (and the final that follows it)."""
+    freeze_id = store.latest_freeze()
+    final_members = store.freeze_members(freeze_id) if freeze_id else []
+    boards: Dict[str, Dict[str, Any]] = {"ladder": compute(store, "ladder")}
+    if freeze_id is not None:
+        boards["final"] = compute(store, "final", freeze_id)
+
+    pairings: Dict[str, List[Dict[str, Any]]] = {}
+    rows: Dict[str, Dict[str, Any]] = {}
+    pairings["ladder"], found = _pairing_entries(
+        store, "ladder", store.current_versions(), None
+    )
+    rows.update(found)
+    if freeze_id is not None:
+        pairings["final"], found = _pairing_entries(
+            store, "final", final_members, freeze_id
+        )
+        rows.update(found)
+
+    def render() -> Dict[str, str]:
+        files: Dict[str, str] = {}
+        for kind, board in boards.items():
+            board = dict(board)
+            board.pop("generated_at", None)  # the manifest has the time
+            files[f"leaderboard-{kind}.json"] = dumps(board)
+            files[f"pairings-{kind}.json"] = dumps(pairings[kind])
+        files["teams.json"] = dumps(
+            {
+                "teams": _team_entries(store, final_members),
+                "registrations": _registration_entries(store),
+            }
+        )
+        return files
+
+    remove = []
+    if "final" not in boards:
+        remove = ["leaderboard-final.json", "pairings-final.json"]
+    remove += ["tournament.json", "pairings-group.json"]
+    return _Built(
+        pairings=pairings,
+        rows=rows,
+        render=render,
+        remove=remove,
+        manifest={
+            "mode": "ladder",
+            "kinds": list(boards),
+            "final_available": "final" in boards,
+        },
+        teams=len(boards["ladder"]["teams"]),
+        ladder_pairings=len(pairings["ladder"]),
+        final_pairings=len(pairings.get("final", [])),
+        final_available="final" in boards,
+    )
+
+
+def _round_progress(store: Store, kind: str, freeze: Optional[int]) -> int:
+    return sum(1 for j in store.jobs_of(kind, freeze) if j["status"] == "done")
+
+
+def _tournament_built(store: Store, state: Dict[str, Any]) -> _Built:
+    """The two-round tournament.
+
+    Nothing about how anyone is doing leaves the machine until a round is
+    complete: before that the site is given the draw and the phase and
+    nothing else (no scores, no pairings, no counts, no who-is-connected).
+    That also means the data does not change while a round is played, so a
+    git host is not asked to redeploy for every match.
+    """
+    from .tournament import revealed
+
+    show = revealed(state)
+    pairings: Dict[str, List[Dict[str, Any]]] = {}
+    rows: Dict[str, Dict[str, Any]] = {}
+    group_boards: Dict[str, Dict[str, Any]] = {}
+    final_board: Optional[Dict[str, Any]] = None
+
+    if show["groups"]:
+        entries: List[Dict[str, Any]] = []
+        for group in state["groups"]:
+            members = store.freeze_members(group["freeze"])
+            found_entries, found_rows = _pairing_entries(
+                store, "group", members, group["freeze"]
+            )
+            for entry in found_entries:
+                entry["group"] = group["name"]
+            entries += found_entries
+            rows.update(found_rows)
+            group_boards[group["name"]] = _public_board(
+                compute(store, "group", group["freeze"])
+            )
+        entries.sort(key=lambda e: (-(e["finished_at"] or 0), -e["job_id"]))
+        pairings["group"] = entries
+    if show["finals"]:
+        members = store.freeze_members(state["finals_freeze"])
+        pairings["final"], found = _pairing_entries(
+            store, "final", members, state["finals_freeze"]
+        )
+        rows.update(found)
+        final_board = _public_board(
+            compute(store, "final", state["finals_freeze"])
+        )
+
+    def view() -> Dict[str, Any]:
+        finalists = state["finalists"] if show["groups"] else []
+        return {
+            "phase": state["phase"],
+            "advance": state["advance"],
+            "groups": [
+                {
+                    "name": group["name"],
+                    "teams": group["teams"],
+                    "board": group_boards.get(group["name"]),
+                }
+                for group in state["groups"]
+            ],
+            "qualified": finalists,
+            "finals": (
+                {"teams": finalists, "board": final_board}
+                if state["phase"] in ("finals", "done")
+                else None
+            ),
+            "champion": state["champion"] if show["finals"] else None,
+        }
+
+    def render() -> Dict[str, str]:
+        files = {"tournament.json": dumps(view())}
+        for kind, entries in pairings.items():
+            files[f"pairings-{kind}.json"] = dumps(entries)
+        if final_board is not None:
+            files["leaderboard-final.json"] = dumps(final_board)
+        in_group = {
+            team: group["name"]
+            for group in state["groups"]
+            for team in group["teams"]
+        }
+        files["teams.json"] = dumps(
+            {
+                "teams": [
+                    {
+                        "team": team,
+                        "group": in_group.get(team),
+                        "finalist": team in view()["qualified"],
+                        "current": None,
+                        "frozen": None,
+                        "sync": None,
+                        "versions": [],
+                    }
+                    for team in sorted(store.remote_teams())
+                ],
+                "registrations": [],
+            }
+        )
+        return files
+
+    remove = ["leaderboard-ladder.json", "pairings-ladder.json"]
+    if not show["groups"]:
+        remove.append("pairings-group.json")
+    if not show["finals"]:
+        remove += ["leaderboard-final.json", "pairings-final.json"]
+    kinds = [
+        k
+        for k, on in (("group", show["groups"]), ("final", show["finals"]))
+        if on
+    ]
+    return _Built(
+        pairings=pairings,
+        rows=rows,
+        render=render,
+        remove=remove,
+        manifest={
+            "mode": "tournament",
+            "phase": state["phase"],
+            "kinds": kinds,
+            "final_available": show["finals"],
+        },
+        teams=len(store.remote_teams()),
+        ladder_pairings=len(pairings.get("group", [])),
+        final_pairings=len(pairings.get("final", [])),
+        final_available=show["finals"],
+        phase=state["phase"],
+    )
+
+
+def _public_board(board: Dict[str, Any]) -> Dict[str, Any]:
+    board = dict(board)
+    board.pop("generated_at", None)  # the manifest carries the time
+    return board
+
+
 def export_site(
     root: Path | str, out: Path | str, options: ExportOptions
 ) -> ExportSummary:
@@ -491,48 +700,24 @@ def export_site(
         (out / ".nojekyll").write_text("", encoding="utf-8")
 
     data = out / "data"
-    freeze_id = store.latest_freeze()
-    final_members = store.freeze_members(freeze_id) if freeze_id else []
-    boards: Dict[str, Dict[str, Any]] = {"ladder": compute(store, "ladder")}
-    if freeze_id is not None:
-        boards["final"] = compute(store, "final", freeze_id)
-
-    pairings: Dict[str, List[Dict[str, Any]]] = {}
-    rows: Dict[str, Dict[str, Any]] = {}
-    pairings["ladder"], found = _pairing_entries(
-        store, "ladder", store.current_versions(), None
+    state = store.tournament()
+    built = (
+        _tournament_built(store, state)
+        if state is not None
+        else _ladder_built(store)
     )
-    rows.update(found)
-    if freeze_id is not None:
-        pairings["final"], found = _pairing_entries(
-            store, "final", final_members, freeze_id
-        )
-        rows.update(found)
 
     count, size, replays_changed = _export_replays(
-        store, out, options, pairings, rows
+        store, out, options, built.pairings, built.rows
     )
     changed = changed or replays_changed
 
-    files: Dict[str, str] = {}
-    for kind, board in boards.items():
-        board = dict(board)
-        board.pop("generated_at", None)  # the manifest carries the time
-        files[f"leaderboard-{kind}.json"] = dumps(board)
-        files[f"pairings-{kind}.json"] = dumps(pairings[kind])
-    files["teams.json"] = dumps(
-        {
-            "teams": _team_entries(store, final_members),
-            "registrations": _registration_entries(store),
-        }
-    )
-    if "final" not in boards:
-        for name in ("leaderboard-final.json", "pairings-final.json"):
-            stale = data / name
-            if stale.exists():
-                stale.unlink()
-                changed = True
-
+    files = built.render()
+    for name in built.remove:
+        stale = data / name
+        if name not in files and stale.exists():
+            stale.unlink()
+            changed = True
     for name, text in files.items():
         changed = _write_if_changed(data / name, text) or changed
 
@@ -552,6 +737,7 @@ def export_site(
         + options.submit_text.encode()
         + options.guide.encode()
         + options.registry_repo.encode()
+        + json.dumps(built.manifest, sort_keys=True).encode()
     ).hexdigest()[:16]
     generated_at = time.time()
     manifest_path = data / "manifest.json"
@@ -575,25 +761,25 @@ def export_site(
         "registry_repo": options.registry_repo or None,
         "fingerprint": fingerprint,
         "generated_at": generated_at,
-        "kinds": list(boards),
-        "final_available": "final" in boards,
+        **built.manifest,
         "replays": {
             "policy": options.replays,
             "reveal": options.reveal,
             "max_per_pairing": options.max_replay_hands,
         },
-        "teams": len(boards["ladder"]["teams"]),
+        "teams": built.teams,
     }
     _write_if_changed(manifest_path, dumps(manifest))
     return ExportSummary(
         changed=changed,
-        teams=len(boards["ladder"]["teams"]),
-        ladder_pairings=len(pairings["ladder"]),
-        final_pairings=len(pairings.get("final", [])),
-        final_available="final" in boards,
+        teams=built.teams,
+        ladder_pairings=built.ladder_pairings,
+        final_pairings=built.final_pairings,
+        final_available=built.final_available,
         replay_files=count,
         replay_bytes=size,
         generated_at=generated_at,
+        phase=built.phase,
     )
 
 

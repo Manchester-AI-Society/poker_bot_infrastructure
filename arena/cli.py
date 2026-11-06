@@ -447,12 +447,26 @@ def _export_once(args: argparse.Namespace, options: ExportOptions) -> None:
     summary = export_site(args.root, args.out, options)
     stamp = time.strftime("%H:%M:%S")
     note = "updated" if summary.changed else "no change"
-    print(
-        f"[export {stamp}] {note}: {summary.teams} teams, "
-        f"{summary.ladder_pairings} ladder / {summary.final_pairings} final "
-        f"pairings, {summary.replay_files} replays "
-        f"({summary.replay_bytes / 1e6:.1f} MB)"
-    )
+    if summary.phase is not None:
+        shown = []
+        if summary.ladder_pairings:
+            shown.append(f"{summary.ladder_pairings} group matches")
+        if summary.final_pairings:
+            shown.append(f"{summary.final_pairings} final matches")
+        print(
+            f"[export {stamp}] {note}: tournament {summary.phase}, "
+            f"{summary.teams} teams; published: "
+            f"{', '.join(shown) or 'no results yet'}, "
+            f"{summary.replay_files} replays"
+        )
+    else:
+        print(
+            f"[export {stamp}] {note}: {summary.teams} teams, "
+            f"{summary.ladder_pairings} ladder / "
+            f"{summary.final_pairings} final pairings, "
+            f"{summary.replay_files} replays "
+            f"({summary.replay_bytes / 1e6:.1f} MB)"
+        )
     if args.git_push:
         pushed = git_publish(args.out, f"Update results ({stamp})")
         if pushed:
