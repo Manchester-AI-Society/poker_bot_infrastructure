@@ -157,6 +157,62 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_backup_run(args: argparse.Namespace) -> int:
+    import os
+
+    from . import backup
+    from .backup import AdminServer, BackupError, BackupRunner, plan
+
+    admin_key = args.admin_key or os.environ.get("POKER_ADMIN_API_KEY", "")
+    if not admin_key:
+        print("give the admin key with --admin-key (or POKER_ADMIN_API_KEY)")
+        return 2
+    store = Store(args.root)
+    try:
+        server = AdminServer(args.server, admin_key)
+        connected = server.lobby()
+    except Exception as exc:
+        print(f"cannot reach the poker server at {args.server}: {exc}")
+        return 2
+    chosen = plan(
+        store,
+        connected,
+        only_missing=not args.all,
+        teams=args.team or None,
+    )
+    for team, reason in chosen.skipped:
+        print(f"  skipping {team}: {reason}")
+    if not chosen.run:
+        print(
+            "no backup bots to run (import the submissions first, "
+            "or use --all)"
+        )
+        return 0
+    print("starting backup bots for: " + ", ".join(t for t, _ in chosen.run))
+    runner = BackupRunner(store, server, args.server, spawn=backup.spawn_bot)
+    try:
+        problems = runner.start(chosen.run, take_over=args.take_over)
+        for team, reason in problems:
+            print(f"  cannot run {team}: {reason}")
+        if not runner.running:
+            return 1
+        print(
+            "bots are in the lobby; start the tournament when everyone is "
+            "in. Press Ctrl+C to stop them."
+        )
+        runner.supervise()
+        print("the tournament is finished")
+        return 0
+    except KeyboardInterrupt:
+        print("stopping")
+        return 0
+    except BackupError as exc:
+        print(str(exc))
+        return 1
+    finally:
+        runner.stop_all()
+
+
 def cmd_live(args: argparse.Namespace) -> int:
     from .live import LiveOptions, describe, run_live
 
@@ -819,6 +875,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub.add_argument("folder", help="folder with the downloaded zips")
     sub.add_argument("--no-validate", action="store_true")
+
+    sub = organiser(
+        "backup-run",
+        "play imported (zip) bots in the live tournament",
+        cmd_backup_run,
+    )
+    sub.add_argument("--server", default="http://127.0.0.1:8000")
+    sub.add_argument("--admin-key", help="or set POKER_ADMIN_API_KEY")
+    sub.add_argument(
+        "--all",
+        action="store_true",
+        help="run every imported team, even ones already connected live",
+    )
+    sub.add_argument(
+        "--team", action="append", help="only this team (repeatable)"
+    )
+    sub.add_argument(
+        "--take-over",
+        action="store_true",
+        help="replace the key of a team that is already a player on the "
+        "server (it must not be playing live)",
+    )
 
     sub = organiser("submit", "add a bot version", cmd_submit)
     sub.add_argument("team")
