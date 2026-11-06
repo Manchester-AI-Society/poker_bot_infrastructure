@@ -142,10 +142,12 @@ Make a second Google Form, separate from the upload form:
    the sheet readable by anyone with the link, which is why the form must not
    collect emails: the sheet holds only names and times.
 
-Then run the export with both:
+Then run the export with both (PowerShell shown; the backtick continues the line, in bash use a backslash):
 
 ```bash
-python -m arena export --out arena_site --loop 30 --git-push   --registrations "https://docs.google.com/spreadsheets/d/e/.../pub?output=csv"   --register-form "https://docs.google.com/forms/d/e/FORM_ID/viewform?usp=pp_url&entry.123456789="
+python -m arena export --out arena_site --loop 30 --git-push `
+  --registrations "https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" `
+  --register-form "https://docs.google.com/forms/d/e/FORM_ID/viewform?usp=pp_url&entry.123456789="
 ```
 
 How it behaves:
