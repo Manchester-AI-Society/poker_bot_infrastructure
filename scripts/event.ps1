@@ -3,6 +3,7 @@
 #   .\scripts\event.ps1 up      start the poker server, a Cloudflare tunnel and the live site feed
 #   .\scripts\event.ps1 status  what is running, the public address, who is in the lobby
 #   .\scripts\event.ps1 url     print the address, join code and admin key
+#   .\scripts\event.ps1 backups play the imported zip bots for teams that are not connected live
 #   .\scripts\event.ps1 start   start the tournament (whoever is in the lobby)
 #   .\scripts\event.ps1 down    stop everything this script started
 #
@@ -20,13 +21,16 @@
 #   -Registrations SRC     that form's sheet (CSV file or published https address)
 #   -PublishCode           show the join code on the website's Info page
 #   -Port N                server port (default 8000)
+# Options for `backups`:
+#   -All                   run every imported team, even ones already connected live
+#   -TakeOver              replace the key of a name that is already a player on the server
 #
 # Secrets (admin key, join code) are made once and kept in .event\event.env, which is
 # git-ignored. Anyone with the join code can register a team, and anyone with the
 # tunnel address can reach the server: share the code only with the teams.
 [CmdletBinding()]
 param(
-    [Parameter(Position = 0)][ValidateSet('up', 'status', 'url', 'start', 'down')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('up', 'status', 'url', 'backups', 'start', 'down')][string]$Command = 'status',
     [ValidateSet('quic', 'http2')][string]$Protocol = 'quic',
     [string]$Cloudflared = '',
     [switch]$NoTunnel,
@@ -38,7 +42,9 @@ param(
     [string]$RegisterForm = '',
     [string]$Registrations = '',
     [switch]$PublishCode,
-    [int]$Port = 8000
+    [int]$Port = 8000,
+    [switch]$All,
+    [switch]$TakeOver
 )
 
 $ErrorActionPreference = 'Stop'
@@ -209,6 +215,13 @@ switch ($Command) {
         Show-Info
     }
     'url' { Show-Info }
+    'backups' {
+        $s = Get-Settings
+        $extra = @()
+        if ($All) { $extra += '--all' }
+        if ($TakeOver) { $extra += '--take-over' }
+        & $Python -m arena backup-run --server "http://127.0.0.1:$Port" --admin-key $s['ADMIN_KEY'] @extra
+    }
     'start' {
         $lobby = (Invoke-Api 'Get' '/v1/lobby').players
         Write-Host ("In the lobby: {0}" -f ($lobby -join ', '))
