@@ -58,11 +58,16 @@ class AdminServer:
 
     def create_player(self, name: str, key: str) -> None:
         try:
-            self._client.create_player(name, api_key=key)
+            result = self._client.create_player(name, api_key=key)
         except Exception as exc:  # AdminSDKRequestError and friends
             if "409" in str(exc) or "exist" in str(exc).lower():
                 raise TeamExists(name) from exc
             raise BackupError(f"cannot create {name}: {exc}") from exc
+        # For a name that already exists the server answers 200 with
+        # {"created": false} and records NO key: that is a refusal, not
+        # a success (the bot would be told its key is invalid).
+        if isinstance(result, dict) and result.get("created") is False:
+            raise TeamExists(name)
 
     def rotate_key(self, name: str, key: str) -> None:
         try:

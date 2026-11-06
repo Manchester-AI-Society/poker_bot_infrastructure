@@ -341,3 +341,53 @@ def test_the_command_runs_missing_teams_and_stops_at_the_end(
     assert "skipping owl: already connected live" in out
     assert sorted(server.created) == ["bear", "fox"]
     assert "the tournament is finished" in out
+
+
+# -- the real admin wrapper ------------------
+
+
+class FakeAdminClient:
+    def __init__(self, reply=None, error=None):
+        self.reply, self.error, self.calls = reply, error, []
+
+    def create_player(self, name, api_key=None):
+        self.calls.append((name, api_key))
+        if self.error:
+            raise self.error
+        return self.reply
+
+    def rotate_player_key(self, name, api_key=None):
+        self.calls.append(("rotate", name, api_key))
+
+
+def admin_with(client):
+    server = backup.AdminServer.__new__(backup.AdminServer)
+    server._client = client
+    return server
+
+
+def test_a_created_player_is_accepted():
+    server = admin_with(FakeAdminClient({"player_id": "fox", "created": True}))
+    server.create_player("fox", "bk-1")  # no error
+
+
+def test_an_existing_name_answered_with_created_false_is_a_refusal():
+    """The server answers 200 {"created": false} and records no key; taking
+    that as success left the bots with keys the server never knew (seen when
+    run against the real server)."""
+    server = admin_with(
+        FakeAdminClient({"player_id": "fox", "created": False})
+    )
+    with pytest.raises(TeamExists):
+        server.create_player("fox", "bk-1")
+
+
+def test_a_conflict_error_is_a_refusal_and_other_errors_are_failures():
+    with pytest.raises(TeamExists):
+        admin_with(
+            FakeAdminClient(error=RuntimeError("HTTP 409: taken"))
+        ).create_player("fox", "k")
+    with pytest.raises(BackupError, match="boom"):
+        admin_with(FakeAdminClient(error=RuntimeError("boom"))).create_player(
+            "fox", "k"
+        )
