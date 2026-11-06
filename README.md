@@ -155,18 +155,17 @@ websocket, so you never run (or pay for) a team's code, and nobody can read
 anyone else's bot. Your machine only plays the games and does the scoring.
 
 ```bash
-# 1. Make the teams and their secret keys (teams.txt: one name per line)
-python -m arena tournament keys teams.txt --out keys.txt
-#    keys.txt has one "team  key" line per team. Give each team ITS line,
-#    privately. Keys are stored hashed; they cannot be shown again (use
-#    --rotate TEAM to issue a new one). keys*.txt is git-ignored.
+# 1. Open registration and announce the join code (random unless you give --code)
+python -m arena tournament open-registration --code poker-night
 
 # 2. Start the arena and leave it running; it prints the addresses to give teams
 python -m arena tournament serve --port 8765
 
-# 3. Each team runs, on its own machine:
-#    python -m arena.connect --url ws://YOUR-IP:8765 --key THEIR_KEY bots/theirbot
-python -m arena tournament status            # who is connected
+# 3. Each team registers itself, from its own machine, with the code:
+#    python -m arena.connect --url ws://YOUR-IP:8765 --team NAME --code poker-night bots/theirbot
+#    The arena creates the team and returns its secret key once; the client
+#    saves it on that computer, so later runs need only --team NAME.
+python -m arena tournament status            # who has registered / is connected
 
 # 4. Draw round 1 (balanced groups of at most 8, random, seed printed)
 python -m arena tournament draw --group-size 8 --advance 2
@@ -179,6 +178,13 @@ python -m arena tournament start-finals --deals 200
 python -m arena export --out arena_site --loop 30 --git-push
 ```
 
+* **Registration.** Names are first come first served; wrong join codes are
+  throttled (10 a minute across everyone); `tournament remove TEAM` deletes a
+  sign-up before the draw; **drawing the groups ends registration**. Keys are
+  stored hashed. A team that loses its key gets a new one with
+  `tournament keys --rotate TEAM --out keys.txt` (the old one stops working).
+  To enter teams yourself instead, use `tournament keys teams.txt --out keys.txt`
+  and hand each team its `team  key` line; teams then connect with `--key`.
 * **How matches run.** A pairing starts when both bots are connected and free;
   a team plays one match at a time, and different groups play in parallel. Each
   move has a time limit (`--move-timeout`, default 1 s, **including** the

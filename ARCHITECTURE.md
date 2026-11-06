@@ -492,7 +492,18 @@ duplicate scoring are exactly those every bot gets. A second connection for a
 team replaces the first (reconnection after a drop). Keys are stored as
 SHA-256 hashes in `remote_teams`; frames are capped at 64 KiB.
 
-**Client (`arena/connect.py`).** Loads the team's bot with the same loader as
+**Self-registration.** While registration is open (phase `registration`, set
+with `tournament open-registration`) a connection may begin with `register`
+(team name + the join code) instead of `hello`. `register_team` checks the code
+against a stored hash in constant time, validates the name, refuses duplicates
+(first come first served; the database insert is the final arbiter) and the cap,
+creates the team, and the gateway replies `registered` with the new key, once;
+the connection is then logged in as that team. Wrong codes are limited to 10 a
+minute across all clients. Drawing the groups moves the phase on, which closes
+registration. The organiser can still create teams and keys by hand.
+
+**Client (`arena/connect.py`).** Registers on first use (saving the key in `~/.arena/keys/<team>.key`, or
+`ARENA_HOME`), loads the team's bot with the same loader as
 `bothost`, answers `act`, and reconnects with backoff after any drop or cut-off
 handshake. It exits (code 3) on a refused key. If the bot defines
 `on_match_start()` it is called when a match begins.

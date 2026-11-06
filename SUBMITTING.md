@@ -70,23 +70,37 @@ This is the same engine and the same scoring the competition uses. If `validate`
 says **OK**, your bot plays legally. If a match shows `faults:` above zero, read
 the log in `arena_logs/` (or in the folder you give with `--log-dir`).
 
-## 3. Connect to the arena
+## 3. Register and connect to the arena
 
-The organiser gives each team a **team name**, a **secret key** and the arena's
-**address** (something like `ws://192.168.1.20:8765`). Then run, on your own
-machine:
+The organiser tells you the arena's **address** (something like
+`ws://192.168.1.20:8765`) and a **join code**. You choose your own **team name**:
+lowercase letters, digits, `-` and `_`, up to 32 characters, first come first
+served. On your own machine, run:
 
 ```bash
-python -m arena.connect --url ws://ADDRESS:8765 --key YOUR_KEY bots/myteam
+python -m arena.connect --url ws://ADDRESS:8765 --team yourteam --code JOINCODE bots/myteam
 ```
 
-(To keep the key off the command line, set the `ARENA_KEY` environment variable
-instead of using `--key`.)
+That registers your team, saves your secret key on your computer, and connects
+your bot. Every later run only needs your team name:
+
+```bash
+python -m arena.connect --url ws://ADDRESS:8765 --team yourteam bots/myteam
+```
 
 You should see `connected as team 'yourteam'; waiting for matches`. **Leave it
 running for the whole event.** It reconnects by itself if your Wi-Fi drops, and
 prints `match starting` and `match finished` as your matches are played.
 
+Registration closes when the organiser draws the groups, so register early. If
+the organiser gave you a key instead, use
+`python -m arena.connect --url ws://ADDRESS:8765 --key YOUR_KEY bots/myteam`
+(or set the `ARENA_KEY` environment variable to keep it off the command line).
+
+* **Your key** is saved in a `.arena` folder in your home directory (one file per
+  team). It proves you are that team: keep it private. If you lose it or want to
+  play from another computer, ask the organiser for a new one (the old one then
+  stops working).
 * **Keep your key secret.** Anyone who has it can play as your team.
 * **Use whatever you like.** The bot runs on your computer, so any library, any
   model, a GPU or an outside API is fine. Anything it costs is yours.
@@ -98,8 +112,9 @@ prints `match starting` and `match finished` as your matches are played.
   new one starts. If your bot has a method `on_match_start(self)`, it is called
   then: reset your notes about the opponent there.
 
-If the arena refuses your connection, the message says why (`that key is not
-valid`, or an old client that needs updating with `git pull`).
+If the arena refuses your connection, the message says why (a wrong join code,
+a team name that is taken, registration closed, or an old client that needs
+updating with `git pull`).
 
 ## The rules your bot must follow
 

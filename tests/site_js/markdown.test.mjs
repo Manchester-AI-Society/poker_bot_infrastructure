@@ -149,7 +149,8 @@ test('every command in the guide survives as code, character for character', () 
   assert.match(code, /python -m arena validate bots\/myteam/);
   assert.match(code, /python -m arena match bots\/myteam call --deals 200/);
   assert.match(code, /pip install -r requirements\.txt/);
-  assert.match(code, /python -m arena\.connect --url ws:\/\/ADDRESS:8765 --key YOUR_KEY bots\/myteam/);
+  assert.match(code, /python -m arena\.connect --url ws:\/\/ADDRESS:8765 --team yourteam --code JOINCODE bots\/myteam/);
+  assert.match(code, /python -m arena\.connect --url ws:\/\/ADDRESS:8765 --team yourteam bots\/myteam/);
 });
 
 test('the relative link to bots/README.md is plain text on the site, not a broken link', () => {
