@@ -108,6 +108,7 @@ curl -s localhost:8000/v1/tournament | python3 -m json.tool   # bracket, table w
 | You need to restart the server (`reset`) | Self-registered keys are **wiped**: everyone re-runs the signup curl (their name is free again). Keys from `event.sh key` survive. The URL stays the same. |
 | `up` never prints a URL | Network blocks Cloudflare. Use a phone hotspot for your laptop. |
 | Someone's key gets `401` | Check it with `curl https://<url>/v1/me -H "Authorization: Bearer <key>"`. If the server restarted, they re-register. |
+| `docker compose logs tunnel` shows `x509: certificate signed by unknown authority`, then the URL gives `530` | The network intercepts HTTPS, so the TCP tunnel cannot verify Cloudflare. Add `TUNNEL_PROTOCOL=quic` to `.env` and run `./scripts/event.sh newurl` (QUIC uses UDP 7844, which is not intercepted). Seen on a student-accommodation 802.1x Wi-Fi. |
 | Strangers registering | They'd need the join code. To rotate it, delete the `REGISTRATION_CODE=` value in `.env` and run `./scripts/event.sh up` again. |
 
 ## Where things live

@@ -228,3 +228,4 @@ submissions/
 node_modules/
 sim_logs/
 .DS_Store
+.event/
