@@ -463,6 +463,9 @@ together.
 | `PlayerSDKAuthError: An API key is required to submit actions` | Submitting actions over HTTP without a key is no longer allowed — pass `api_key` to `play()`/the client |
 | `Player belongs to multiple matches` | Set `match_id` (or `POKER_MATCH_ID`) explicitly when using the CLI or `run_bot()` |
 | `Websocket unavailable …; using HTTP polling instead` | The server accepted HTTP but rejected the WS upgrade — everything still works, this is informational |
+| Bots on other laptops can't reach `http://<your-ip>:8000` (works on localhost) | The network (eduroam, most campus/hotel Wi-Fi) blocks device-to-device traffic: use the [tunnel](#run-on-restricted-wi-fi-eduroam-hotel-conference) and share its `https://` URL |
+| Tunnel log shows no `trycloudflare.com` URL, keeps reconnecting, or says `x509: certificate signed by unknown authority` | The network blocks or intercepts outbound HTTPS to Cloudflare (seen on a student-accommodation 802.1x Wi-Fi): put the server machine on a phone hotspot. The compose service already forces TCP 443 (`--protocol http2`) |
+| Tunnel URL suddenly stops working (`Tunnel not found` in `docker compose logs tunnel`) | Cloudflare dropped the quick tunnel: `./scripts/event.sh newurl` gets a fresh one; re-share it |
 | Bot folded without acting | Turn timer (`turn_timeout_seconds`) expired; make `act()` return faster or raise the match timeout |
 | `error: the following arguments are required: bot_b` in PowerShell | PowerShell treats `@call` as its splat operator and drops it. Write `call` (no `@`) or quote it: `'@call'` |
 | `ModuleNotFoundError: No module named 'dotenv'` when running `python -m arena` | Requirements not installed in this Python: `python -m pip install -r requirements.txt` |
