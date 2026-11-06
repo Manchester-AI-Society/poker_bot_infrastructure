@@ -1,8 +1,9 @@
 # How to enter your bot
 
-For competitors. Your bot runs **on your own computer** and plays by connecting
-to the organiser's arena over the network. Nobody else ever sees your code, and
-anything your bot needs (a model, a GPU, an API key) stays with you.
+For competitors. You write a Python bot, test it on your own computer, pack it
+into one zip file and upload that zip through the organiser's submission form.
+The organiser runs every bot on one machine. Your bot never connects to
+anything, and you do not need to leave anything running.
 
 ## How the competition works
 
@@ -17,9 +18,10 @@ Nothing about how anyone is doing is published while a round is being played.
 The group tables appear when Round 1 is complete, and the final table when
 Round 2 is.
 
-Every match is a number of **deals** (the organiser says how many). Each deal is
-played twice with the two bots swapping seats, so card luck mostly cancels, and
-the score is in big blinds per hand with a 95% confidence interval.
+Every match is a number of **deals** (the organiser decides how many). Each deal
+is played twice with the two bots swapping seats, so card luck mostly cancels.
+The score is in big blinds per hand with a 95% confidence interval. Blinds are
+10/20 and stacks are 2000 chips, reset every hand.
 
 ## 1. Write your bot
 
@@ -40,9 +42,23 @@ Start from the starter bot, or from any example in `bots/` (see
 cp -r bots/starter bots/myteam      # PowerShell: Copy-Item -Recurse bots\starter bots\myteam
 ```
 
-Your bot is one file, `bot.py`, with exactly one `PokerBot` class. Read the top
-of `bots/starter/bot.py`: it explains the three things a bot can do (fold, call,
-raise) and what information it gets.
+Your bot is a folder with a `bot.py` and exactly one `PokerBot` class that has
+a constructor taking no arguments. Other files in the folder (data, helper
+modules) are fine; they travel in the zip.
+
+`act(game_state)` is called each time it is your turn and must return a
+`Response`:
+
+* `Response.fold()` gives up the hand.
+* `Response.call()` calls, or checks when nothing is owed.
+* `Response.raise_to(total)` bets or raises. `total` is the total number of
+  chips you want in the pot this betting round, between `game_state.min_raise_to`
+  and `game_state.max_raise_to`.
+* `Response.all_in()` puts in everything you have left.
+
+Anything else (a string such as `"call"`, `None`, an amount outside the range, a
+raise when raising is not allowed) is a fault: see the rules below. `Action` is
+an older name for `Response` and still works.
 
 ### What your bot is given
 
@@ -54,7 +70,8 @@ to guess wrong:
 | **Cards** | Two-character strings: rank then suit, both upper case, with `T` for ten: `AS`, `TD`, `7H`, `2C`. The suits are `S`, `H`, `D`, `C`. |
 | **pot_size** | The chips in the middle right now, including bets already made this round. At the start of a hand it is 30 (the two blinds). |
 | **call_amount** | The chips you must add to stay in. Zero means you can check. |
-| **legal_actions** | Only the moves you may make, from `fold`, `check`, `call`, `bet`, `raise_to`. `bet` appears only when nobody has bet this round. |
+| **min_raise_to, max_raise_to** | The smallest and largest total you may give to `Response.raise_to`. Only meaningful when you can bet or raise (`can_bet`, `can_raise`). |
+| **legal_actions** | Only the moves you may make, from `fold`, `check`, `call`, `bet`, `raise_to`. `bet` appears only when nobody has bet this round. `Response.call()` covers both `call` and `check`. |
 | **action_history** | This hand so far. Each record has `player_id`, `action`, `amount` and `street`. Actions are `post_small_blind`, `post_big_blind`, `fold`, `check`, `call`, `bet` and `raise_to`. For `call` and `bet` the amount is the chips added; for `raise_to` it is the total you have in this round. |
 | **Your class** | Exactly one `PokerBot` subclass, with a constructor that takes no arguments. |
 
@@ -67,65 +84,58 @@ python -m arena match bots/myteam bots/equity_calc --deals 300
 ```
 
 This is the same engine and the same scoring the competition uses. If `validate`
-says **OK**, your bot plays legally. If a match shows `faults:` above zero, read
-the log in `arena_logs/` (or in the folder you give with `--log-dir`).
+says **OK**, your bot plays legally. If a match shows `faults:` above zero, run
+`python -m arena validate bots/myteam`. A mistake in your response is reported
+as one sentence, for example that a raise was outside the allowed range. A crash
+shows the end of the traceback. The folder `arena_logs/` (or the folder you give
+with `--log-dir`) holds what your bot printed, any crash output, and a line for
+each illegal response.
 
-## 3. Register and connect to the arena
-
-The organiser tells you the arena's **address** (something like
-`ws://192.168.1.20:8765`) and a **join code**. You choose your own **team name**:
-lowercase letters, digits, `-` and `_`, up to 32 characters, first come first
-served. On your own machine, run:
-
-```bash
-python -m arena.connect --url ws://ADDRESS:8765 --team yourteam --code JOINCODE bots/myteam
-```
-
-That registers your team, saves your secret key on your computer, and connects
-your bot. Every later run only needs your team name:
+## 3. Pack it
 
 ```bash
-python -m arena.connect --url ws://ADDRESS:8765 --team yourteam bots/myteam
+python -m arena pack bots/myteam --team myteam
 ```
 
-You should see `connected as team 'yourteam'; waiting for matches`. **Leave it
-running for the whole event.** It reconnects by itself if your Wi-Fi drops, and
-prints `match starting` and `match finished` as your matches are played.
+`pack` checks your bot again, then writes `myteam.zip` (with a small manifest
+and a checksum) into the current folder. Use `--out FOLDER` to put it somewhere
+else. Pick your team name once and keep using it: lowercase letters, digits, `-`
+and `_`, up to 32 characters.
 
-Registration closes when the organiser draws the groups, so register early. If
-the organiser gave you a key instead, use
-`python -m arena.connect --url ws://ADDRESS:8765 --key YOUR_KEY bots/myteam`
-(or set the `ARENA_KEY` environment variable to keep it off the command line).
+If `pack` says your bot fails its check, fix that first: `validate` shows the
+same check.
 
-* **Your key** is saved in a `.arena` folder in your home directory (one file per
-  team). It proves you are that team: keep it private. If you lose it or want to
-  play from another computer, ask the organiser for a new one (the old one then
-  stops working).
-* **Keep your key secret.** Anyone who has it can play as your team.
-* **Use whatever you like.** The bot runs on your computer, so any library, any
-  model, a GPU or an outside API is fine. Anything it costs is yours.
-* **Connect before a round starts.** A match begins when both bots in the
-  pairing are connected, and a team that is still missing after the grace
-  period (the organiser tells you how long) forfeits the matches it has not
-  played: its side folds every hand, which scores very badly.
-* **One match at a time.** Your bot plays one match at a time and is told when a
-  new one starts. If your bot has a method `on_match_start(self)`, it is called
-  then: reset your notes about the opponent there.
+## 4. Upload it
 
-If the arena refuses your connection, the message says why (a wrong join code,
-a team name that is taken, registration closed, or an old client that needs
-updating with `git pull`).
+Open the submission form (the organiser shares the link), enter the same team
+name you gave to `pack`, and upload the zip. The form has no way to check the
+file, which is why `pack` does it for you.
+
+You can submit again until the deadline: pack again and upload the new zip. The
+newest zip that works is the one that plays. A newer zip that turns out to be
+broken never replaces a working one, and a team name is not reserved, so use a
+name that is clearly yours.
 
 ## The rules your bot must follow
 
 | | |
 |---|---|
-| **Time** | 1 second hard limit per move, **including the network round trip** (the organiser may change this and will tell you). Load files and models when your bot starts, not in `act`. There is also a thinking-time budget of 3 seconds per hand on average over a match; going over it disables your bot for that match. |
-| **Mistakes** | A crash, a timeout, an illegal move or a missing connection plays a safe default (check, otherwise fold) and counts as a fault. After 20 faults your bot is replaced by an always-fold stub for the rest of that match. |
-| **If your connection drops** | The moves asked for while you are away are faults. Matches do not pause for you, so a stable connection matters. |
-| **Memory between hands** | Your bot is one long-running program, so you may keep statistics about the current opponent. |
-| **Fair play** | Each deal is played twice with the seats swapped. Your bot must not try to recognise a deal it has already seen and use the cards it remembers from the first half: that is cheating and gets a team disqualified. Do not attack the arena's server or other teams' connections either. |
-| **Libraries** | Whatever you have installed on your own computer. |
+| **Time** | 1 second hard limit per move (the organiser may change this and will tell you). Load files and models when your bot starts, not in `act`. There is also a thinking-time budget of 0.2 seconds per deal per half on average; going over it disables your bot for that match. |
+| **Mistakes** | A crash, a timeout, an illegal move or a return value that is not a `Response` plays a safe default (check, otherwise fold), and counts as a fault; `validate` and `pack` show you the reason. After 20 faults your bot is replaced by an always-fold stub for the rest of that match. |
+| **Memory between hands** | Your bot is one long-running program for each half of a match, so you may keep statistics about the current opponent. It is started fresh for each half. |
+| **Size** | All files in your bot folder, unzipped, must total at most 25 MB. |
+| **Libraries** | The Python standard library and whatever `requirements.txt` installs. The organiser will tell you if anything else is installed. CPU only. |
+| **Fair play** | No network use. Do not read files outside your own bot folder. Do not attack the arena or other teams' bots. Breaking these rules gets a team disqualified. |
 
-Game format: heads-up (two players) no-limit Texas Hold'em, 100 big blinds,
-blinds 10/20, stacks reset every hand.
+Your bot runs on the organiser's computer, so everything it needs must be in
+the zip. Game format: heads-up (two players) no-limit Texas Hold'em, 100 big
+blinds, blinds 10/20, stacks reset every hand.
+
+## What happens next
+
+After the deadline the organiser downloads every uploaded zip and imports them.
+Each zip is treated as untrusted and checked again; a file that cannot be read
+is refused, and a bot that fails its check is not played. Identical code from
+two teams is rejected as copied, so do not submit someone else's bot. Then the
+groups are drawn, Round 1 is played, and Round 2 follows. Results are shown on
+the results website when each round is complete.

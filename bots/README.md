@@ -1,9 +1,15 @@
 # Example bots
 
 Seven working bots to learn from, test against, and beat. Each is one
-self-contained `bot.py` (a team's folder is all that gets copied, so a bot
+self-contained `bot.py` (a team's folder is all that gets packed, so a bot
 cannot import another bot). Read the docstring at the top of each file: it says
 what the bot does and how to try it.
+
+Every bot's `act(game_state)` returns a `Response`: `Response.fold()`,
+`Response.call()` (checks when nothing is owed), `Response.raise_to(total)` or
+`Response.all_in()`. Anything else, or an amount outside
+`game_state.min_raise_to` to `game_state.max_raise_to`, counts as a fault. The
+older name `Action` still works for `Response`.
 
 | Folder | Style | Strong against | Weak against |
 |---|---|---|---|
@@ -36,25 +42,49 @@ python -m arena validate bots/myteam
 python -m arena match bots/myteam bots/equity_calc --deals 300
 ```
 
+## Pack one to submit
+
+When your bot is ready, pack it into one zip and upload that zip in the
+submission form (see [SUBMITTING.md](../SUBMITTING.md)):
+
+```bash
+python -m arena pack bots/myteam --team myteam
+```
+
+This checks the bot again and writes `myteam.zip` in the current folder.
+
 ## Run them as a small competition
 
-Copy any of them into a `submissions/` folder, one folder per team, and let the
-ladder run (see the main README, "Show the results"):
+This rehearses the whole event with the example bots, the way the organiser
+runs it (see [ORGANISER.md](../ORGANISER.md)). Everything goes into folders that
+git ignores.
 
 ```bash
 for b in tight_aggressive loose_aggressive the_rock equity_calc adaptive push_fold; do
-  mkdir -p submissions/$b && cp bots/$b/bot.py submissions/$b/bot.py
+  python -m arena pack bots/$b --team ${b//_/-} --out downloads/demo
 done
-python -m arena ladder --submissions submissions --deals 100
 ```
 
 ```powershell
 foreach ($b in "tight_aggressive","loose_aggressive","the_rock","equity_calc","adaptive","push_fold") {
-  New-Item -ItemType Directory -Force submissions\$b | Out-Null
-  Copy-Item bots\$b\bot.py submissions\$b\bot.py
+  python -m arena pack bots/$b --team $b.Replace("_","-") --out downloads/demo
 }
-python -m arena ladder --submissions submissions --deals 100
 ```
+
+Then import the zips, draw the groups, and play (the second command prints the
+groups; leave `run` going and start the next steps in another window):
+
+```bash
+python -m arena import downloads/demo --root arena_data/demo
+python -m arena tournament draw --group-size 4 --advance 2 --root arena_data/demo
+python -m arena tournament start-groups --deals 50 --root arena_data/demo
+python -m arena tournament run --root arena_data/demo
+```
+
+When `python -m arena tournament status --root arena_data/demo` says
+`phase: between`, run `python -m arena tournament start-finals --deals 100
+--root arena_data/demo`. Press Ctrl+C in the `run` window when the status says
+`phase: done`; it prints the champion.
 
 Two teams cannot submit byte-identical code (the second is rejected as copied),
 so change something in a copy if you want two of the same bot.

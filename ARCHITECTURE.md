@@ -1,9 +1,10 @@
 # Competition architecture
 
 This describes how the **bot competition** works: the `arena/` package.
-Nothing in it uses HTTP, WebSockets or any network service. Bots are ordinary
-child processes on the organiser's machine, and all state is local files plus
-one SQLite database.
+The event uses no HTTP, WebSocket or other network service. Teams hand in their
+bots as zip files collected by a form, the organiser imports them, and the bots
+run as ordinary child processes on the organiser's machine. All state is local
+files plus one SQLite database.
 
 People see the results through a **static website**: `python -m arena export`
 turns the results into a folder of plain HTML, CSS, JavaScript and JSON that
@@ -11,44 +12,41 @@ can be shown from the laptop or pushed to any static host (see
 [section 9](#9-the-results-website)). It contains no server code and never
 accepts uploads.
 
-The older HTTP/WebSocket match server (`server/`, `player_sdk.play()`,
-`admin_sdk`) still exists in the repository for live network matches, but the
-competition does not use it. See [the last section](#what-the-competition-does-not-use).
-
-Related documents: [README.md](README.md) (quick start),
-[DESIGN.md](DESIGN.md) (why this design was chosen),
-[AUDIT.md](AUDIT.md) (rules and robustness audit).
+Related documents: [README.md](README.md) (for competitors),
+[SUBMITTING.md](SUBMITTING.md) (the competitor guide, also shown on the
+website), [ORGANISER.md](ORGANISER.md) (how to run the event),
+[docs/history/DESIGN.md](docs/history/DESIGN.md) (why an earlier design was
+chosen) and [docs/history/AUDIT.md](docs/history/AUDIT.md) (an earlier rules and
+robustness audit). Older code that the event does not use is described in
+[Older modes](#11-older-modes-not-used-for-the-event).
 
 ## 1. The picture
 
 ```mermaid
 flowchart TB
     subgraph People
-        T["Teams<br/>write bot.py"]
+        T["Teams<br/>write bot.py, run arena pack"]
+        F["Submission form<br/>(Google Form, Drive)"]
         O["Organiser<br/>runs python -m arena ..."]
     end
 
-    subgraph Machine["One machine: laptop or one HPC node"]
-        CLI["arena.cli<br/>match / validate / submit / ladder / freeze / final / leaderboard"]
+    subgraph Machine["The organiser's machine"]
+        CLI["arena.cli, arena.tournament_cli<br/>import / tournament / export"]
 
         subgraph Intake["Intake"]
+            PK["package.py<br/>unzip safely, check manifest, hash"]
             IN["intake.py<br/>copy, hash, validate"]
         end
 
         subgraph State["State on disk (arena_data/)"]
-            DB[("arena.sqlite<br/>versions, jobs, results")]
+            DB[("arena.sqlite<br/>versions, jobs, results,<br/>tournament state")]
             VER["versions/team/hash/<br/>immutable copies"]
             HND["hands/*.jsonl.gz<br/>full hand histories"]
             LOG["logs/team/hash/*.log<br/>private bot output"]
-            RES["results/*.json<br/>leaderboard, final"]
         end
 
-        subgraph Sched["Scheduler (arena.scheduler)"]
-            Q["job queue<br/>one job = one pairing"]
-            POOL["process pool<br/>one worker per pairing"]
-        end
-
-        subgraph Pairing["Inside one worker"]
+        subgraph Run["tournament run (arena.tournament.Runner)"]
+            POOL["thread pool<br/>one match = one job"]
             DUEL["duel.py<br/>seeded deals, played twice"]
             TAB["table.py<br/>one hand at a time"]
             ENG["game/ engine<br/>rules, pots, showdown"]
@@ -57,41 +55,46 @@ flowchart TB
         end
 
         subgraph Procs["Bot processes"]
-            P1["python -m arena.bothost<br/>team A bot.py"]
-            P2["python -m arena.bothost<br/>team B bot.py"]
+            P1["python -m arena.bothost<br/>team A bot.py<br/>validates its own Response"]
+            P2["python -m arena.bothost<br/>team B bot.py<br/>validates its own Response"]
         end
     end
 
-    T -->|folder, file or git URL| IN
+    T -->|NAME.zip| F
+    F -->|download folder| O
     O --> CLI
-    CLI --> IN --> VER
+    CLI --> PK --> IN --> VER
     IN --> DB
-    CLI --> Q
-    Q <--> DB
-    Q --> POOL --> DUEL --> TAB --> ENG
+    CLI --> POOL
+    POOL <--> DB
+    POOL --> DUEL --> TAB --> ENG
     TAB <--> C1 <-->|JSON lines on stdin/stdout| P1
     TAB <--> C2 <-->|JSON lines on stdin/stdout| P2
     DUEL --> HND
     P1 -.stderr.-> LOG
     P2 -.stderr.-> LOG
-    POOL --> DB
-    DB --> RES
 
     EXP["arena export<br/>read-only, sanitising"]
     DB --> EXP
     HND --> EXP
     EXP --> SITE["arena_site/<br/>static HTML, JS and JSON"]
-    SITE -->|laptop projector, LAN, or a static host| BR["Browsers<br/>leaderboard, matrix, replays, TV mode"]
+    SITE -->|laptop projector, LAN, or a static host| BR["Browsers<br/>tournament, tables, replays, TV mode"]
 ```
 
-Network use: `git clone` when a team submits a git URL, and, only if you choose
-to, serving or pushing the exported site folder. Bots never touch the network
-through the harness.
+Network use: the organiser downloads the zips from the form's storage, and,
+only if you choose to, serves or pushes the exported site folder. The harness
+gives bots no network access of its own (and teams are told not to use any),
+but it does not block it either: see [Known limits](#10-known-limits).
 
 ## 2. Components
 
 | File | Job |
 |---|---|
+| `arena/package.py` | `pack` (a team's side): checks a bot, writes `NAME.zip` with a manifest (team name, hash of the files, time). `import_submissions` (the organiser's side): treats each zip as untrusted: refuses unsafe paths, links, duplicate entries, more than 2000 files or 25 MB unzipped, absurd compression ratios, a missing manifest or a checksum that does not match; then submits the bot through `intake.py`. Among several zips for one team, the newest working one (by the time in the manifest) is the one kept. |
+| `arena/intake.py` | Submission: copy to `versions/<team>/<hash>/`, content-hash, validate, make current only if valid. Identical code from another team is rejected as copied. |
+| `arena/tournament.py` | The two-round tournament: phases, the draw, the match queue, the `Runner`, who is revealed when (section 5). |
+| `arena/tournament_cli.py` | The `tournament status / remove / draw / start-groups / run / start-finals` commands. |
+| `player_sdk/response.py` | `validate_response`: checks the bot's return value against the rules (section 3). Runs inside the bot's own process. |
 | `arena/bothost.py` | The child process that hosts one bot: imports `bot.py`, then loops reading one JSON line and writing one JSON line. Its `print` output is redirected to stderr, so it can never corrupt the protocol. |
 | `arena/agents.py` | `ProcessAgent` (talks to a real child process, kills it on timeout, never raises when closing) and `LocalAgent` (in-process, for the built-in baselines and tests). |
 | `arena/contestant.py` | The **fault guard**. Turns an exception, timeout, crash, garbage reply or illegal action into a legal fallback (check if free, else fold) and records a fault. After 20 faults, or after overdrawing the thinking-time bank, replaces the bot with an always-fold stub. |
@@ -101,21 +104,18 @@ through the harness.
 | `arena/baselines.py` | `fold`, `call`, `random`, `shove` (also `@fold` etc.; PowerShell needs `'@call'` quoted, so the bare name is the portable form). |
 | `arena/specs.py` | Turns `@name` or a path into a contestant. |
 | `arena/validate.py` | The smoke test every submission must pass (a short match against `@call`). |
-| `arena/intake.py` | Submission: copy to `versions/<team>/<hash>/`, content-hash, validate, make current only if valid. Git sources are cloned shallowly with prompts disabled, a timeout, and `--` before the address (a source starting with `-` is refused). |
-| `arena/sync.py` | Pulls each team's bot from its own repository, from a teams file (`team url [branch]`, https only, strictly validated). Re-reads the file every pass, remembers each team's last fetch outcome, and runs as a background thread inside `ladder --teams`. |
-| `arena/store.py` | SQLite storage (WAL mode) and the job queue. |
-| `arena/scheduler.py` | Queues pairings, runs them in a process pool, handles freeze and final. |
-| `arena/leaderboard.py` | Ranks teams and writes `results/leaderboard.json` and `final.json`. |
+| `arena/store.py` | SQLite storage (WAL mode), the job queue and the stored tournament state. |
+| `arena/leaderboard.py` | Ranks teams from the results of one set of jobs (a group, or the finals). |
 | `arena/history.py` | Reads and writes gzip JSON-lines hand histories. |
-| `arena/export.py` | Builds the static site data: manifest, leaderboards, pairings, teams and replays. Decides what is published and strips what must stay private. Also `git_publish`. |
+| `arena/export.py` | Builds the static site data: manifest, tournament view, tables, pairings, teams and replays. Decides what is published and strips what must stay private. Also `git_publish`. |
 | `arena/serve.py` | A small preview server for the exported folder (no-store caching, pinned MIME types, a deep listen backlog and keep-alive). |
 | `arena/jsonutil.py` | Strictly valid JSON (no `Infinity`/`NaN`) and atomic file writes, for everything a browser reads. |
 | `arena/site/` | The website itself: `index.html`, `css/`, and `js/` (router, views, replay builder). Copied into the export folder. |
 | `arena/cli.py` | The `python -m arena` command line. |
-| `game/` | The rules engine, shared with the old server: actions, betting, pots, showdown. |
-| `player_sdk/` | What bot authors import: `PokerBot`, `Action`, `GameState`. The arena reuses its parser and action translation. |
+| `game/` | The rules engine: actions, betting, pots, showdown. Shared with the older server. |
+| `player_sdk/` | What bot authors import: `PokerBot`, `Response`, `GameState`. The arena reuses its parser and action translation. |
 
-## 3. The bot protocol
+## 3. The bot protocol and the `Response`
 
 Each bot process is started as `python -m arena.bothost <bot.py or folder>` and
 speaks one JSON object per line.
@@ -129,8 +129,29 @@ host   -> bot:  {"type": "quit"}
 
 The first line from the bot is `{"type": "ready"}` once the file imported. If the
 import fails the bot sends a fatal `error` instead, and the contestant is
-disabled immediately. Bot authors never see this: they implement
-`act(game_state) -> Action` and the host does the translation.
+disabled immediately.
+
+Bot authors implement `act(game_state) -> Response`. A `Response` is built with
+`Response.fold()`, `Response.call()` (checks when nothing is owed),
+`Response.raise_to(total)` (the total chips this betting round) or
+`Response.all_in()`. `Action` is kept as an alias of `Response`.
+
+The bot's own process validates what `act` returned, before anything is sent
+(`validate_response` in `player_sdk/response.py`, called from
+`arena/bothost.py`). It raises `InvalidResponse`, with a sentence saying what to
+do instead, when:
+
+* the value is not a `Response` (for example the string `"call"` or `None`);
+* a fold, call or check is not among the legal moves;
+* a bet or raise is attempted when neither `bet` nor `raise_to` is legal;
+* `raise_to(total)` is outside `game_state.min_raise_to` to
+  `game_state.max_raise_to`.
+
+An exception (including that one), a timeout or a crash comes back to the
+contestant as a fault: a check (else fold) is played in its place, the fault is
+counted, and the reason is kept with the match result and on the action in the
+hand history. The bot process is restarted after a fault. After 20 faults the
+bot is replaced by an always-fold stub for the rest of that match.
 
 ## 4. How one pairing is scored
 
@@ -150,39 +171,54 @@ orientation to the other. Two properties follow and are tested:
 
 Limits: 1 s hard limit per move, 0.2 s of thinking per deal per half in total,
 20 faults maximum. Defaults can be changed with the `--move-timeout`,
-`--think-budget` and `--max-faults` options.
+`--think-budget` and `--max-faults` options. A match can also be cut off after
+`--time-cap` seconds (`tournament run`, default 1800) and is then scored on the
+deals it finished.
 
-## 5. The competition life cycle
+## 5. The event life cycle
+
+State is one JSON value in the `meta` table: phase, seed, group size, groups (each
+with a `freeze`), finalists, champion. A *freeze* is a fixed set of bot versions;
+each group, and the finals, is one freeze with jobs of kind `group` / `final`
+(one job = one pairing).
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Submitted: submit (folder, file, git URL)
-    Submitted --> Valid: smoke test passes
-    Submitted --> Invalid: fails, previous version kept
-    Valid --> Ladder: ladder queues pairings that include this version
-    Ladder --> Ladder: new version replaces old, only its pairings re-run
-    Ladder --> Frozen: freeze (re-validates every bot, snapshots versions)
-    Frozen --> Final: final (larger round robin, different seed)
-    Final --> [*]: results/final.json
+    [*] --> registration: import (the form is open)
+    registration --> drawn: tournament draw
+    drawn --> drawn: draw --redo
+    drawn --> groups: start-groups
+    groups --> between: last group match played
+    between --> finals: start-finals
+    finals --> done: last final played
+    done --> [*]: champion
 ```
 
-* **Submit.** Code is copied to `versions/<team>/<hash12>/`. The hash covers the
-  file contents, so identical code is a no-op for the same team and is
-  **rejected if another team already submitted it**. A failing version is
-  recorded but never replaces a working one.
-* **Ladder.** Provisional results while the event runs. Each pairing is one job
-  (default 200 deals, 400 hands). A new version only queues the pairings it takes
-  part in; jobs for versions that were replaced are discarded when they are
-  claimed. Jobs left "running" by a crashed scheduler are put back in the queue.
-* **Freeze.** Re-validates every team's current bot and snapshots exactly which
-  versions will play the final. Later submissions are ignored.
-* **Final.** A round robin on the frozen versions only (default 1000 deals,
-  2000 hands per pairing), with different seeds from the ladder. Only this
-  decides the result.
-* **Leaderboard.** A team's score is its mean bb/hand across opponents, each
-  opponent weighted equally, with a combined 95% interval. The win/draw/loss
-  record counts only statistically clear pairings, and `~` marks neighbours that
-  cannot be separated.
+* **Import (`registration`).** `python -m arena import FOLDER` reads every
+  `.zip` under the folder. Each is unpacked into a scratch folder with the
+  checks in section 2, then submitted: smoke-tested against `@call`, hashed,
+  and made the team's current bot only if it passes. A failing version is
+  recorded but never replaces a working one. `import` can be repeated; the same
+  code twice is "unchanged". `tournament remove TEAM` takes a team out.
+* **`draw`.** Random balanced groups of at most `--group-size` teams (a
+  reproducible shuffle from a printed seed). It snapshots each team's current
+  version into the group's freeze, so later imports change nothing. It can be
+  repeated with `--redo` until round 1 starts.
+* **`start-groups`.** Queues every pairing of every group. **Round 1** is a
+  round robin inside each group.
+* **`run`.** The `Runner` (a thread pool, half the CPU count by default) claims
+  queued jobs and plays them. State is in the database, so it can be stopped and
+  restarted; jobs left "running" by a dead process are put back in the queue at
+  startup. When the last job of a round is done, `settle` moves the phase on:
+  `between` (finalists chosen: the best `--advance` of each group) or `done`
+  (champion chosen).
+* **`start-finals`.** Allowed in `between`. It prints a note for any group where
+  the last qualifying place is a statistical tie, then queues a round robin
+  among the finalists (a new freeze). **Round 2** decides the champion.
+* **Scores.** A team's score is its mean bb/hand across its opponents in that
+  freeze, each opponent weighted equally, with a combined 95% interval. The
+  win/draw/loss record counts only statistically clear pairings, and a tie
+  marker flags neighbours that cannot be separated. There is no tie-break stage.
 
 ## 6. What is stored where
 
@@ -190,21 +226,23 @@ Everything lives under one folder, `arena_data/` by default (`--root` changes it
 
 ```
 arena_data/
-  arena.sqlite                          versions, current, freezes, jobs, results
-  versions/<team>/<hash12>/             immutable copy of each submitted version
+  arena.sqlite                          versions, current, freezes, jobs, results, tournament state
+  versions/<team>/<hash12>/             immutable copy of each imported version
   hands/<kind>-<jobid>.jsonl.gz         every hand: seeds, cards, board, actions
   logs/<team>/<hash12>/<kind>-vs-<opp>.log   the bot's own prints and tracebacks
-  results/leaderboard.json              current ladder ranking
-  results/final.json                    final ranking, after the final runs
 ```
 
-The SQLite tables are `meta`, `versions`, `current`, `freezes`,
-`freeze_members`, `jobs` and `results`. A unique index stops the same pairing
-being queued twice. Each team's bot output goes to its own `logs/<team>/`
-folder and is never mixed into results or hand histories. Nothing enforces
-access control on those files: whoever can read `arena_data/` can read every
-team's logs. The exported website never contains them (section 9), so they stay
-on the organiser's machine; give a team its own folder by hand if it asks.
+The SQLite tables are `meta` (including the tournament state), `versions`,
+`current`, `freezes`, `freeze_members`, `jobs` and `results`. A unique index
+stops the same pairing being queued twice. Each team's bot output goes to its
+own `logs/<team>/` folder and is never mixed into results or hand histories.
+Nothing enforces access control on those files: whoever can read `arena_data/`
+can read every team's code and logs (and so can any bot, see
+[Known limits](#10-known-limits)). The exported website never contains them
+(section 9), so they stay on the organiser's machine.
+
+A match result stored in `results` carries, among the scores, the list of fault
+reasons for each bot (`fault_log_a`, `fault_log_b`).
 
 A hand record in `hands/*.jsonl.gz` looks like this (shortened):
 
@@ -216,60 +254,37 @@ A hand record in `hands/*.jsonl.gz` looks like this (shortened):
  "ended_by": "fold", "net": [-10, 10], "faults": 0, "orientation": 0, "deal": 0}
 ```
 
-`leaderboard.json` holds `teams` (rank, score, `ci95`, W/D/L, faults,
-`tied_with_next`), and a `matrix` of pairwise results. The website export reads
-the database, not these files, and writes its own browser-safe copies.
+The website export reads the database and writes its own browser-safe copies of
+what it publishes.
 
 ## 7. How to run it
 
-Setup once (Python 3.11+, from the repository root):
+The step-by-step runbook with real output is [ORGANISER.md](ORGANISER.md). In
+short, from the repository root (Python 3.11+, `python -m pip install -r
+requirements.txt` once):
+
+**A competitor** (no state is kept):
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate              # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-```
-
-**A participant testing a bot** (no state is kept):
-
-```bash
-cp -r bots/starter bots/myteam
 python -m arena validate bots/myteam
 python -m arena match bots/myteam call --deals 200
-python -m arena match bots/myteam bots/starter --deals 500 --hands hands.jsonl.gz
+python -m arena pack bots/myteam --team myteam
 ```
 
-**The organiser, during the event:**
+**The organiser:**
 
 ```bash
-# Either watch a folder of <team>/bot.py directories (re-scanned every 10 s)...
-python -m arena ladder --submissions submissions/ --deals 200
-
-# ...or submit explicitly, then run the queue
-python -m arena submit alpha path/to/alpha-bot
-python -m arena submit beta https://github.com/team/beta-bot.git
-python -m arena ladder
-
-python -m arena status
-python -m arena leaderboard
+python -m arena import downloads
+python -m arena tournament draw --group-size 8 --advance 2
+python -m arena tournament start-groups --deals 100
+python -m arena tournament run                      # leave running
+python -m arena tournament start-finals --deals 200 # when status says "between"
+python -m arena tournament status
+python -m arena export --out arena_site --loop 30 --git-push
 ```
 
-**At the deadline:**
-
-```bash
-python -m arena freeze
-python -m arena final --deals 1000
-python -m arena retry-failed && python -m arena final    # only if a pairing crashed
-```
-
-`ladder` keeps running and updating results until you stop it (Ctrl+C);
-`--once` plays what is queued and exits. `--workers N` sets the process-pool
-size (default: CPUs minus one).
-
-**On an HPC node:** run the same commands inside the job and pass
-`--workers $SLURM_CPUS_PER_TASK`. Nothing needs the network except fetching
-git submissions beforehand. Keep `arena_data/` on a local or POSIX filesystem
-that supports SQLite locking.
+`run` keeps running until you press Ctrl+C. It plays half the CPU count of
+matches at a time (`--concurrency N` changes that).
 
 ## 8. How to check it works
 
@@ -282,41 +297,24 @@ python -m arena validate bots/starter
 **Do the tests pass?**
 
 ```bash
-pytest -m "not integration" -q                    # about 40 s; expect 178 passed, 6 xfailed
+pytest -m "not integration" -q
 ruff check . && ruff format --check .
-POKER_ADMIN_API_KEY=admin-dev-key pytest -m integration -q   # old server only, about 2 min
 ```
 
-The 6 xfails are known bugs in the **old server** (see AUDIT.md), kept as
-strict expected failures. The integration tests cover the old server only; the
-competition path is covered by the `tests/test_arena_*.py` files.
+The `integration` tests cover the older server only (they need
+`POKER_ADMIN_API_KEY=admin-dev-key`); the competition path is covered by the
+`tests/test_arena_*.py` files and `tests/site_js/`.
 
-**Rehearse a whole event** with a throwaway root (about a minute; bash shown,
-on Windows use any scratch folder in place of `/tmp`):
-
-```bash
-for t in alpha beta gamma; do
-  mkdir -p /tmp/field/$t
-  cp bots/starter/bot.py /tmp/field/$t/
-  echo "# team $t" >> /tmp/field/$t/bot.py     # identical code is rejected as copied
-done
-python -m arena ladder --submissions /tmp/field --root /tmp/rehearsal --deals 20 --once
-python -m arena freeze      --root /tmp/rehearsal
-python -m arena final       --root /tmp/rehearsal --deals 50
-python -m arena leaderboard --root /tmp/rehearsal --kind final
-```
-
-Expected: three `valid` submissions, `pairings 3/3`, and every score exactly
-`+0.000` (the bots are identical, so duplicate scoring cannot separate them).
+**Rehearse a whole event** with the example bots: see "Run them as a small
+competition" in [bots/README.md](bots/README.md). It packs six bots, imports
+them, draws, plays both rounds and takes about a minute.
 
 **Inspect a result during a real event:**
 
-| Question | Command |
+| Question | How |
 |---|---|
-| Which version is each team running, and what is queued? | `python -m arena status` |
-| What is the ranking now? | `python -m arena leaderboard` (also rewrites `results/leaderboard.json`) |
-| Why did a team get a low score? | open `arena_data/logs/<team>/<hash>/` and read the log; check the `faults` column |
-| Did a pairing fail? | `status` shows job counts per state (for example `failed: 1`); `retry-failed` re-queues them |
+| Who is in, which phase, how many matches are done? | `python -m arena tournament status` |
+| Why did a team get a low score? | Look at its fault count in the tables; the bot's own output is in `arena_data/logs/<team>/<hash>/`; the fault reasons are in the match result and on the action in the hand history. |
 | What happened in a hand? | read `arena_data/hands/<kind>-<job>.jsonl.gz` (see below) |
 
 Replay or audit hands from Python:
@@ -340,28 +338,39 @@ internet. It is read-only.
 ```
 arena_site/
   index.html, css/, js/                 the page (copied from arena/site/)
-  data/manifest.json                    title, fingerprint, last change, policy
-  data/leaderboard-<ladder|final>.json  ranking and head-to-head matrix
-  data/pairings-<ladder|final>.json     every match, newest first
-  data/teams.json                       versions and validation status
+  data/manifest.json                    title, mode, phase, fingerprint, last change
+  data/tournament.json                  phase, groups, qualified teams, finals, champion
+  data/leaderboard-final.json           final table (only once the final is complete)
+  data/pairings-<group|final>.json      every match (only once its round is complete)
+  data/teams.json                       team names and their groups
+  data/submitting.md                    the "How to submit" page (SUBMITTING.md)
   data/replays/<kind>-<job>.json        hands for the replayer (per policy)
 ```
 
-| Page | Shows |
-|---|---|
-| Leaderboard | Score with a 95% interval on a shared axis, W-D-L, faults, a marker for teams that cannot be separated. The Final / Ladder switch appears once a final exists. |
-| Head-to-head | Blue/red matrix of every pairing; faded cells are not statistically clear; "Show numbers" is also the table view. |
-| Matches | Every pairing with its result, filterable by team and kind. |
-| Team | Rank, results against each opponent, submitted versions and their status. |
-| Replay | Step through a stored hand on a table (keys: arrows, space, `[` `]`). |
-| Submissions | Whether each team's latest push validated. Read-only: see below. |
-| TV mode | A hands-off rotation for a projector: top 10, the full matrix, latest results, an autoplaying hand. |
+The group tables are inside `tournament.json`. The pages are in
+`arena/site/js/views/`: the tournament view (draw, group tables, final table,
+champion), the match list, a head-to-head matrix, team pages, a hand replayer,
+a TV mode for a projector and the how-to-submit page.
 
-There is no submission form on purpose. This harness has no sandbox, so a public
-upload page would let anyone who can reach it run Python on the organiser's
-machine. Submissions keep arriving through the teams' own git repositories
-(`sync`, see [SUBMITTING.md](SUBMITTING.md)), `submit`, or a watched folder
-(`--submit-text "..."` puts the instructions on the Submissions page).
+There is no submission form on the site on purpose. This harness has no
+sandbox, so a public upload page would let anyone who can reach it run Python on
+the organiser's machine. Teams upload to the Google Form instead.
+
+### What it shows, and when
+
+Decided from the stored phase on every export (`_tournament_built` in
+`arena/export.py`). Nothing about how anyone is doing leaves the machine until a
+round is complete: before that the site is given the draw and the phase and
+nothing else (no scores, no pairings, no counts, no who-is-online).
+
+| Phase | What the site has |
+|---|---|
+| `registration`, `drawn`, `groups` | The phase and, once drawn, the groups. No results. |
+| `between`, `finals` | The group tables, the group matches and who qualified. |
+| `done` | Also the final table and the champion. |
+
+Because the data does not change while matches are played, a git host is
+redeployed at round boundaries, not once per match.
 
 ### Run it
 
@@ -375,55 +384,17 @@ python -m arena export --serve 8000 --host 0.0.0.0 --loop 15
 # Write the folder once, to host it yourself
 python -m arena export --out arena_site
 
-# Keep a git-hosted copy (for example GitHub Pages) up to date
-git clone <your-pages-repo> arena_site
+# Keep a git-hosted copy (for example on Vercel) up to date
+git clone <your-site-repo> arena_site
 python -m arena export --out arena_site --loop 30 --git-push
 ```
 
-Options: `--title`, `--submit-text` / `--submit-text-file`, `--replays`
+Options: `--title`, `--submit-text` / `--submit-text-file`, `--guide` /
+`--no-guide` (the how-to-submit page, `SUBMITTING.md` by default), `--replays`
 (`none`, `final` (default) or `all`), `--reveal` (`showdown` (default) or `all`),
 `--max-replay-hands` (default 60 per pairing, the biggest swings; 0 = every hand).
 Open it through the server, not by double-clicking `index.html`: browsers block
 ES modules and `fetch` on `file://` pages.
-
-### Registration
-
-With `--registry OWNER/REPO` on `sync` or `ladder`, teams register through
-issues in that GitHub repository (`registry-template/` holds the issue form).
-`arena/registry.py` parses each issue, then decides in order of issue number:
-valid name, URL and branch; the issue's author owns the repository (or the
-issue has the `verified` label); the name and repository are not taken by
-another team, and the account has not hit `--max-per-user`; accepted when the
-issue has the `approved` label (or with `--open-registration`), otherwise
-pending. Accepted teams become sources for the same sync as the teams file.
-Name claims are stored, so a name is first come first served and survives an
-issue being edited. A newer issue from an account replaces its older one, and
-closing an issue withdraws it. The arena comments on an issue once per
-outcome. The export lists waiting and rejected registrations in
-`teams.json`, and `--registry-repo` makes the site show a Register page whose
-button opens the pre-filled issue form.
-
-### Timed cycles
-
-`ladder --cycle SECONDS` runs rounds instead of a one-off ladder. A job's key is
-now (kind, freeze, **round**, pair), and the round is part of the pairing's
-seed, so each round is a fresh sample (round 0 keeps its old seed). Each round
-queues every pairing of the current versions. `Store.results` pools a pairing's
-rounds: total deals, deal-weighted mean, and a standard error recovered from each
-round's own, which equals the statistics of all deals together (tested against
-the direct computation). Pooling is keyed by bot version hash, so a new version
-starts fresh.
-
-The store records the last finished round (`ladder_round_done`) and hides
-results of later rounds, so a published table is always whole rounds. This is
-what makes the site redeploy once per cycle: the export's fingerprint only
-changes when a round completes. Older rounds' hand files are pruned after each
-round. Databases from before cycles are upgraded in place (the job table gains a
-`round` column, existing jobs are round 0).
-
-Limits: a round that overruns the cycle delays the next (it starts at once);
-a bot pushed mid-round waits for the next round; `--replays all` would publish a
-new replay file per pairing per cycle, so keep the default during cycling.
 
 ### Where to host it
 
@@ -431,164 +402,121 @@ new replay file per pairing per cycle, so keep the default during cycling.
 |---|---|
 | This laptop, on a projector | No network needed. Open `/#/tv`. |
 | Same Wi-Fi or LAN | `--host 0.0.0.0`. Venue Wi-Fi sometimes stops devices talking to each other, and Windows usually asks once to allow Python through its firewall: try it before the event. |
-| A static host such as GitHub Pages | `--git-push` commits and pushes after every pass; a push that fails (a dropped connection) is retried on the next pass. Public by default, and git history keeps every version ever pushed. The git mechanics are tested against a local remote; **GitHub Pages itself and the deploy delay have not been tried from here.** |
+| A static host from a git repository (Vercel, GitHub Pages) | `--git-push` commits and pushes after every pass; a push that fails (a dropped connection) is retried on the next pass. Public by default, and git history keeps every version ever pushed. The git mechanics are tested against a local remote (including pushing to an empty clone); **Vercel, GitHub Pages and the deploy delay have not been tried from here.** |
 | A tunnel to the laptop | Not built in; point any tunnel tool at the served port. Not tried from here. |
 
 ### What is published, and what never is
 
 | Published | Never published |
 |---|---|
-| Scores, intervals, records, fault counts, the match list | Bot source code |
-| Team names, version hashes, validation status, and the exception line of a failed check (file paths blanked) | Tracebacks, fault messages (a replay keeps only a yes/no flag per move), anything under `logs/` |
+| Once a round is complete: scores, intervals, records, fault counts, the match list | Bot source code |
+| Team names and their groups | Tracebacks, fault messages (a replay keeps only a yes/no flag per move), anything under `logs/` |
 | Replays as the policy allows: by default the final only, hole cards only when a hand reached showdown, and the board only as far as it was dealt | A deal's shuffle seed (it reproduces every hidden card), unless `--reveal all` |
 
 Choose the replay policy before the first push to a public host. Hands show how
-a bot plays, and during the ladder that is information a rival could use; the
-default of "final only" publishes them when nothing is left to adapt. With a git
-host, a mistake stays in the history.
+a bot plays; the default of "final only" publishes them when nothing is left to
+adapt. With a git host, a mistake stays in the history.
 
 ### How live it is
 
 The page reads a tiny `manifest.json` every 10 s and refetches the larger files
 only when its fingerprint changes. `--loop N` re-exports every N seconds, and an
 export that changes nothing writes nothing, so a git host gets no empty commits.
-Checked in a real browser: changing the title and re-exporting updated an open
-page by itself within 16 s, and stopping the server left the page showing its
-last results with a red "Connection lost" notice instead of an empty screen.
-With a static host, add that host's deploy time to the delay.
+Checked in a real browser (with the earlier ladder site): changing the title and
+re-exporting updated an open page by itself within 16 s, and stopping the server
+left the page showing its last results with a red "Connection lost" notice
+instead of an empty screen. With a static host, add that host's deploy time to
+the delay.
 
-### Size and speed (measured on the 20-team dry run)
+### Size and speed
 
-First export of 190 + 190 pairings, with replays for the final only: about 9 s.
-Those replays (the default, 60 hands each) are 190 files, 7.1 MB. Replays for
-ladder and final: 380 files, 13.5 MB (the whole folder is about 15 MB). An
-unchanged re-export rewrites nothing.
+In the earlier ladder mode, a first export of 190 + 190 pairings with replays
+for the final only took about 9 s and the whole folder was about 15 MB. In the
+tournament mode a 6-team rehearsal exported in about a third of a second. An unchanged
+re-export rewrites nothing.
 
 ### Testing it
 
 `pytest` runs the export, privacy and server tests; `node --test
-tests/site_js/*.test.mjs` runs the JavaScript tests (`test_site_js.py` runs them
-for you if Node is installed). The replay builder is checked against 107 real
-hands: what the actions say each seat put in must equal what the engine's own
-result implies, which caught deliberately planted bugs that a chip-conservation
-check alone missed. The pages themselves were checked by hand in headless Edge
-on Windows (desktop, 1080p TV, phone width, light and dark); there is no
-automated browser test in the repository.
-
-## The tournament (websocket bots)
-
-The event format: two rounds, no live standings, bots on the teams' own
-machines. It reuses the scoring engine unchanged and replaces how bots are
-reached and how pairings are chosen.
-
-**Gateway (`arena/gateway.py`).** A `websockets` server on its own thread and
-event loop. A team connects, sends `hello` with its key and the protocol
-version, and is answered `welcome` or `rejected`. The server then sends the
-same `act` message a child-process bot gets, now with an `id`; the reply must
-echo that id, so a late answer to an earlier move cannot be mistaken for the
-current one. `RemoteAgent` is the engine's ordinary `Agent` over that socket,
-so the fault guard, the per-move timeout, the thinking budget and the
-duplicate scoring are exactly those every bot gets. A second connection for a
-team replaces the first (reconnection after a drop). Keys are stored as
-SHA-256 hashes in `remote_teams`; frames are capped at 64 KiB.
-
-**Self-registration.** While registration is open (phase `registration`, set
-with `tournament open-registration`) a connection may begin with `register`
-(team name + the join code) instead of `hello`. `register_team` checks the code
-against a stored hash in constant time, validates the name, refuses duplicates
-(first come first served; the database insert is the final arbiter) and the cap,
-creates the team, and the gateway replies `registered` with the new key, once;
-the connection is then logged in as that team. Wrong codes are limited to 10 a
-minute across all clients. Drawing the groups moves the phase on, which closes
-registration. The organiser can still create teams and keys by hand.
-
-**Client (`arena/connect.py`).** Registers on first use (saving the key in `~/.arena/keys/<team>.key`, or
-`ARENA_HOME`), loads the team's bot with the same loader as
-`bothost`, answers `act`, and reconnects with backoff after any drop or cut-off
-handshake. It exits (code 3) on a refused key. If the bot defines
-`on_match_start()` it is called when a match begins.
-
-**Tournament (`arena/tournament.py`).** State is one JSON value in `meta`
-(phase, seed, groups with a `freeze` each, finalists, champion). Each group, and
-the finals, is a *freeze* (a set of teams) with jobs of kind `group` / `final`,
-so the existing result tables, leaderboard maths and replays are reused. A
-`Runner` thread pool plays queued jobs whose two teams are connected and free
-(a team plays one match at a time); a team still absent after the grace period
-forfeits (a disabled contestant that folds every hand). `settle` advances a
-round when its last job is done: the qualifiers are the top `advance` of each
-group's board. State lives in the database, so `serve` can be stopped and
-restarted; a job left running by a dead scheduler is re-queued.
-
-**What the site is told (`export.py`, `_tournament_built`).** Decided from the
-stored phase on every export. Before a round is complete only the draw and the
-phase are written: no scores, no pairings, no counts, no who-is-online. Group
-tables appear in `between`, the final table and champion in `done`. Because
-nothing changes while matches are played, a git host is redeployed at round
-boundaries, not per match.
+tests/site_js/` runs the JavaScript tests (`test_site_js.py` runs them for you
+if Node is installed). The replay builder is checked against 107 real hands:
+what the actions say each seat put in must equal what the engine's own result
+implies, which caught deliberately planted bugs that a chip-conservation check
+alone missed. The pages themselves were checked by hand in headless Edge on
+Windows (desktop, 1080p TV, phone width, light and dark); there is no automated
+browser test in the repository.
 
 ## 10. Known limits
 
-* **No sandbox.** Bots run as the organiser's user. Treat it as trust-based, or
-  run the whole thing in a container or under a restricted account.
+* **No sandbox.** Bots run as the organiser's user, with the organiser's files,
+  network and environment. A bot can read every other team's code in
+  `arena_data/`, use the network or damage the machine. Treat the event as
+  trust-based, and run it on a throwaway virtual machine or container, or at
+  least under a separate user account. The repository's `Dockerfile` builds only
+  the older match server, not the arena.
 * **No memory or CPU limits are enforced.** Only time and fault limits are. Use
-  `ulimit` or a container on an HPC.
-* **No tie-break stage** for a close final. The leaderboard flags statistically
-  tied neighbours; extend those pairings by hand with more deals.
+  `ulimit` or a container to add them.
+* **The form does not check anything.** A Google Form stores whatever is
+  uploaded. Teams are told to run `pack` first; `import` re-checks every zip
+  (readable, safe paths, size, checksum, validation) and reports `REJECTED` or
+  `INVALID`, but a team that skips `pack` only finds out when the organiser
+  imports.
+* **Google accounts and deadlines.** Uploading to a Google Form requires every
+  respondent to be signed in to a Google account. The form has no automatic
+  deadline other than closing it by hand.
+* **Impersonation.** Nothing ties a team name to a person. A team can upload a
+  zip packed under another team's name, and the newest zip for a name wins. The
+  form's response sheet records the verified email of each upload; the organiser
+  has to check for one team name with several emails before importing.
+* **"Newest" comes from the team's own clock.** It is the time written inside the
+  zip by `pack`, not the time of upload.
+* **Size.** 25 MB (unzipped) per bot, enforced by `pack` and `import`; the form
+  itself is set to allow up to 100 MB.
+* **Submissions stop at the draw.** `import` still runs afterwards but a new or
+  updated bot is not part of the groups.
+* **No tie-break stage** for a close final. The tables flag statistically tied
+  neighbours, and `start-finals` warns about a tie at the group cut; extend
+  those pairings by hand with more deals.
 * **Short all-in raise simplification.** A short all-in raise still re-opens the
   betting for players who already acted.
+* **A crash's fault reason is the tail of a traceback.** A mistake in the
+  response (wrong type, illegal amount) is reported as one sentence and also
+  written to the team's log (`invalid response: ...`). A crash inside `act`
+  still gives the last 600 characters of the traceback, which can start in the
+  middle of a file path, and `match` shows only the first 300 characters of the
+  first fault; `validate` and `pack` print more.
 * Tested on Windows with Python 3.14. CI targets Python 3.11 on Linux, which
   has not been observed running; nothing has been run on an HPC yet.
-* **Submissions are public repositories, pulled on a schedule.** Private
-  repositories are not supported (the arena has no credentials for other
-  people's accounts), and nothing tells the arena when a team pushes, so
-  there is up to a minute of delay. Teams are added by the organiser editing
-  the teams file, or by registering through a GitHub issue (see section 9);
-  the teams file does not prove who owns a repository, a registration does.
-* **Registration trusts GitHub's idea of the author.** The arena checks that
-  the issue's author is the repository's owner, so a team organisation's repo
-  needs the organiser's `verified` label. It needs a public registry repo
-  (anyone can open an issue) and `gh` or a token to read it; a GitHub outage
-  keeps the last good list. Approval is a manual label, because a registered
-  repository's code runs unsandboxed.
-* **A remote bot cannot be made to forget.** Duplicate scoring plays each deal
-  twice with the seats swapped, and a bot running on a team's own machine keeps
-  its memory across both halves. Such a bot could recognise a repeated flop,
-  and then know the turn, the river and the opponent's hole cards. Shuffling
-  the order of the second half does not help (the flop is the key). This is
-  forbidden by the rules and enforced by trust only. The alternative, plain
-  random deals, gives up the variance reduction.
-* **Time limits include the network and the team's own hardware.** A weak
-  Wi-Fi link costs a team faults. The gateway does not measure or subtract
-  network delay.
-* **Traffic is plain `ws://`.** Keys and moves are not encrypted on a local
-  network; over the internet a TLS tunnel is needed (not tried here).
-* **One gateway process.** All matches run as threads in it; a crash ends the
-  matches in progress (they are replayed on restart). A team that is
-  disconnected mid-match gets faults for the moves it misses; there is no
-  pause.
-* **Sporadic stalls were seen in local socket calls on the development
-  machine** (Windows): a gateway thread was caught inside `accept()` and
-  `close()`, delaying handshakes for seconds, and a plain `websockets` server
-  showed the same. The cause was not identified; clients retry, so teams
-  still connect, but test the venue network before the event.
 * **The website is read-only and public by construction.** There is no login,
   no upload, and no team-private page: a static host cannot tell teams apart.
   Team logs stay on the organiser's machine.
 * **Replays cost information.** Any replay you publish shows how bots play.
-  The default publishes the final's only; `--replays all` during the ladder is
-  a deliberate trade-off.
-* **Not tried from here:** GitHub Pages, a tunnel, a Linux or macOS browser, and
-  Safari or Firefox. Only desktop Edge (headless) was used for visual checks.
+  The default publishes the final's only; `--replays all` is a deliberate
+  trade-off.
+* **Not tried from here:** Vercel and GitHub Pages deployment, a tunnel, a Linux
+  or macOS browser, and Safari or Firefox. Only desktop Edge (headless) was used
+  for visual checks.
 
-## What the competition does not use
+## 11. Older modes (not used for the event)
 
-The following still exist in the repository and are not part of the competition:
+These parts of the repository still exist and work, but the event does not use
+them. They are documented in [docs/legacy-server.md](docs/legacy-server.md).
 
-| Part | What it is | Status |
-|---|---|---|
-| `server/` | FastAPI HTTP and WebSocket match server | Works, but several audit findings are open (unauthenticated `viewer_id`, turn-timer stall after an illegal action, WebSocket amount validation, `.env` load order, dead-bot forfeits). Do not expose it to untrusted networks. |
-| `player_sdk.play()` and the `poker-bot` CLI | Connect a bot to the server over HTTP or WebSocket | Unchanged. |
-| `admin_sdk/` | Create and start server matches | Unchanged. |
-
-The engine in `game/` is shared by both, which is why the rules fixes from the
-audit apply to the arena and the server alike.
+* **The rolling ladder:** `submit`, `ladder` (with `--submissions`, `--teams`,
+  `--cycle SECONDS`, `--registry`), `sync`, `freeze`, `final`, `leaderboard`,
+  `status`, `retry-failed`. A ladder plays provisional pairings while teams
+  push new versions, then `freeze` snapshots the versions and `final` plays a
+  round robin. `ladder --teams` pulls each team's public git repository on a
+  schedule (`arena/sync.py`); `--registry` adds self-service registration through
+  GitHub issues (`arena/registry.py`); `--cycle` replays every pairing every few
+  minutes and pools the results (a round number is part of a job's key and seed).
+  When a database has no tournament state, `export` writes the ladder site
+  (leaderboard, matrix, matches) instead of the tournament view.
+* **The match server:** `server/` (FastAPI, HTTP and WebSocket), `player_sdk.play()`
+  and the `poker-bot` command, `admin_sdk/`. Several audit findings are open
+  (unauthenticated `viewer_id`, turn-timer stall after an illegal action,
+  WebSocket amount validation, `.env` load order, dead-bot forfeits); do not
+  expose it to untrusted networks. The `game/` engine is shared with the arena,
+  so rules fixes apply to both.
+* **Dropped, in git history only:** the websocket gateway and its client, and
+  self-registration with join codes and keys (commits `1b1b94a` and `cb39457`).

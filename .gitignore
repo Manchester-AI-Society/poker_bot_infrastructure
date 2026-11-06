@@ -220,10 +220,9 @@ arena_site/
 arena_logs/
 # Local test teams for trying the ladder (copy bots/ examples in here)
 submissions/
-# Your real teams list (copy teams.example.txt to teams.txt)
-teams.txt
-# Teams' secret keys for the websocket tournament (never commit these)
-keys*.txt
+# Submission zips made by `arena pack` (repo root only); the organiser's
+# unzipped form uploads go in downloads/ (already ignored above)
+/*.zip
 
 # Node (site-src build-time dependencies)
 node_modules/
