@@ -4,28 +4,31 @@
 
 import { h } from '../dom.js';
 import { MAX_NAME_LENGTH, registerState } from '../register-name-core.js';
+import { LIVE_STATUS_LEGEND, isLive, liveRegisterForm } from '../live-core.js';
 import { isTournament, registerFormOpen } from '../tournament-core.js';
+import { liveRoster, orderedTeams } from './live-teams.js';
 import { ladderRegisterView } from './register-ladder.js';
 import { STATUS_LEGEND, rosterList } from './roster.js';
 
 // What was typed survives a redraw (the page redraws when new data arrives).
 let draft = '';
 
-function listedCard(teams) {
+function listedCard(teams, live = false) {
   const card = h('section', { class: 'card', 'aria-label': 'Names already listed' });
   card.appendChild(h('h2', { class: 'counted' }, 'Names already listed', h('span', { class: 'muted small' }, String(teams.length))));
   if (!teams.length) {
     card.appendChild(h('p', { class: 'note' }, 'No names are listed yet. Yours can be the first.'));
     return card;
   }
-  card.appendChild(rosterList(teams, 'Names already listed'));
-  card.appendChild(h('p', { class: 'note' }, STATUS_LEGEND));
+  card.appendChild(live ? liveRoster(orderedTeams(teams), 'Names already listed') : rosterList(teams, 'Names already listed'));
+  card.appendChild(h('p', { class: 'note' }, live ? LIVE_STATUS_LEGEND : STATUS_LEGEND));
   return card;
 }
 
 /** Tournament: pick a name, then continue to the organiser's registration form. */
 function tournamentRegisterView(ctx) {
-  const form = registerFormOpen(ctx.data.manifest);
+  const live = isLive(ctx.data.manifest);
+  const form = live ? liveRegisterForm(ctx.data.manifest) : registerFormOpen(ctx.data.manifest);
   const teams = ctx.data.teams;
   const page = h('div', { class: 'page' });
   page.appendChild(h('header', {}, h('h1', {}, 'Register your team name')));
@@ -78,11 +81,17 @@ function tournamentRegisterView(ctx) {
   }
   input.addEventListener('input', update);
 
-  const intro = h(
-    'div',
-    { class: 'card' },
-    h('p', { id: 'team-name-help' }, 'Register the name of your team and it is listed on this site right away. ', h('strong', {}, 'This does not submit a bot.'), ' Bots are uploaded through the submission form: see ', h('a', { href: '#/submit' }, 'How to submit'), '. The name turns to “submitted” in the list below when a bot with exactly that name arrives.'),
-  );
+  const intro = live
+    ? h(
+        'div',
+        { class: 'card' },
+        h('p', { id: 'team-name-help' }, 'Register the name of your team and it is listed on this site. ', h('strong', {}, 'This does not connect a bot.'), ' Your bot connects to the game server: see ', h('a', { href: '#/info' }, 'Info'), '. The name turns to “in the lobby” in the list below when a bot with exactly that name connects.'),
+      )
+    : h(
+        'div',
+        { class: 'card' },
+        h('p', { id: 'team-name-help' }, 'Register the name of your team and it is listed on this site right away. ', h('strong', {}, 'This does not submit a bot.'), ' Bots are uploaded through the submission form: see ', h('a', { href: '#/submit' }, 'How to submit'), '. The name turns to “submitted” in the list below when a bot with exactly that name arrives.'),
+      );
   if (!form) {
     intro.appendChild(h('p', {}, 'Registration is not open for this event.'));
     page.appendChild(intro);
@@ -102,12 +111,12 @@ function tournamentRegisterView(ctx) {
     event.preventDefault();
     if (link.getAttribute('href')) link.click();
   });
-  page.append(intro, fields, listedCard(teams));
+  page.append(intro, fields, listedCard(teams, live));
   update();
   return { el: page, title: 'Register' };
 }
 
 export function registerView(ctx) {
-  return isTournament(ctx.data.manifest) ? tournamentRegisterView(ctx) : ladderRegisterView(ctx);
+  return isTournament(ctx.data.manifest) || isLive(ctx.data.manifest) ? tournamentRegisterView(ctx) : ladderRegisterView(ctx);
 }
 

@@ -6,8 +6,13 @@
 import { data, refresh } from './api.js';
 import { h } from './dom.js';
 import { parseHash } from './format.js';
+import { isLive, liveRegisterForm } from './live-core.js';
 import { isTournament, registerFormOpen, updatedText } from './tournament-core.js';
 import { guideView } from './views/guide.js';
+import { infoView } from './views/info.js';
+import { liveHomeView, liveTableView } from './views/live.js';
+import { liveTvView } from './views/live-tv.js';
+import { teamsView } from './views/live-teams.js';
 import { leaderboardView } from './views/leaderboard.js';
 import { matchesView } from './views/matches.js';
 import { matrixView } from './views/matrix.js';
@@ -52,28 +57,49 @@ function recall(key) {
 // watched, the TV rotation) keep running and read fresh data when they need it.
 const ROUTES = {
   // The home page is the leaderboard, or the tournament in that format.
-  '': { view: (ctx) => (isTournament(ctx.data.manifest) ? tournamentView(ctx) : leaderboardView(ctx)), live: true },
+  '': { view: homeView, live: true },
   matrix: { view: matrixView, live: true },
   matches: { view: matchesView, live: true },
   team: { view: teamView, live: true },
   submissions: { view: submissionsView, live: true },
-  submit: { view: guideView, live: true },
+  submit: { view: (ctx) => (isLive(ctx.data.manifest) ? infoView(ctx) : guideView(ctx)), live: true },
   register: { view: registerView, live: true },
   replay: { view: replayView, live: false },
-  tv: { view: tvView, live: false },
+  tv: { view: (ctx) => (isLive(ctx.data.manifest) ? liveTvView(ctx) : tvView(ctx)), live: false },
+  // The live format only.
+  info: { view: infoView, live: true },
+  table: { view: liveTableView, live: true },
+  teams: { view: teamsView, live: true },
 };
+
+function homeView(ctx) {
+  if (isLive(ctx.data.manifest)) return liveHomeView(ctx);
+  return isTournament(ctx.data.manifest) ? tournamentView(ctx) : leaderboardView(ctx);
+}
+
+// The live format shows a stream of one tournament: no ladder, head-to-head,
+// matches, submissions or replays, and the Info page is the old guide's place.
+const LIVE_PAGES = new Set(['', 'table', 'teams', 'info', 'submit', 'register', 'tv']);
+// ...and the other formats have none of its own pages.
+const LIVE_ONLY = new Set(['info', 'table', 'teams']);
 
 // Pages that exist only for the repository-submission format. In a tournament
 // the Register page (a team-name form) exists only when the organiser set one up.
 const LADDER_ONLY = new Set(['register', 'submissions']);
 
 function hiddenRoute(name) {
+  if (isLive(data.manifest)) {
+    if (name === 'register') return !liveRegisterForm(data.manifest);
+    return !LIVE_PAGES.has(name || '');
+  }
+  if (LIVE_ONLY.has(name)) return true;
   if (!isTournament(data.manifest)) return false;
   if (name === 'register') return !registerFormOpen(data.manifest);
   return LADDER_ONLY.has(name);
 }
 
 function chooseKind(requested) {
+  if (isLive(data.manifest)) return 'live';
   if (isTournament(data.manifest)) return 'tournament'; // no Final/Ladder choice
   const available = (data.manifest && data.manifest.kinds) || ['ladder'];
   const preferred = requested || recall('arena-kind');
@@ -99,7 +125,7 @@ async function render({ keepScroll = false } = {}) {
   const token = ++renderToken;
   let { path, query } = parseHash(location.hash);
   if (hiddenRoute(path[0])) {
-    // No repository submissions here, and no register page without a form.
+    // A page this format does not have, or no register page without a form.
     history.replaceState(null, '', '#/');
     ({ path, query } = parseHash(location.hash));
   }
@@ -139,13 +165,17 @@ async function render({ keepScroll = false } = {}) {
   }
   document.title = `${view.title ? view.title + ' · ' : ''}${data.manifest ? data.manifest.title : 'Poker Bot Competition'}`;
 
+  paintNav();
+  // In the live format a table page belongs to the Live tab, and #/submit is the Info page.
+  const aliases = isLive(data.manifest) ? { submit: 'info', table: '' } : {};
+  const here = path[0] || '';
+  const tab = Object.hasOwn(aliases, here) ? aliases[here] : here;
   for (const link of document.querySelectorAll('.tabs a')) {
-    const active = link.dataset.route === (path[0] || '');
+    const active = link.dataset.route === tab;
     if (active) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
   paintKindSwitch();
-  paintNav();
   if (keepScroll) window.scrollTo(0, scrollY);
   else {
     window.scrollTo(0, 0);
@@ -155,27 +185,52 @@ async function render({ keepScroll = false } = {}) {
 
 // ---- header controls --------------------------------------------------
 
+// Where each menu item sits in the live format (Live, Teams, Info, Register, TV).
+const LIVE_ORDER = { 'li-teams': 1, 'li-submit': 2, 'li-register': 3, 'li-tv': 4 };
+
 function paintNav() {
   const tournament = isTournament(data.manifest);
+  const live = isLive(data.manifest);
   // The Register tab: in a tournament when the organiser set up the team-name
   // form, in the ladder format when there is a registry.
   const register = document.getElementById('nav-register');
   if (register) {
-    register.hidden = tournament
-      ? !registerFormOpen(data.manifest)
-      : !(data.manifest && data.manifest.registry_repo);
+    register.hidden = live
+      ? !liveRegisterForm(data.manifest)
+      : tournament
+        ? !registerFormOpen(data.manifest)
+        : !(data.manifest && data.manifest.registry_repo);
   }
-  // A tournament has no repository submissions.
-  const submissions = document.getElementById('nav-submissions');
-  if (submissions) submissions.hidden = tournament;
+  // A tournament has no repository submissions; a live event has no ladder pages.
+  const set = (id, hidden) => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = hidden;
+  };
+  set('nav-submissions', tournament || live);
+  set('nav-matrix', live);
+  set('nav-matches', live);
+  set('nav-teams', !live);
   const home = document.getElementById('nav-home');
-  if (home) home.textContent = tournament ? 'Tournament' : 'Leaderboard';
+  if (home) home.textContent = live ? 'Live' : tournament ? 'Tournament' : 'Leaderboard';
+  // The guide's tab is the Info page in a live event.
+  const guide = document.getElementById('nav-submit');
+  if (guide) {
+    guide.textContent = live ? 'Info' : 'How to submit';
+    guide.setAttribute('href', live ? '#/info' : '#/submit');
+    guide.dataset.route = live ? 'info' : 'submit';
+  }
+  for (const id of Object.keys(LIVE_ORDER)) {
+    const item = document.getElementById(id);
+    if (item) item.style.order = live ? String(LIVE_ORDER[id]) : '';
+  }
+  const first = document.getElementById('nav-home');
+  if (first && first.parentElement) first.parentElement.style.order = live ? '0' : '';
 }
 
 function paintKindSwitch() {
   const kinds = (data.manifest && data.manifest.kinds) || [];
   // The Final/Ladder switch is for the ladder format; a tournament shows both rounds at once.
-  kindSwitch.hidden = isTournament(data.manifest) || kinds.length < 2;
+  kindSwitch.hidden = isTournament(data.manifest) || isLive(data.manifest) || kinds.length < 2;
   for (const button of kindSwitch.querySelectorAll('button')) {
     button.setAttribute('aria-pressed', String(button.dataset.kind === kind));
   }

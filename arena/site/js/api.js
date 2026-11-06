@@ -2,6 +2,7 @@
 // poll; the bigger files are fetched only when its fingerprint changes, and
 // are keyed by it so a CDN or browser can cache them between changes.
 
+import { isLive, normalizeInfo, normalizeLive, normalizeLiveTeams, tableFile, tableIds } from './live-core.js';
 import { isTournament, normalizeTeams, normalizeTournament, tournamentFiles } from './tournament-core.js';
 
 export const data = {
@@ -11,6 +12,9 @@ export const data = {
   pairings: {},
   teams: [],
   registrations: [],
+  live: null, // live.json, normalised; null outside the live format
+  info: null, // info.json, normalised (the Info page's connection details)
+  tables: {}, // live format: the table files by match id (only those that exist)
   lastOk: 0, // wall-clock ms of the last successful poll
   error: null,
 };
@@ -85,7 +89,42 @@ async function loadTournament(manifest) {
   replayCache.clear();
 }
 
+/**
+ * The live format: live.json always; info.json and teams.json when present;
+ * and one tables/<id>.json for each table live.json lists, nothing else. A
+ * table file that is missing (404) is left out, so the page shows the table
+ * without hands instead of failing.
+ */
+async function loadLive(manifest) {
+  const bust = manifest.fingerprint;
+  const [liveRaw, infoRaw, teamsRaw] = await Promise.all([
+    getJSON('data/live.json', bust),
+    getOptionalJSON('data/info.json', bust),
+    getOptionalJSON('data/teams.json', bust),
+  ]);
+  const live = normalizeLive(liveRaw, manifest);
+  const ids = tableIds(live);
+  const files = await Promise.all(ids.map((id) => getOptionalJSON(tableFile(id), bust)));
+  data.tables = {};
+  ids.forEach((id, index) => {
+    if (files[index] && typeof files[index] === 'object') data.tables[id] = files[index];
+  });
+  data.live = live;
+  data.info = normalizeInfo(infoRaw, manifest);
+  data.teams = normalizeLiveTeams(teamsRaw && teamsRaw.teams);
+  data.tournament = null;
+  data.boards = {};
+  data.pairings = {};
+  data.registrations = [];
+  data.manifest = manifest;
+  replayCache.clear();
+}
+
 async function loadAll(manifest) {
+  data.live = null;
+  data.info = null;
+  data.tables = {};
+  if (isLive(manifest)) return loadLive(manifest);
   if (isTournament(manifest)) return loadTournament(manifest);
   data.tournament = null;
   const bust = manifest.fingerprint;
