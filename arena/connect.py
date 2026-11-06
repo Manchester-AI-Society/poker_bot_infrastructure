@@ -64,6 +64,18 @@ def _reply_to(
     return reply
 
 
+def _call_hook(bot: PokerBot, name: str, log: Callable[[str], None]) -> None:
+    """Calls an optional method of the team's bot; its errors stay local."""
+    hook = getattr(bot, name, None)
+    if not callable(hook):
+        return
+    try:
+        hook()
+    except Exception:
+        log(f"your bot's {name}() raised an error (ignored):")
+        print(traceback.format_exc(limit=6), file=sys.stderr, flush=True)
+
+
 def serve_connection(
     ws, bot: PokerBot, key: str, log: Callable[[str], None] = _log
 ) -> None:
@@ -94,6 +106,7 @@ def serve_connection(
         elif kind == "match_start":
             parser = GameStateParser()  # a new opponent: start clean
             log(f"match starting ({message.get('deals', '?')} deals)")
+            _call_hook(bot, "on_match_start", log)
         elif kind == "match_end":
             log("match finished")
 

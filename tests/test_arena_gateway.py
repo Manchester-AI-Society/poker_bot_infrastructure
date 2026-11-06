@@ -388,3 +388,27 @@ def test_the_client_survives_a_connection_dropped_during_the_handshake():
         client.RECONNECT_FIRST_SECONDS = original
         listener.close()
     assert sum("connection lost" in line for line in logs) >= 2
+
+
+def test_a_bot_is_told_when_a_new_match_starts_and_its_errors_stay_local(
+    gateway, team
+):
+    class Remembering(CallBot):
+        starts = 0
+
+        def on_match_start(self):
+            Remembering.starts += 1
+            raise RuntimeError("hook failed")  # must not break the match
+
+    Remembering.starts = 0
+    t = team("fox", Remembering())
+    assert gateway.notify("fox", {"type": "match_start", "deals": 3})
+    assert wait_for(lambda: Remembering.starts == 1)
+    assert wait_for(lambda: any("on_match_start" in m for m in t.logs))
+    # The bot still plays afterwards.
+    result = play_pairing(
+        remote(gateway, "fox"),
+        local("folder", FoldBot),
+        PairingConfig(deals=2, seed=1, think_budget_per_deal=60),
+    )
+    assert result.faults_a == 0 and result.mean_bb == pytest.approx(0.75)

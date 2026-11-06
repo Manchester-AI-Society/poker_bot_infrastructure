@@ -222,3 +222,5 @@ arena_logs/
 submissions/
 # Your real teams list (copy teams.example.txt to teams.txt)
 teams.txt
+# Teams' secret keys for the websocket tournament (never commit these)
+keys*.txt

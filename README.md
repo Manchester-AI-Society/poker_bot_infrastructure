@@ -48,9 +48,10 @@ class MyBot(PokerBot):
 ## Running a bot competition (arena)
 
 The `arena/` package is the competition harness. It does **not** use the
-server: the organiser runs every bot on one machine (a laptop or one HPC
-node), and the rules are the same engine code (`game/`) the server uses.
-Heads-up no-limit Hold'em, Python bots.
+server: the arena plays every game on one machine (a laptop or one HPC node)
+with the same engine code (`game/`) the server uses. Heads-up no-limit
+Hold'em, Python bots. For the event, teams run their own bots and connect over
+websockets (see [Run the tournament](#run-the-tournament-two-rounds-bots-connect-over-websockets)).
 
 ### Setup (once, everyone)
 
@@ -81,8 +82,8 @@ first bot is winning; the interval says how sure we are.
 ### For participants: write and test a bot
 
 > Competing? [SUBMITTING.md](SUBMITTING.md) is the one-page guide: write a
-> bot, test it, put it in your own public GitHub repository, and give the
-> organiser your team name and its address.
+> bot, test it locally, then connect it to the arena over a websocket with the
+> team key the organiser gives you.
 
 1. Copy the starter: `cp -r bots/starter bots/myteam` (a folder with a `bot.py`).
    Six more example bots with different styles are in `bots/` ([bots/README.md](bots/README.md)).
@@ -120,11 +121,11 @@ Rules of the road:
 
 | | |
 |---|---|
-| **Time** | 1 s hard limit per move (do loading in `__init__`/at import). A thinking-time bank of 0.2 s per deal per half is also enforced; overdrawing it disables the bot for the rest of the pairing. |
+| **Time** | 1 s hard limit per move (do loading in `__init__`/at import). In the tournament the limit includes the network, and the thinking-time bank is 3 s per deal per half (the local `match` default is 0.2 s); overdrawing it disables the bot for the rest of the pairing. |
 | **Faults** | An exception, timeout, crash, bad reply or illegal action is a *fault*: the engine plays a legal fallback (check, else fold) and the bot is restarted if needed. After 20 faults the bot is replaced by an always-fold stub (it loses ~0.75 bb/hand against anything). |
-| **State** | Your process lives for a whole run of hands, so you can keep opponent statistics on `self`. It is restarted for the second half of a match, so do not rely on memory across halves. |
-| **Libraries** | The organiser's Python environment. Ask before relying on anything beyond the standard library and what `requirements.txt` installs. |
-| **Not allowed** | Reading other teams' files, the network, or anything outside your folder. Subprocess isolation is not a sandbox; this is a trust-based rule. |
+| **State** | Your process lives for a whole run of hands, so you can keep opponent statistics on `self`. Locally it is restarted for the second half of a match; in the tournament it is not (it runs on your machine), so do not use memory of the first half to play the mirrored deals: that is cheating. Define `on_match_start(self)` to reset opponent notes. |
+| **Libraries** | In the tournament, whatever is on your own machine. |
+| **Not allowed** | Recognising a replayed deal and using remembered cards; attacking the arena or other teams' connections. This is a trust-based rule (see Known limits in ARCHITECTURE.md). |
 
 ### How scoring works
 
@@ -137,11 +138,77 @@ Rules of the road:
   opponents (each weighted equally); the leaderboard shows the interval, a
   win/draw/loss record that only counts *statistically clear* results, and a `~`
   when two neighbouring teams cannot be separated.
-* **Ladder vs final.** During the event a *ladder* keeps a provisional round
-  robin of everyone's latest versions (about 400 hands per pairing). At the
-  deadline the organiser *freezes* the submitted versions and plays a larger
-  *final* round robin (about 2,000 hands per pairing) on exactly those versions;
-  only the final decides the result.
+* **Tournament.** Round 1 is a round robin inside each group; Round 2 is a
+  round robin of each group's best 2 bots, and its table decides the winner.
+  (The older rolling-ladder flow, kept for reference, plays a provisional ladder
+  and then a frozen final.)
+
+### Run the tournament (two rounds, bots connect over websockets)
+
+This is the format for the event: **Round 1** puts every team in a group of at
+most 8 and each group plays a round robin; **Round 2** is a round robin of the
+best 2 bots of each group. There is **no live leaderboard**: group tables are
+published when Round 1 is complete, the final table when Round 2 is.
+
+Teams run their own bots, on their own machines, and connect to yours over a
+websocket, so you never run (or pay for) a team's code, and nobody can read
+anyone else's bot. Your machine only plays the games and does the scoring.
+
+```bash
+# 1. Make the teams and their secret keys (teams.txt: one name per line)
+python -m arena tournament keys teams.txt --out keys.txt
+#    keys.txt has one "team  key" line per team. Give each team ITS line,
+#    privately. Keys are stored hashed; they cannot be shown again (use
+#    --rotate TEAM to issue a new one). keys*.txt is git-ignored.
+
+# 2. Start the arena and leave it running; it prints the addresses to give teams
+python -m arena tournament serve --port 8765
+
+# 3. Each team runs, on its own machine:
+#    python -m arena.connect --url ws://YOUR-IP:8765 --key THEIR_KEY bots/theirbot
+python -m arena tournament status            # who is connected
+
+# 4. Draw round 1 (balanced groups of at most 8, random, seed printed)
+python -m arena tournament draw --group-size 8 --advance 2
+
+# 5. Play round 1, then round 2 when status says "between"
+python -m arena tournament start-groups --deals 100
+python -m arena tournament start-finals --deals 200
+
+# 6. Publish the website (see "Show the results" below)
+python -m arena export --out arena_site --loop 30 --git-push
+```
+
+* **How matches run.** A pairing starts when both bots are connected and free;
+  a team plays one match at a time, and different groups play in parallel. Each
+  move has a time limit (`--move-timeout`, default 1 s, **including** the
+  network). A bot that drops mid-match gets faults for the moves it misses, and
+  after 20 of them is replaced by an always-fold stub for that match.
+* **No-shows.** A team that is not connected `--grace` seconds (default 300)
+  after a round starts forfeits its unplayed matches: its side folds every
+  hand. Raise `--grace` if you want to wait longer.
+* **Ties at the cut.** `start-finals` warns when the last qualifying place in a
+  group is a statistical tie. The best 2 by score go through regardless; if you
+  want to settle a tie, start the round with more `--deals`, or re-run the
+  group's close pairing by hand.
+* **Restarting is safe.** All state is in `arena_data/`; stop `serve` and start
+  it again and it carries on (a match that was in progress is replayed).
+* **What the site shows when.** Before a round is complete it is given the draw
+  and the phase and nothing else (no scores, counts, or who is online), so the
+  published data does not change while matches are played and a git host is not
+  asked to redeploy for every match. Group tables appear when Round 1 is
+  complete, the final table and champion when Round 2 is.
+* **Sizing.** With the example bots on one machine a pairing of 400 deals takes
+  about 10 seconds; remote bots add network time per move. Match length is your
+  call: more deals, tighter intervals.
+* **Reach.** Teams must be able to reach your port (same venue Wi-Fi is the
+  simple case; allow Python through the Windows firewall when it asks, and
+  check that the venue network lets devices talk to each other). Over the
+  internet you would put a TLS tunnel in front (`wss://`); not tried here.
+  Traffic on a plain `ws://` connection, including the key, is not encrypted.
+
+The older **rolling ladder** below (git repositories, live standings, timed
+cycles, registration by GitHub issue) still works but is not the tournament.
 
 ### For the organiser
 

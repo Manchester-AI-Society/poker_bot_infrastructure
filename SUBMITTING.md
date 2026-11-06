@@ -1,8 +1,25 @@
-# How to submit your bot
+# How to enter your bot
 
-For competitors. You keep your bot in **your own public GitHub repository**.
-The organiser's computer pulls it automatically, checks it, and plays it. To
-update your bot, push to your repository: nothing else to do.
+For competitors. Your bot runs **on your own computer** and plays by connecting
+to the organiser's arena over the network. Nobody else ever sees your code, and
+anything your bot needs (a model, a GPU, an API key) stays with you.
+
+## How the competition works
+
+There are **two rounds** and no live leaderboard.
+
+* **Round 1, groups.** Every team is drawn at random into a group of at most 8.
+  Each group plays a round robin: everyone plays everyone else in the group.
+* **Round 2, finals.** The best 2 bots of each group play a round robin among
+  themselves. The best finals score wins.
+
+Nothing about how anyone is doing is published while a round is being played.
+The group tables appear when Round 1 is complete, and the final table when
+Round 2 is.
+
+Every match is a number of **deals** (the organiser says how many). Each deal is
+played twice with the two bots swapping seats, so card luck mostly cancels, and
+the score is in big blinds per hand with a 95% confidence interval.
 
 ## 1. Write your bot
 
@@ -49,104 +66,51 @@ python -m arena match bots/myteam call --deals 200      # against a calling stat
 python -m arena match bots/myteam bots/equity_calc --deals 300
 ```
 
-This is the same code and the same scoring the competition uses. If `validate`
-says **OK**, your bot will be accepted. If a match shows `faults:` above zero,
-read the log in `arena_logs/` (or in the folder you give with `--log-dir`).
+This is the same engine and the same scoring the competition uses. If `validate`
+says **OK**, your bot plays legally. If a match shows `faults:` above zero, read
+the log in `arena_logs/` (or in the folder you give with `--log-dir`).
 
-You do not have to keep your bot inside `bots/`: you can point `validate` and
-`match` straight at your own repository folder, for example
-`python -m arena validate ../my-poker-bot`. The name shown in the results is the
-folder's name, so name the folder after your team.
+## 3. Connect to the arena
 
-## 3. Put it in your own repository
+The organiser gives each team a **team name**, a **secret key** and the arena's
+**address** (something like `ws://192.168.1.20:8765`). Then run, on your own
+machine:
 
-1. Create a **new public** repository on GitHub (private repositories cannot be
-   pulled).
-2. Put your `bot.py` at the **top level** of it, not in a folder. Any other files
-   your bot needs (data files, helper modules) can sit next to it. Keep the
-   whole repository under 25 MB.
-3. Push it to the branch your repository uses by default, normally `main`. A new
-   local repository may start on `master`: run `git branch -M main` before your
-   first push. (If the organiser fetches `main` and you pushed `master`, they get
-   nothing.)
-
-Your repository should look like this:
-
-```
-my-poker-bot/
-  bot.py          <- required, at the top level
-  strategy.py     <- optional extras
-  data/           <- optional
+```bash
+python -m arena.connect --url ws://ADDRESS:8765 --key YOUR_KEY bots/myteam
 ```
 
-## 4. Register your team
+(To keep the key off the command line, set the `ARENA_KEY` environment variable
+instead of using `--key`.)
 
-If the site has a **Register** tab, use it: press **Register on GitHub**. GitHub
-opens a short form asking for your team name, your repository address and,
-optionally, a branch. Press **Submit new issue** while signed in as **the GitHub
-account that owns the repository**. Registrations from any other account are
-rejected, so nobody can register your repository for you. The arena replies on
-the issue (and says what is wrong, if anything is), and once the organiser
-approves it your bot is fetched and starts playing. To change repository, edit
-your issue or register the same team again from the same account; to withdraw,
-close the issue.
+You should see `connected as team 'yourteam'; waiting for matches`. **Leave it
+running for the whole event.** It reconnects by itself if your Wi-Fi drops, and
+prints `match starting` and `match finished` as your matches are played.
 
-If there is no Register tab, tell the organiser two things instead:
+* **Keep your key secret.** Anyone who has it can play as your team.
+* **Use whatever you like.** The bot runs on your computer, so any library, any
+  model, a GPU or an outside API is fine. Anything it costs is yours.
+* **Connect before a round starts.** A match begins when both bots in the
+  pairing are connected, and a team that is still missing after the grace
+  period (the organiser tells you how long) forfeits the matches it has not
+  played: its side folds every hand, which scores very badly.
+* **One match at a time.** Your bot plays one match at a time and is told when a
+  new one starts. If your bot has a method `on_match_start(self)`, it is called
+  then: reset your notes about the opponent there.
 
-* your **team name**: lowercase letters, digits, `-` and `_`, up to 32
-  characters (for example `team-fox`);
-* the **address of your repository**, for example
-  `https://github.com/team-fox/poker-bot`. It must start with `https://`, and
-  must not contain a password or token. If you want a branch other than the
-  default one, say which.
-
-The organiser adds you to the teams list. A minute or so later your bot is
-fetched, checked, and playing.
-
-## 5. Update your bot as often as you like
-
-Push to your repository. About a minute later the organiser's computer fetches
-the new version and checks it:
-
-* **It loads and plays legally:** it replaces your old bot and plays against
-  everyone again.
-* **It fails the check:** your **previous version keeps playing**, so a mistake
-  never takes you out of the competition. The reason is shown against your team
-  on the website's **Submissions** page, and you can reproduce it locally with
-  `python -m arena validate`.
-* **Nothing changed:** nothing happens.
-
-The website is updated every few minutes, so allow a little time before a result
-or a message appears.
-
-Only the **final** decides the winner. Near the end the organiser takes a
-snapshot of every team's latest working bot and plays a larger round robin on
-those exact versions. Anything you push after the snapshot is ignored, so push
-your best bot **before the deadline**.
-
-## If something goes wrong
-
-The **Submissions** page of the results website tells you what happened to your
-last fetch:
-
-| You see | What it means | What to do |
-|---|---|---|
-| Could not fetch the repository | The address is wrong, or the repository is private | Check the address; make the repository public |
-| Fetched but cannot be used: the bot directory must contain bot.py | `bot.py` is missing from the top level | Move it to the top level and push |
-| Fetched but cannot be used: identical code was already submitted by ... | Your code is byte-for-byte the same as another team's | Submit your own bot |
-| Latest push failed: (an error) | Your bot loaded but crashed or played an illegal move | Run `python -m arena validate` and read `arena_logs/` |
+If the arena refuses your connection, the message says why (`that key is not
+valid`, or an old client that needs updating with `git pull`).
 
 ## The rules your bot must follow
 
 | | |
 |---|---|
-| **Time** | 1 second hard limit per move. Do slow set-up (loading files) when your bot starts, not in `act`. There is also a thinking-time budget over a match of 0.2 seconds per hand on average (100 hands allow 20 seconds in total); going over it disables your bot for that match. |
-| **Mistakes** | A crash, a timeout or an illegal move plays a safe default (check, otherwise fold) and counts as a fault. After 20 faults your bot is replaced by an always-fold stub for that match. |
-| **Memory between hands** | Your bot keeps running across many hands, so you may keep opponent statistics. It restarts for the second half of a match, so do not rely on memory beyond that. |
-| **Libraries** | Python's standard library, and what `requirements.txt` installs. Ask the organiser before relying on anything else. |
-| **Not allowed** | Reading other teams' code or files, using the network, or reading anything outside your own repository. Your code runs on the organiser's computer without a sandbox, so this is a rule of trust: breaking it gets a team disqualified. |
+| **Time** | 1 second hard limit per move, **including the network round trip** (the organiser may change this and will tell you). Load files and models when your bot starts, not in `act`. There is also a thinking-time budget of 3 seconds per hand on average over a match; going over it disables your bot for that match. |
+| **Mistakes** | A crash, a timeout, an illegal move or a missing connection plays a safe default (check, otherwise fold) and counts as a fault. After 20 faults your bot is replaced by an always-fold stub for the rest of that match. |
+| **If your connection drops** | The moves asked for while you are away are faults. Matches do not pause for you, so a stable connection matters. |
+| **Memory between hands** | Your bot is one long-running program, so you may keep statistics about the current opponent. |
+| **Fair play** | Each deal is played twice with the seats swapped. Your bot must not try to recognise a deal it has already seen and use the cards it remembers from the first half: that is cheating and gets a team disqualified. Do not attack the arena's server or other teams' connections either. |
+| **Libraries** | Whatever you have installed on your own computer. |
 
 Game format: heads-up (two players) no-limit Texas Hold'em, 100 big blinds,
-blinds 10/20, stacks reset every hand. Each deal is played twice with the seats
-swapped to remove card luck, and scores are shown in big blinds per hand with a
-95% confidence interval.
+blinds 10/20, stacks reset every hand.
