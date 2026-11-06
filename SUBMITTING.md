@@ -116,6 +116,12 @@ newest zip that works is the one that plays. A newer zip that turns out to be
 broken never replaces a working one, and a team name is not reserved, so use a
 name that is clearly yours.
 
+If the website has a **Register** page, you can also put your team name on the
+site's list before you have a bot ready: type the name there and it opens a
+small form with the name filled in. That only lists the name (it does not
+submit anything). The name changes from "registered" to "submitted" on the site
+when a bot with exactly that name has been received.
+
 ## The rules your bot must follow
 
 | | |

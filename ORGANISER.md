@@ -115,6 +115,51 @@ Create a new form at forms.google.com and set it up as follows.
 
 Send the form link to the teams together with the repository link.
 
+### Optional: a team-name registration form
+
+Teams can also register just a name on the website, so they appear on its list
+straight away. The name is listed as `registered`, and changes to `submitted`
+on the site when you import a bot with exactly that name. It is only a listing:
+no scores, and it does not submit a bot. Skip this section if you do not want
+it; the site then has no Register page and every submitted team still appears.
+
+Make a second Google Form, separate from the upload form:
+
+1. **Title:** `Register your team name`. **Settings > Responses:** do **not**
+   collect email addresses (the sheet is published in step 5). No file upload.
+2. **Question 1:** `Team name`. Short answer, required, response validation
+   Regular expression, Matches, `^[a-z0-9][a-z0-9_-]{0,31}$`.
+3. **Confirmation message:** `Registered. Now upload your bot in the submission form.`
+4. **The prefilled link.** In the form editor open the three-dots menu, choose
+   Get pre-filled link, type `x` in Team name, press Get link and copy it. It
+   looks like
+   `https://docs.google.com/forms/d/e/FORM_ID/viewform?usp=pp_url&entry.123456789=x`.
+   Delete the final `x`, so it ends in `entry.123456789=`. That is
+   `--register-form`.
+5. **The sheet.** Responses > Link to Sheets, then in the sheet File > Share >
+   Publish to web. Pick the responses tab, choose Comma-separated values
+   (.csv), Publish, and copy the address. That is `--registrations`. It makes
+   the sheet readable by anyone with the link, which is why the form must not
+   collect emails: the sheet holds only names and times.
+
+Then run the export with both:
+
+```bash
+python -m arena export --out arena_site --loop 30 --git-push   --registrations "https://docs.google.com/spreadsheets/d/e/.../pub?output=csv"   --register-form "https://docs.google.com/forms/d/e/FORM_ID/viewform?usp=pp_url&entry.123456789="
+```
+
+How it behaves:
+
+* Only valid names are used (lowercase letters, digits, `-` and `_`, up to 32
+  characters); a name is listed once, however many times it was registered.
+* The check is against bots you have imported (`import`), not against the upload
+  form's own sheet, so run `import` regularly while the form is open to move
+  names from `registered` to `submitted`.
+* If the sheet cannot be read (the network drops, the link changes) the export
+  keeps the last list it read and prints a warning, so the site never blanks.
+* Anyone with the form link can register any valid name. A name nobody submits
+  a bot for stays `registered`. To remove one, delete its row in the sheet.
+
 ### Collecting the files
 
 1. Open the form's response folder in Google Drive (Responses tab > View in
