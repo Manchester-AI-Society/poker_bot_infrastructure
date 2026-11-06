@@ -22,8 +22,8 @@ def compute(
     store: Store, kind: str, freeze_id: Optional[int] = None
 ) -> Dict[str, Any]:
     """Builds the leaderboard payload for ``ladder`` or ``final``."""
-    if kind == "final":
-        if freeze_id is None:
+    if kind in ("final", "group"):
+        if freeze_id is None and kind == "final":
             freeze_id = store.latest_freeze()
         if freeze_id is None:
             raise ValueError("no freeze exists yet; run 'freeze' first")
@@ -67,7 +67,7 @@ def compute(
     total_pairs = len(members) * (len(members) - 1) // 2
     return {
         "kind": kind,
-        "provisional": kind != "final",
+        "provisional": kind not in ("final", "group"),
         "freeze_id": freeze_id,
         "generated_at": time.time(),
         "pairs_total": total_pairs,

@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     status TEXT NOT NULL, worker TEXT, error TEXT,
     created_at REAL NOT NULL, started_at REAL, finished_at REAL,
     round INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS remote_teams (
+    team TEXT PRIMARY KEY, key_hash TEXT NOT NULL, created_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS results (
     job_id INTEGER PRIMARY KEY REFERENCES jobs(id),
     data TEXT NOT NULL, hands_path TEXT);
@@ -517,6 +519,107 @@ class Store:
             rows = conn.execute(query, params).fetchall()
         return {row["status"]: row["n"] for row in rows}
 
+    # -- websocket teams and the tournament -------------------------------
+
+    def add_remote_team(self, team: str, key_hash: str) -> bool:
+        """Registers a team that plays over the gateway.
+
+        Also gives it the single "version" the results machinery is keyed on
+        (there is no code to hash: the bot runs on the team's own machine).
+        Returns False if the team already exists.
+        """
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO remote_teams VALUES (?, ?, ?)",
+                (team, key_hash, time.time()),
+            )
+            created = cursor.rowcount == 1
+        if created:
+            digest = remote_hash(team)
+            self.add_version(
+                team, digest, "", "valid", "connects over websocket"
+            )
+            self.set_current(team, digest)
+        return created
+
+    def set_remote_key(self, team: str, key_hash: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE remote_teams SET key_hash=? WHERE team=?",
+                (key_hash, team),
+            )
+
+    def remote_teams(self) -> Dict[str, str]:
+        """team -> hash of its key."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT team, key_hash FROM remote_teams ORDER BY team"
+            ).fetchall()
+        return {row["team"]: row["key_hash"] for row in rows}
+
+    def set_presence(self, team: str, connected: bool) -> None:
+        """Remembers whether a team's bot is connected (written on change)."""
+        key = f"presence:{team}"
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key=?", (key,)
+            ).fetchone()
+            if row and json.loads(row["value"]).get("connected") == connected:
+                return
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, json.dumps({"connected": connected, "at": time.time()})),
+            )
+
+    def presences(self) -> Dict[str, Dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT key, value FROM meta WHERE key LIKE 'presence:%'"
+            ).fetchall()
+        return {
+            row["key"].split(":", 1)[1]: json.loads(row["value"])
+            for row in rows
+        }
+
+    def clear_presence(self) -> None:
+        """Nobody is connected when a gateway starts."""
+        with self._conn() as conn:
+            conn.execute("DELETE FROM meta WHERE key LIKE 'presence:%'")
+
+    def tournament(self) -> Optional[Dict[str, Any]]:
+        value = self.meta_get("tournament")
+        return None if value is None else json.loads(value)
+
+    def set_tournament(self, state: Dict[str, Any]) -> None:
+        self.meta_set("tournament", json.dumps(state))
+
+    def jobs_of(
+        self, kind: str, freeze_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Every job of a kind (and freeze), oldest first."""
+        query = (
+            "SELECT id, a_hash, b_hash, status, freeze_id FROM jobs "
+            "WHERE kind=? AND status != 'stale'"
+        )
+        params: List[Any] = [kind]
+        if freeze_id is not None:
+            query += " AND freeze_id=?"
+            params.append(freeze_id)
+        with self._conn() as conn:
+            rows = conn.execute(query + " ORDER BY id", params).fetchall()
+        return [dict(row) for row in rows]
+
+    def claim_job_by_id(self, job_id: int, worker: str) -> bool:
+        """Takes one specific queued job; False if someone else has it."""
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "UPDATE jobs SET status='running', worker=?, started_at=? "
+                "WHERE id=? AND status='queued'",
+                (worker, time.time(), job_id),
+            )
+            return cursor.rowcount == 1
+
     # -- timed cycles ---------------------------------------------------
 
     def meta_get(self, key: str) -> Optional[str]:
@@ -627,6 +730,11 @@ class Store:
             }
             runs.setdefault((row["a_hash"], row["b_hash"]), []).append(run)
         return [_pool_runs(group) for group in runs.values()]
+
+
+def remote_hash(team: str) -> str:
+    """The stand-in 'version' of a team that plays over the gateway."""
+    return "remote-" + team
 
 
 def _pool_runs(runs: List[Dict[str, Any]]) -> Dict[str, Any]:
