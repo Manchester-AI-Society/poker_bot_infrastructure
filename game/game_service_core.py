@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from .action_engine import apply_action, next_eligible_player
 from .game_domain_models import (
@@ -18,7 +18,6 @@ from .player import Player
 from .poker_game import PokerGame
 from .runtime_flow import (
     advance_and_settle_if_ready,
-    begin_next_hand,
     current_actor_index,
     prepare_turn_event,
     resolve_match_progression,
@@ -29,6 +28,7 @@ from .turn_timeout_manager import TurnTimeoutManager
 LOGGER = logging.getLogger(__name__)
 
 ConnectedCheckCallback = Callable[[str], bool]
+MatchEndedCallback = Callable[[MatchRuntime], Awaitable[None]]
 
 
 class GameService:
@@ -40,6 +40,7 @@ class GameService:
         self._broadcast_cb: Optional[BroadcastCallback] = None
         self._direct_cb: Optional[DirectCallback] = None
         self._connected_check: Optional[ConnectedCheckCallback] = None
+        self._match_ended_cb: Optional[MatchEndedCallback] = None
         self._timeout_manager = TurnTimeoutManager(
             get_match=self.get_match,
             submit_action=self.submit_action,
@@ -52,11 +53,19 @@ class GameService:
         broadcast_cb: BroadcastCallback,
         direct_cb: DirectCallback,
         connected_check: Optional[ConnectedCheckCallback] = None,
+        match_ended_cb: Optional[MatchEndedCallback] = None,
     ) -> None:
         """Registers broadcast, direct event, and connection callbacks."""
         self._broadcast_cb = broadcast_cb
         self._direct_cb = direct_cb
         self._connected_check = connected_check
+        self._match_ended_cb = match_ended_cb
+
+    def set_match_ended_handler(
+        self, match_ended_cb: Optional[MatchEndedCallback]
+    ) -> None:
+        """Registers a callback fired after any match finishes."""
+        self._match_ended_cb = match_ended_cb
 
     def create_match(
         self,
@@ -69,6 +78,7 @@ class GameService:
         event_log_limit: int = 2000,
         max_hands: Optional[int] = None,
         wait_for_players: bool = True,
+        blind_increase_every_hands: Optional[int] = None,
     ) -> MatchRuntime:
         """Creates and stores a new match runtime."""
         if len(player_ids) < 2:
@@ -79,6 +89,13 @@ class GameService:
             raise MatchStateError("big_blind must be larger than small_blind")
         if max_hands is not None and max_hands < 1:
             raise MatchStateError("max_hands must be at least 1 when set")
+        if (
+            blind_increase_every_hands is not None
+            and blind_increase_every_hands < 1
+        ):
+            raise MatchStateError(
+                "blind_increase_every_hands must be at least 1 when set"
+            )
 
         seats = [
             Player(curr_balance=starting_stack, player_id=player_id)
@@ -99,6 +116,7 @@ class GameService:
             event_log_limit=event_log_limit,
             max_hands=max_hands,
             wait_for_players=wait_for_players,
+            blind_increase_every_hands=blind_increase_every_hands,
         )
 
         self._matches[match_id] = runtime
@@ -187,31 +205,43 @@ class GameService:
 
     def _start_first_hand_locked(
         self, runtime: MatchRuntime
-    ) -> tuple[List[Dict[str, Any]], Optional[str], Optional[Dict[str, Any]]]:
-        """Deals the first hand; must be called under the runtime lock."""
+    ) -> tuple[
+        Optional[Dict[str, Any]],
+        List[Dict[str, Any]],
+        Optional[str],
+        Optional[Dict[str, Any]],
+    ]:
+        """Deals the first hand; must be called under the runtime lock.
+
+        Returns (match_ended_event, broadcast_events, turn_player_id,
+        turn_event) like ``resolve_match_progression``.
+        """
         runtime.status = "running"
         runtime.updated_at = time.time()
-        (
-            blind_events,
-            turn_player_id,
-            turn_event,
-        ) = begin_next_hand(runtime, self._log_event)
-        return blind_events, turn_player_id, turn_event
+        return resolve_match_progression(runtime, self._log_event)
 
     async def _announce_hand_opening(
         self,
         runtime: MatchRuntime,
-        blind_events: List[Dict[str, Any]],
-        turn_player_id: Optional[str],
-        turn_event: Optional[Dict[str, Any]],
+        opening: tuple[
+            Optional[Dict[str, Any]],
+            List[Dict[str, Any]],
+            Optional[str],
+            Optional[Dict[str, Any]],
+        ],
     ) -> None:
         """Broadcasts match/hand opening events and arms the turn timer."""
+        match_ended_event, events, turn_player_id, turn_event = opening
         await self._broadcast_match_event(
             runtime,
             {"type": "match_started", "match_id": runtime.match_id},
         )
-        for event in blind_events:
+        for event in events:
             await self._broadcast_match_event(runtime, event)
+        if match_ended_event is not None:
+            await self._broadcast_match_event(runtime, match_ended_event)
+            await self._notify_match_ended(runtime)
+            return
         if turn_player_id and turn_event:
             await self._send_turn_event(turn_player_id, turn_event)
             self._timeout_manager.schedule(
@@ -248,13 +278,9 @@ class GameService:
                     "armed": True,
                 }
 
-            blind_events, turn_player_id, turn_event = (
-                self._start_first_hand_locked(runtime)
-            )
+            opening = self._start_first_hand_locked(runtime)
 
-        await self._announce_hand_opening(
-            runtime, blind_events, turn_player_id, turn_event
-        )
+        await self._announce_hand_opening(runtime, opening)
         return {"match_id": match_id, "status": "running", "armed": False}
 
     async def on_player_connected(self, player_id: str) -> None:
@@ -274,13 +300,9 @@ class GameService:
                     or not self._all_players_connected(runtime)
                 ):
                     continue
-                blind_events, turn_player_id, turn_event = (
-                    self._start_first_hand_locked(runtime)
-                )
+                opening = self._start_first_hand_locked(runtime)
 
-            await self._announce_hand_opening(
-                runtime, blind_events, turn_player_id, turn_event
-            )
+            await self._announce_hand_opening(runtime, opening)
 
     async def submit_action(
         self,
@@ -389,6 +411,7 @@ class GameService:
                 await self._broadcast_match_event(runtime, event)
             if match_ended_event is not None:
                 await self._broadcast_match_event(runtime, match_ended_event)
+                await self._notify_match_ended(runtime)
                 return
         if turn_player_id and turn_event:
             await self._send_turn_event(turn_player_id, turn_event)
@@ -545,7 +568,19 @@ class GameService:
             "results": results,
         }
         await self._broadcast_match_event(runtime, event)
+        await self._notify_match_ended(runtime)
         return event
+
+    async def _notify_match_ended(self, runtime: MatchRuntime) -> None:
+        """Fires the match-ended callback, never letting it break play."""
+        if self._match_ended_cb is None:
+            return
+        try:
+            await self._match_ended_cb(runtime)
+        except Exception:
+            LOGGER.exception(
+                "match_ended callback failed for match_id=%s", runtime.match_id
+            )
 
     async def _broadcast_match_event(
         self, runtime: MatchRuntime, event: Dict[str, Any]

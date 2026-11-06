@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover - depends on install
     _WEBSOCKETS_AVAILABLE = False
 
 _TERMINAL_EVENTS = frozenset({"match_ended"})
+_TOURNAMENT_TERMINAL_EVENTS = frozenset({"eliminated", "tournament_ended"})
 _TERMINAL_STATUSES = frozenset({"finished"})
 _MAX_BACKOFF_SECONDS = 10.0
 _IDLE_CHECK_SECONDS = 5.0
@@ -51,6 +52,7 @@ class RealtimeBotRunner:
         api_key: Optional[str] = None,
         timeout_seconds: float = 10.0,
         verbose: bool = True,
+        tournament: bool = False,
     ) -> None:
         """Stores connection settings for the realtime runner.
 
@@ -63,8 +65,12 @@ class RealtimeBotRunner:
             api_key (Optional[str]): Bot API key.
             timeout_seconds (float): HTTP request timeout.
             verbose (bool): Prints progress when True.
+            tournament (bool): Waits in the lobby and follows table
+                assignments until eliminated or the tournament ends;
+                ``run`` then returns that final server event (a dict).
         """
         self.verbose = verbose
+        self.tournament = tournament
         self.client = PokerEngineClient(
             base_url=base_url,
             match_id=match_id,
@@ -99,12 +105,15 @@ class RealtimeBotRunner:
         if not health.get("ok"):
             raise RuntimeError("Server health check failed")
         client.resolve_identity()
-        if not client.match_id:
+        if not client.match_id and not self.tournament:
             client.discover_match()
 
         if self.verbose:
             print(f"[player_sdk] Playing as {client.player_id} (websocket)")
-            print(f"[player_sdk] Match: {client.match_id}")
+            if self.tournament:
+                print("[player_sdk] Waiting in the tournament lobby")
+            else:
+                print(f"[player_sdk] Match: {client.match_id}")
 
         ws_url = self._websocket_url()
         backoff = 1.0
@@ -126,13 +135,15 @@ class RealtimeBotRunner:
             time.sleep(backoff)
             backoff = min(backoff * 2, _MAX_BACKOFF_SECONDS)
 
-    def _message_loop(self, websocket: Any) -> Optional[GameState]:
+    def _message_loop(self, websocket: Any) -> Any:
         while True:
             try:
                 raw = websocket.recv(timeout=_IDLE_CHECK_SECONDS)
             except TimeoutError:
+                if self.tournament and not self.client.match_id:
+                    continue  # idle in the lobby or between rounds
                 state = self._recover_missed_events()
-                if state is not None:
+                if state is not None and not self.tournament:
                     return state
                 continue
 
@@ -141,6 +152,20 @@ class RealtimeBotRunner:
                 continue
             self._recovery_failures = 0
             kind = message.get("type")
+
+            if self.tournament:
+                if kind in _TOURNAMENT_TERMINAL_EVENTS:
+                    self._report_tournament_exit(message)
+                    return message
+                if kind == "table_assigned":
+                    self._join_table(message)
+                    continue
+                if kind == "match_ended":
+                    if message.get("match_id") == self.client.match_id:
+                        self.client.match_id = ""
+                    continue
+                if kind == "your_turn":
+                    self._join_table(message)
 
             if kind == "your_turn":
                 state = self._handle_your_turn(websocket, message)
@@ -191,6 +216,33 @@ class RealtimeBotRunner:
             outgoing["turn_id"] = state.turn_id
         websocket.send(json.dumps(outgoing))
         return None
+
+    def _join_table(self, message: Mapping[str, Any]) -> None:
+        """Switches the client to the match named in a server event."""
+        match_id = str(message.get("match_id") or "")
+        if not match_id or match_id == self.client.match_id:
+            return
+        self.client.match_id = match_id
+        self.client.player_index = None
+        if self.verbose:
+            round_label = message.get("round")
+            suffix = f" (round {round_label})" if round_label else ""
+            print(f"[player_sdk] Seated at table {match_id}{suffix}")
+
+    def _report_tournament_exit(self, message: Mapping[str, Any]) -> None:
+        if not self.verbose:
+            return
+        if message.get("type") == "eliminated":
+            print(
+                "[player_sdk] Eliminated in round"
+                f" {message.get('round')}; table won by"
+                f" {message.get('winner')}"
+            )
+        else:
+            print(
+                "[player_sdk] Tournament over; champion:"
+                f" {message.get('champion')}"
+            )
 
     def _report_hand_result(self, message: Mapping[str, Any]) -> None:
         """Prints a per-hand settlement summary when verbose."""

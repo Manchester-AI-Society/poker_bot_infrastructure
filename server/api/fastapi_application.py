@@ -10,6 +10,7 @@ from server.api.routers.match_management_routes import (
 from server.api.routers.realtime_websocket_gateway import (
     router as websocket_router,
 )
+from server.api.routers.tournament_routes import router as tournament_router
 
 
 def create_app() -> FastAPI:
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(bots_router)
     app.include_router(matches_router)
     app.include_router(websocket_router)
+    app.include_router(tournament_router)
     return app
 
 

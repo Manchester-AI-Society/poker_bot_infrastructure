@@ -87,6 +87,44 @@ def play(
     )
 
 
+def play_tournament(
+    model: PokerBot,
+    *,
+    api_key: str,
+    server_url: str,
+    timeout_seconds: float = 10.0,
+    verbose: bool = True,
+) -> dict:
+    """Joins the tournament lobby and plays every table until done.
+
+    The bot connects over websocket, waits for the admin to start the
+    tournament, plays whichever table it is seated at, and advances to
+    the final if it wins its table.
+
+        play_tournament(MyBot(), api_key="dev-key-1",
+                        server_url="http://host:8000")
+
+    Returns:
+        dict: The final server event — ``{"type": "eliminated", ...}``
+        or ``{"type": "tournament_ended", "champion": ..., ...}``.
+    """
+    for label, value in (("api_key", api_key), ("server_url", server_url)):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"{label} is mandatory and must be a non-empty string"
+            )
+    runner = RealtimeBotRunner(
+        base_url=server_url,
+        match_id="",
+        bot=model,
+        api_key=api_key,
+        timeout_seconds=timeout_seconds,
+        verbose=verbose,
+        tournament=True,
+    )
+    return runner.run()
+
+
 def run_bot(
     bot: PokerBot,
     *,
@@ -294,6 +332,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         help="Realtime websocket or HTTP polling transport",
     )
     parser.add_argument(
+        "--tournament",
+        action="store_true",
+        help="Join the tournament lobby instead of a single match",
+    )
+    parser.add_argument(
         "--poll-interval",
         type=float,
         default=0.5,
@@ -308,6 +351,15 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     )
 
     bot = load_bot_from_file(args.bot_file)
+    if args.tournament:
+        if not config.api_key:
+            parser.error(
+                "--tournament needs an API key (--api-key or POKER_API_KEY)"
+            )
+        play_tournament(
+            bot, api_key=config.api_key, server_url=config.base_url
+        )
+        return
     run_bot(
         bot,
         config=config,

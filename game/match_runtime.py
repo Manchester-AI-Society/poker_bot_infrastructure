@@ -23,6 +23,7 @@ class MatchRuntime:
     turn_id: int = 0
     min_raise_size: int = 0
     max_hands: Optional[int] = None
+    blind_increase_every_hands: Optional[int] = None
     wait_for_players: bool = True
     start_requested: bool = False
     created_at: float = field(default_factory=time.time)

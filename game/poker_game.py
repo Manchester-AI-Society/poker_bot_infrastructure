@@ -129,7 +129,8 @@ class PokerGame:
     def distribute_cards(self):
         """Deals two cards per player and five board cards."""
         for actor in self.players:
-            if actor.curr_balance <= 0:
+            # Seats all-in from a blind still hold chips in the pot.
+            if actor.curr_balance <= 0 and actor.curr_bet_amount == 0:
                 continue
             actor.add_card(self.deck.draw_card())
             actor.add_card(self.deck.draw_card())

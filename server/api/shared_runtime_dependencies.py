@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import HTTPException, status
 
 from game import GameService
+from game.tournament import Tournament
 from server.server_settings import load_admin_api_keys, load_api_keys
 from server.websocket_connection_manager import ConnectionManager
 
@@ -60,6 +61,8 @@ games.set_event_handlers(
     direct_cb=connections.send_to_player,
     connected_check=connections.is_connected,
 )
+tournament = Tournament(games, send_cb=connections.send_to_player)
+games.set_match_ended_handler(tournament.on_match_ended)
 
 
 def require_player_id(

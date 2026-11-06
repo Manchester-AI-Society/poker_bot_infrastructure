@@ -50,6 +50,7 @@ class AdminSDKClient:
             "event_log_limit": options.event_log_limit,
             "max_hands": options.max_hands,
             "wait_for_players": options.wait_for_players,
+            "blind_increase_every_hands": options.blind_increase_every_hands,
         }
         return self._transport.request_json(
             "POST",
@@ -275,3 +276,34 @@ class AdminSDKClient:
             payload,
             api_key_override=api_key_being_used,
         )
+
+    def get_lobby(self) -> Dict[str, Any]:
+        """Lists bots connected and eligible for the next tournament."""
+        return self._transport.request_json("GET", "/v1/lobby", None)
+
+    def start_tournament(
+        self,
+        api_key_being_used: Optional[str] = None,
+        **settings: Any,
+    ) -> Dict[str, Any]:
+        """Seats every connected bot and starts the tournament.
+
+        Args:
+            api_key_being_used (Optional[str]): Optional key override.
+            **settings: Optional overrides — ``starting_stack``,
+                ``small_blind``, ``big_blind``, ``turn_timeout_seconds``,
+                ``blind_increase_every_hands``, ``max_hands``.
+
+        Returns:
+            Dict[str, Any]: The tournament bracket snapshot.
+        """
+        return self._transport.request_json(
+            "POST",
+            "/v1/tournament/start",
+            settings,
+            api_key_override=api_key_being_used,
+        )
+
+    def get_tournament(self) -> Dict[str, Any]:
+        """Returns the current tournament bracket."""
+        return self._transport.request_json("GET", "/v1/tournament", None)

@@ -348,6 +348,47 @@ curl -X POST http://127.0.0.1:8000/v1/matches/<MATCH_ID>/actions/self \
 curl "http://127.0.0.1:8000/v1/matches/<MATCH_ID>/events?offset=0&limit=100"
 ```
 
+## Running a Tournament
+
+A two-round knockout for bots connecting from anywhere:
+
+1. **Round 1:** every bot in the lobby is shuffled onto `min(10, players // 2)` tables, with sizes as even as possible (23 bots → three tables of 3 and seven of 2). All tables play in parallel until one bot holds every chip.
+2. **Final:** the table winners play one final table. Its winner is the champion. (With 3 or fewer bots there is only the final.)
+
+Blinds double every `blind_increase_every_hands` hands so tables finish. If `max_hands` is reached, the chip leader advances. A bot that disconnects mid-table is auto-checked/folded by the turn timer.
+
+**1. Admin: issue each entrant a key**
+
+```bash
+curl -X POST http://HOST:8000/v1/admin/players -H "Authorization: Bearer admin-dev-key" \
+  -H "Content-Type: application/json" -d '{"player_id": "alice-bot"}'   # → {"api_key": "..."}
+```
+
+**2. Each entrant, on their own machine: join the lobby**
+
+```python
+from player_sdk import play_tournament
+
+result = play_tournament(MyBot(), api_key="...", server_url="http://HOST:8000")
+print(result)   # {"type": "eliminated", ...} or {"type": "tournament_ended", "champion": ...}
+```
+
+or `python -m player_sdk my_bot.py --tournament --api-key ... --server-url http://HOST:8000`. The bot waits on its websocket, plays whichever table it is seated at, follows itself into the final, and returns when it is knocked out or the tournament ends.
+
+**3. Admin: check who is connected, then start**
+
+```bash
+curl http://HOST:8000/v1/lobby                       # connected bots
+curl -X POST http://HOST:8000/v1/tournament/start -H "Authorization: Bearer admin-dev-key" \
+  -H "Content-Type: application/json" \
+  -d '{"starting_stack": 1000, "small_blind": 10, "big_blind": 20, "blind_increase_every_hands": 10, "max_hands": 500}'
+curl http://HOST:8000/v1/tournament                  # live bracket, winners, champion
+```
+
+From Python: `admin.get_lobby()`, `admin.start_tournament(...)`, `admin.get_tournament()`. Only bots connected at the moment of `start` are seated. One tournament runs at a time, and state lives in memory.
+
+Websocket events a bot receives: `table_assigned` (round, match_id), the usual `your_turn` / `action` / `showdown` / `match_ended`, then `eliminated` or `tournament_ended`.
+
 ## Tests
 
 ```bash
