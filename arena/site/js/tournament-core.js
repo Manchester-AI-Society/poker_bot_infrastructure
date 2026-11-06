@@ -43,6 +43,14 @@ export function isTournament(manifest) {
   return Boolean(manifest) && manifest.mode === 'tournament';
 }
 
+/**
+ * The registration form's address when this event has a team-name
+ * registration (tournament mode and a form set), else null.
+ */
+export function registerFormOpen(manifest) {
+  return isTournament(manifest) && manifest.register_form ? manifest.register_form : null;
+}
+
 /** {phase, label, text, known} for a phase name; unknown names stay readable. */
 export function phaseInfo(phase) {
   const info = PHASES[phase];
@@ -71,6 +79,34 @@ export function normalizeTournament(raw) {
       : null,
     champion: t.champion || null,
   };
+}
+
+/**
+ * The status of a teams.json entry: 'submitted' (a bot with that name has
+ * arrived, so the name is confirmed) or 'registered' (only the name is listed).
+ * An export that predates the field has only teams with bots: 'submitted'.
+ */
+export function entryStatus(entry) {
+  return entry && entry.status === 'registered' ? 'registered' : 'submitted';
+}
+
+/** teams.json's list with `status` always present, sorted by name like the export. */
+export function normalizeTeams(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((entry) => ({ ...entry, status: entryStatus(entry) }));
+}
+
+/** The listed teams that are in no group (registered, or submitted after the draw), in order. */
+export function undrawnTeams(teams, t) {
+  const drawn = new Set(t.groups.flatMap((g) => g.teams));
+  return (teams || []).filter((entry) => !drawn.has(entry.team));
+}
+
+/** How many of the listed teams have a bot ('submitted') and how many only a name. */
+export function statusCounts(teams) {
+  const list = teams || [];
+  const submitted = list.filter((e) => entryStatus(e) === 'submitted').length;
+  return { submitted, registered: list.length - submitted };
 }
 
 /** The data files to fetch: only those the manifest says exist. */

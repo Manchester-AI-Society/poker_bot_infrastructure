@@ -1,76 +1,113 @@
+// The Register page. In the tournament format it registers a team NAME (a
+// short Google Form the organiser runs); in the ladder format it opens the
+// registry's GitHub issue form (register-ladder.js, unchanged).
+
 import { h } from '../dom.js';
-import { ago } from '../format.js';
-import { registerUrl, registryIssuesUrl } from '../register-core.js';
+import { MAX_NAME_LENGTH, registerState } from '../register-name-core.js';
+import { isTournament, registerFormOpen } from '../tournament-core.js';
+import { ladderRegisterView } from './register-ladder.js';
+import { STATUS_LEGEND, rosterList } from './roster.js';
 
-const STATUS = {
-  pending: { text: 'waiting for approval', cls: 'badge' },
-  rejected: { text: 'not accepted', cls: 'badge bad' },
-};
+// What was typed survives a redraw (the page redraws when new data arrives).
+let draft = '';
 
-function registrationsCard(list) {
-  if (!list.length) return null;
-  const now = Date.now() / 1000;
-  return h(
-    'div',
-    { class: 'card tablewrap' },
-    h('h2', {}, 'Registrations that are not teams yet'),
-    h(
-      'table',
-      { class: 'tbl' },
-      h(
-        'thead',
-        {},
-        h('tr', {}, ['Team', 'GitHub account', 'Status', 'Why'].map((t) => h('th', { scope: 'col' }, t))),
-      ),
-      h(
-        'tbody',
-        {},
-        list.map((r) =>
-          h(
-            'tr',
-            {},
-            h('td', { class: 'team' }, r.team || '—'),
-            h('td', {}, r.user),
-            h('td', {}, h('span', { class: (STATUS[r.status] || STATUS.pending).cls }, (STATUS[r.status] || { text: r.status }).text)),
-            h('td', { class: 'small' }, r.message, r.at ? h('span', { class: 'muted' }, ` (${ago(now - r.at)})`) : null),
-          ),
-        ),
-      ),
-    ),
-  );
+function listedCard(teams) {
+  const card = h('section', { class: 'card', 'aria-label': 'Names already listed' });
+  card.appendChild(h('h2', { class: 'counted' }, 'Names already listed', h('span', { class: 'muted small' }, String(teams.length))));
+  if (!teams.length) {
+    card.appendChild(h('p', { class: 'note' }, 'No names are listed yet. Yours can be the first.'));
+    return card;
+  }
+  card.appendChild(rosterList(teams, 'Names already listed'));
+  card.appendChild(h('p', { class: 'note' }, STATUS_LEGEND));
+  return card;
 }
 
-/**
- * Register a team: one button that opens the registration form on GitHub.
- * The arena proves the account owns the repository, and the organiser
- * approves it.
- */
-export function registerView(ctx) {
-  const registry = ctx.data.manifest.registry_repo;
-  const page = h('div', { class: 'page guide' });
-  page.appendChild(h('header', {}, h('h1', {}, 'Register your team')));
-  const form = registerUrl(registry);
+/** Tournament: pick a name, then continue to the organiser's registration form. */
+function tournamentRegisterView(ctx) {
+  const form = registerFormOpen(ctx.data.manifest);
+  const teams = ctx.data.teams;
+  const page = h('div', { class: 'page' });
+  page.appendChild(h('header', {}, h('h1', {}, 'Register your team name')));
+
+  const input = h('input', {
+    id: 'team-name',
+    type: 'text',
+    name: 'team',
+    autocomplete: 'off',
+    autocapitalize: 'none',
+    spellcheck: 'false',
+    'aria-describedby': 'team-name-help team-name-msg',
+  });
+  input.value = draft;
+  const message = h('p', { id: 'team-name-msg', class: 'field-msg', role: 'status' });
+  const link = h('a', { class: 'btn-primary', role: 'link', 'aria-disabled': 'true' }, 'Continue to the registration form');
+
+  function update() {
+    const raw = input.value;
+    const lowered = raw.toLowerCase();
+    if (lowered !== raw) {
+      // Typed capitals are lowercased for you, keeping the cursor where it was.
+      const at = input.selectionStart;
+      input.value = lowered;
+      if (at != null) input.setSelectionRange(at, at);
+    }
+    draft = input.value;
+    const state = registerState(form, teams, input.value);
+    const bad = state.check.state === 'invalid' || Boolean(state.listed);
+    const good = Boolean(state.link);
+    message.textContent = '';
+    if (state.message) {
+      message.appendChild(h('span', { 'aria-hidden': 'true' }, bad ? '✗ ' : good ? '✓ ' : ''));
+      message.appendChild(document.createTextNode(state.message));
+    }
+    message.classList.toggle('bad', bad);
+    if (bad) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+    if (state.link) {
+      link.setAttribute('href', state.link);
+      link.setAttribute('target', '_blank');
+      link.setAttribute('rel', 'noopener noreferrer');
+      link.removeAttribute('aria-disabled');
+    } else {
+      link.removeAttribute('href');
+      link.removeAttribute('target');
+      link.removeAttribute('rel');
+      link.setAttribute('aria-disabled', 'true');
+    }
+  }
+  input.addEventListener('input', update);
+
+  const intro = h(
+    'div',
+    { class: 'card' },
+    h('p', { id: 'team-name-help' }, 'Register the name of your team and it is listed on this site right away. ', h('strong', {}, 'This does not submit a bot.'), ' Bots are uploaded through the submission form: see ', h('a', { href: '#/submit' }, 'How to submit'), '. The name turns to “submitted” in the list below when a bot with exactly that name arrives.'),
+  );
   if (!form) {
-    page.appendChild(h('div', { class: 'empty card' }, 'Registration is not open for this event.'));
+    intro.appendChild(h('p', {}, 'Registration is not open for this event.'));
+    page.appendChild(intro);
     return { el: page, title: 'Register' };
   }
-
-  page.appendChild(
-    h(
-      'div',
-      { class: 'card' },
-      h('p', {}, 'Your bot lives in your own ', h('strong', {}, 'public GitHub repository'), ', with ', h('code', {}, 'bot.py'), ' at the top level. Register it here once; after that, pushing to the repository updates your bot.'),
-      h('a', { class: 'btn-primary', href: form, target: '_blank', rel: 'noopener noreferrer' }, 'Register on GitHub'),
-      h('h2', { style: 'margin-top:1.5rem' }, 'What happens next'),
-      h('ol', {},
-        h('li', {}, 'GitHub opens a short form: a team name (lowercase letters, digits, “-” and “_”), your repository address, and optionally a branch. You need a GitHub account, and you must be signed in as ', h('strong', {}, 'the account that owns the repository'), ': registrations from anyone else are rejected, so nobody can register your repository for you.'),
-        h('li', {}, 'Press “Submit new issue”. The arena checks it within a minute and replies on the issue, saying what is wrong if anything is.'),
-        h('li', {}, 'The organiser approves it (they add an ', h('code', {}, 'approved'), ' label). Your bot is then fetched and starts playing. Watch its status on the ', h('a', { href: '#/submissions' }, 'Submissions'), ' page.'),
-        h('li', {}, 'To change your repository, edit your issue, or open a new registration for the same team from the same account. To withdraw, close the issue.')),
-      h('p', { class: 'note' }, 'All registrations are public: ', h('a', { href: registryIssuesUrl(registry), target: '_blank', rel: 'noopener noreferrer' }, 'see them on GitHub'), '. New here? ', h('a', { href: '#/submit' }, 'Read how to write and test a bot'), '.'),
-    ),
+  const fields = h(
+    'form',
+    { class: 'card field', novalidate: true },
+    h('label', { for: 'team-name' }, 'Team name'),
+    input,
+    h('p', { class: 'note' }, `Lowercase letters, digits, “-” and “_”; up to ${MAX_NAME_LENGTH} characters; start with a letter or a digit. Capitals are turned into lowercase for you.`),
+    message,
+    link,
+    h('p', { class: 'note' }, 'The button opens the organiser’s registration form in a new tab with the name filled in. Send that form to finish. A name that is already listed cannot be registered again.'),
   );
-  const waiting = registrationsCard(ctx.data.registrations || []);
-  if (waiting) page.appendChild(waiting);
+  fields.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (link.getAttribute('href')) link.click();
+  });
+  page.append(intro, fields, listedCard(teams));
+  update();
   return { el: page, title: 'Register' };
 }
+
+export function registerView(ctx) {
+  return isTournament(ctx.data.manifest) ? tournamentRegisterView(ctx) : ladderRegisterView(ctx);
+}
+

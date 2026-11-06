@@ -6,7 +6,7 @@
 import { data, refresh } from './api.js';
 import { h } from './dom.js';
 import { parseHash } from './format.js';
-import { isTournament, updatedText } from './tournament-core.js';
+import { isTournament, registerFormOpen, updatedText } from './tournament-core.js';
 import { guideView } from './views/guide.js';
 import { leaderboardView } from './views/leaderboard.js';
 import { matchesView } from './views/matches.js';
@@ -63,8 +63,15 @@ const ROUTES = {
   tv: { view: tvView, live: false },
 };
 
-// Pages that exist only for the repository-submission format.
+// Pages that exist only for the repository-submission format. In a tournament
+// the Register page (a team-name form) exists only when the organiser set one up.
 const LADDER_ONLY = new Set(['register', 'submissions']);
+
+function hiddenRoute(name) {
+  if (!isTournament(data.manifest)) return false;
+  if (name === 'register') return !registerFormOpen(data.manifest);
+  return LADDER_ONLY.has(name);
+}
 
 function chooseKind(requested) {
   if (isTournament(data.manifest)) return 'tournament'; // no Final/Ladder choice
@@ -91,8 +98,8 @@ async function render({ keepScroll = false } = {}) {
   }
   const token = ++renderToken;
   let { path, query } = parseHash(location.hash);
-  if (isTournament(data.manifest) && LADDER_ONLY.has(path[0])) {
-    // There is no registration or submission page here; bots connect directly.
+  if (hiddenRoute(path[0])) {
+    // No repository submissions here, and no register page without a form.
     history.replaceState(null, '', '#/');
     ({ path, query } = parseHash(location.hash));
   }
@@ -120,7 +127,16 @@ async function render({ keepScroll = false } = {}) {
   if (current && current.dispose) current.dispose();
   current = view;
   current.live = route.live;
+  // A redraw for fresh data must not take the cursor out of a field being typed in.
+  const active = keepScroll && document.activeElement;
+  const focusId = active && active.id && main.contains(active) ? active.id : null;
+  const caret = focusId && active.selectionStart != null ? [active.selectionStart, active.selectionEnd] : null;
   main.replaceChildren(view.el);
+  const refocus = focusId && document.getElementById(focusId);
+  if (refocus) {
+    refocus.focus({ preventScroll: true });
+    if (caret && refocus.setSelectionRange) refocus.setSelectionRange(caret[0], caret[1]);
+  }
   document.title = `${view.title ? view.title + ' · ' : ''}${data.manifest ? data.manifest.title : 'Poker Bot Competition'}`;
 
   for (const link of document.querySelectorAll('.tabs a')) {
@@ -141,10 +157,15 @@ async function render({ keepScroll = false } = {}) {
 
 function paintNav() {
   const tournament = isTournament(data.manifest);
-  // The Register tab exists only when the organiser set up a registry.
+  // The Register tab: in a tournament when the organiser set up the team-name
+  // form, in the ladder format when there is a registry.
   const register = document.getElementById('nav-register');
-  if (register) register.hidden = tournament || !(data.manifest && data.manifest.registry_repo);
-  // A tournament has no repository submissions and no registration form.
+  if (register) {
+    register.hidden = tournament
+      ? !registerFormOpen(data.manifest)
+      : !(data.manifest && data.manifest.registry_repo);
+  }
+  // A tournament has no repository submissions.
   const submissions = document.getElementById('nav-submissions');
   if (submissions) submissions.hidden = tournament;
   const home = document.getElementById('nav-home');

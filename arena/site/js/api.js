@@ -2,7 +2,7 @@
 // poll; the bigger files are fetched only when its fingerprint changes, and
 // are keyed by it so a CDN or browser can cache them between changes.
 
-import { isTournament, normalizeTournament, tournamentFiles } from './tournament-core.js';
+import { isTournament, normalizeTeams, normalizeTournament, tournamentFiles } from './tournament-core.js';
 
 export const data = {
   manifest: null,
@@ -79,7 +79,7 @@ async function loadTournament(manifest) {
     if (board) data.boards[kind] = board;
   });
   data.tournament = normalizeTournament(tournament);
-  data.teams = (teams && teams.teams) || [];
+  data.teams = normalizeTeams(teams && teams.teams);
   data.registrations = [];
   data.manifest = manifest;
   replayCache.clear();

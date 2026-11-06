@@ -10,10 +10,14 @@ import {
   finalsStage,
   groupMarks,
   phaseInfo,
+  registerFormOpen,
   roundOneNote,
   groupsRevealed,
+  statusCounts,
+  undrawnTeams,
 } from '../tournament-core.js';
 import { leaderboardTable } from './leaderboard.js';
+import { STATUS_LEGEND, rosterList } from './roster.js';
 
 function teamLink(name) {
   return h('a', { href: `#/team/${encodeURIComponent(name)}` }, name);
@@ -108,14 +112,37 @@ export function finalsSection(t, finalBoard = null) {
   return section;
 }
 
-/** Before the draw: who has signed up (names only; no results exist yet). */
-function registeredCard(teams) {
+/**
+ * Before the draw: every listed name with its status. Registering a name only
+ * lists it; the name is confirmed when a bot with that name arrives.
+ */
+function registeredCard(teams, { form = false } = {}) {
   if (!teams.length) return null;
+  const { submitted, registered } = statusCounts(teams);
   return h(
     'section',
     { class: 'card', 'aria-label': 'Registered teams' },
     h('h3', {}, 'Registered teams', h('span', { class: 'muted small' }, String(teams.length))),
-    teamChips(teams.map((entry) => entry.team), 'Registered teams'),
+    h(
+      'p',
+      { class: 'note' },
+      'Registered teams are confirmed when their bot arrives.',
+      form ? [' Not on the list? ', h('a', { href: '#/register' }, 'Register your team name'), '.'] : null,
+    ),
+    rosterList(teams, 'Registered teams'),
+    h('p', { class: 'note' }, `${submitted} submitted, ${registered} registered. ${STATUS_LEGEND}`),
+  );
+}
+
+/** After the draw: the listed names that are in no group (they will not play). */
+function undrawnCard(teams) {
+  if (!teams.length) return null;
+  return h(
+    'section',
+    { class: 'card', 'aria-label': 'Registered, not in the draw' },
+    h('h3', {}, 'Registered, not in the draw', h('span', { class: 'muted small' }, String(teams.length))),
+    h('p', { class: 'note' }, 'These names are listed but are in no group, so they are not in the draw.'),
+    rosterList(teams, 'Registered, not in the draw'),
   );
 }
 
@@ -133,8 +160,11 @@ export function tournamentView(ctx) {
     h('header', {}, h('h1', {}, 'Tournament')),
     phaseBanner(t),
     championBanner(t),
-    t.phase === 'registration' && !t.groups.length ? registeredCard(ctx.data.teams) : null,
+    t.phase === 'registration' && !t.groups.length
+      ? registeredCard(ctx.data.teams, { form: Boolean(registerFormOpen(ctx.data.manifest)) })
+      : null,
     roundOneSection(t),
+    t.groups.length ? undrawnCard(undrawnTeams(ctx.data.teams, t)) : null,
     finalsSection(t, ctx.data.boards.final),
     groupsRevealed(t) ? h('p', { class: 'note' }, SCORE_NOTE) : null,
   );

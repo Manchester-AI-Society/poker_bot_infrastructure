@@ -4,6 +4,11 @@ import {
   NOT_YET,
   PHASE_ORDER,
   advanceText,
+  entryStatus,
+  normalizeTeams,
+  registerFormOpen,
+  statusCounts,
+  undrawnTeams,
   finalMarks,
   finalsNote,
   finalsStage,
@@ -299,4 +304,34 @@ test('the ladder header text is unchanged', () => {
       'Connection lost – showing results from 2 h ago',
     );
   }
+});
+
+test('a team entry without a status (an older export) is submitted', () => {
+  assert.equal(entryStatus({ team: 'x' }), 'submitted');
+  assert.equal(entryStatus({ team: 'x', status: 'submitted' }), 'submitted');
+  assert.equal(entryStatus({ team: 'x', status: 'registered' }), 'registered');
+  assert.equal(entryStatus({ team: 'x', status: 'whatever' }), 'submitted');
+  assert.equal(entryStatus(null), 'submitted');
+  assert.deepEqual(normalizeTeams([{ team: 'a' }, { team: 'b', status: 'registered' }]).map((e) => e.status), ['submitted', 'registered']);
+  assert.deepEqual(normalizeTeams(undefined), []);
+  assert.deepEqual(normalizeTeams({}), []);
+});
+
+test('undrawn teams are those in no group; counts split by status', () => {
+  const t = normalizeTournament({ phase: 'drawn', groups: [{ name: 'A', teams: ['a', 'b'] }, { name: 'B', teams: ['c'] }] });
+  const teams = normalizeTeams([{ team: 'a' }, { team: 'b' }, { team: 'c' }, { team: 'd', status: 'registered' }, { team: 'e' }]);
+  assert.deepEqual(undrawnTeams(teams, t).map((e) => e.team), ['d', 'e']);
+  assert.deepEqual(undrawnTeams([], t), []);
+  assert.equal(undrawnTeams(teams, normalizeTournament({ phase: 'registration' })).length, 5);
+  assert.deepEqual(statusCounts(teams), { submitted: 4, registered: 1 });
+  assert.deepEqual(statusCounts([]), { submitted: 0, registered: 0 });
+});
+
+test('the register form counts only in a tournament, and only when set', () => {
+  const form = 'x=';
+  assert.equal(registerFormOpen({ mode: 'tournament', register_form: form }), form);
+  assert.equal(registerFormOpen({ mode: 'tournament', register_form: null }), null);
+  assert.equal(registerFormOpen({ mode: 'tournament' }), null);
+  assert.equal(registerFormOpen({ register_form: form }), null);
+  assert.equal(registerFormOpen(null), null);
 });

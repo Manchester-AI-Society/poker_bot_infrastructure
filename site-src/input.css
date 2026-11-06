@@ -239,6 +239,12 @@
   input[type="range"] {
     @apply accent-blue-600 dark:accent-blue-500;
   }
+  input[type="text"] {
+    @apply w-full max-w-sm rounded-sm border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900;
+  }
+  input[type="text"][aria-invalid="true"] {
+    @apply border-zinc-900 dark:border-white;
+  }
   .btn-primary {
     @apply mt-4 inline-block justify-self-start rounded-sm bg-blue-600 px-4 py-2 text-white no-underline duration-200 hover:bg-blue-700 active:opacity-75 active:duration-100;
   }
@@ -625,6 +631,23 @@
     @apply mt-6;
   }
 
+  /* ---- the team-name register page ---- */
+  .field {
+    @apply flex flex-col items-start gap-2;
+  }
+  .field > label {
+    @apply text-sm dark:text-white;
+  }
+  .field .btn-primary {
+    @apply mt-2 self-start;
+  }
+  .field-msg {
+    @apply min-h-5 text-sm;
+  }
+  .field-msg.bad {
+    @apply font-bold;
+  }
+
   /* ---- tournament ---- */
   .phase {
     @apply flex flex-wrap items-center gap-x-4 gap-y-2;
@@ -648,14 +671,30 @@
   .group > h3 {
     @apply mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1;
   }
-  .card > h3 {
-    @apply mb-2;
+  .card > h3,
+  .card > h2.counted {
+    @apply mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1;
   }
   .chips {
     @apply m-0 flex list-none flex-wrap gap-1 p-0;
   }
   .chips a {
     @apply inline-block rounded-sm border border-zinc-300 px-2 py-0.5 text-sm no-underline duration-200 hover:bg-zinc-200 dark:border-zinc-600 dark:hover:bg-zinc-700;
+  }
+  /* team names with their status, in columns that fill the width */
+  .roster {
+    @apply m-0 mt-2 list-none p-0;
+    column-width: 18rem;
+    column-gap: 2rem;
+  }
+  .roster li {
+    @apply flex break-inside-avoid flex-wrap items-baseline justify-between gap-x-2 gap-y-1 border-b border-zinc-300/70 py-1.5 text-sm dark:border-white/10;
+  }
+  .roster + .note {
+    @apply mt-3;
+  }
+  .roster .name {
+    @apply min-w-0 break-all no-underline hover:underline;
   }
   .champion {
     @apply border-blue-500 text-center dark:border-blue-500;

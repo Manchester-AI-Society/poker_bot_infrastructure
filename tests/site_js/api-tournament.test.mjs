@@ -100,3 +100,15 @@ test('an unchanged fingerprint fetches nothing but the manifest', async () => {
   assert.equal(await refresh(), false);
   assert.deepEqual(requested, ['data/manifest.json']);
 });
+
+test('team status is loaded, and a missing status counts as submitted', async () => {
+  serve({
+    'data/manifest.json': { ...manifest('registration', [], 'status'), register_form: 'x=' },
+    'data/tournament.json': { ...tournament, phase: 'registration', groups: [] },
+    'data/teams.json': { teams: [{ team: 'a', status: 'registered' }, { team: 'b', status: 'submitted' }, { team: 'c' }] },
+  });
+  data.manifest = null;
+  assert.equal(await refresh(), true);
+  assert.deepEqual(data.teams.map((t) => [t.team, t.status]), [['a', 'registered'], ['b', 'submitted'], ['c', 'submitted']]);
+  assert.equal(data.manifest.register_form, 'x=');
+});
