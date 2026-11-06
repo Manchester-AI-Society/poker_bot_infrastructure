@@ -166,7 +166,7 @@ def test_an_illegal_move_is_a_fault_and_replaced_by_a_legal_one(tmp_path):
     result = run(process_contestant(path, tmp_path, max_faults=1000))
     assert result.status == "complete"
     assert result.faults_a > 0
-    assert any("illegal action" in line for line in result.fault_log_a)
+    assert any("allowed range" in line for line in result.fault_log_a)
 
 
 def test_returning_the_wrong_type_is_a_fault(tmp_path):
@@ -181,7 +181,7 @@ def test_returning_the_wrong_type_is_a_fault(tmp_path):
     )
     result = run(process_contestant(path, tmp_path, max_faults=1000))
     assert result.faults_a > 0
-    assert any("must return an Action" in line for line in result.fault_log_a)
+    assert any("must return a Response" in line for line in result.fault_log_a)
 
 
 def test_a_bot_that_cannot_be_imported_is_disabled_immediately(tmp_path):
