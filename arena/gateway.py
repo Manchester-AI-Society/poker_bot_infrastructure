@@ -7,6 +7,13 @@ Protocol (JSON text frames, one object each):
     server -> {"type": "welcome", "team": "fox"}
               or {"type": "rejected", "message": "..."} then the socket closes
 
+    A team with no key yet registers itself instead (while registration is
+    open, with the join code the organiser announced):
+
+    team   -> {"type": "register", "team": "fox", "code": "...", "protocol": 1}
+    server -> {"type": "registered", "team": "fox", "key": "ak_..."}
+              (the connection is then logged in as that team)
+
     server -> {"type": "match_start", "match": "...", "deals": 100}
     server -> {"type": "act", "id": 7, "state": {...}, "hero_index": 0,
                "action_history": [...]}
@@ -44,6 +51,8 @@ PROTOCOL = 1
 # Biggest frame accepted from a team (a reply is a few dozen bytes).
 MAX_MESSAGE_BYTES = 64 * 1024
 HELLO_TIMEOUT_SECONDS = 10.0
+# Wrong join codes tolerated per minute, across everyone.
+MAX_REGISTER_FAILURES_PER_MINUTE = 10
 # Close codes: 4400 protocol, 4401 bad key, 4409 replaced by a newer one.
 CLOSE_PROTOCOL = 4400
 CLOSE_BAD_KEY = 4401
@@ -82,6 +91,7 @@ class Gateway:
         self.port = port
         self._ping_interval = ping_interval
         self._links: Dict[str, _Link] = {}
+        self._register_failures: List[float] = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._ready = threading.Event()
@@ -167,7 +177,8 @@ class Gateway:
             except (asyncio.TimeoutError, ValueError, TypeError):
                 await ws.close(CLOSE_PROTOCOL, "expected a hello message")
                 return
-            if not isinstance(hello, dict) or hello.get("type") != "hello":
+            kind = hello.get("type") if isinstance(hello, dict) else None
+            if kind not in ("hello", "register"):
                 await ws.close(CLOSE_PROTOCOL, "expected a hello message")
                 return
             if hello.get("protocol") != PROTOCOL:
@@ -178,10 +189,19 @@ class Gateway:
                     "arena.connect",
                 )
                 return
-            team = self._team_for_key(hello.get("key"))
-            if team is None:
-                await self._reject(ws, CLOSE_BAD_KEY, "that key is not valid")
-                return
+            registered_key: Optional[str] = None
+            if kind == "register":
+                outcome = await self._register(ws, hello)
+                if outcome is None:
+                    return
+                team, registered_key = outcome
+            else:
+                team = self._team_for_key(hello.get("key"))
+                if team is None:
+                    await self._reject(
+                        ws, CLOSE_BAD_KEY, "that key is not valid"
+                    )
+                    return
 
             link = _Link(team, ws)
             previous = self._links.get(team)
@@ -194,7 +214,19 @@ class Gateway:
                 except ConnectionClosed:
                     pass
             self.store.set_presence(team, True)
-            await ws.send(json.dumps({"type": "welcome", "team": team}))
+            if registered_key is not None:
+                # The key is sent once, here, and never stored in the clear.
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "registered",
+                            "team": team,
+                            "key": registered_key,
+                        }
+                    )
+                )
+            else:
+                await ws.send(json.dumps({"type": "welcome", "team": team}))
 
             async for raw in ws:
                 if not isinstance(raw, str):
@@ -214,6 +246,32 @@ class Gateway:
             if link is not None and self._links.get(link.team) is link:
                 del self._links[link.team]
                 self.store.set_presence(link.team, False)
+
+    async def _register(self, ws, message: Mapping[str, Any]):
+        """Handles a self-registration; returns (team, key) or None.
+
+        Wrong join codes are limited: too many in a short time and every
+        attempt is refused for a while, so the code cannot be guessed.
+        """
+        from .tournament import TournamentError, register_team
+
+        now = time.time()
+        recent = [t for t in self._register_failures if now - t < 60.0]
+        self._register_failures = recent
+        if len(recent) >= MAX_REGISTER_FAILURES_PER_MINUTE:
+            await self._reject(
+                ws, CLOSE_BAD_KEY, "too many failed attempts; wait a minute"
+            )
+            return None
+        try:
+            team = message.get("team")
+            code = message.get("code")
+            key = register_team(self.store, team, code)
+        except TournamentError as exc:
+            self._register_failures.append(now)
+            await self._reject(ws, CLOSE_BAD_KEY, str(exc))
+            return None
+        return team, key
 
     @staticmethod
     async def _reject(ws, code: int, message: str) -> None:

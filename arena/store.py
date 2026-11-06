@@ -542,6 +542,18 @@ class Store:
             self.set_current(team, digest)
         return created
 
+    def remove_remote_team(self, team: str) -> bool:
+        """Deletes a team that has not been drawn into anything yet."""
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM remote_teams WHERE team=?", (team,)
+            )
+            removed = cursor.rowcount == 1
+            conn.execute("DELETE FROM current WHERE team=?", (team,))
+            conn.execute("DELETE FROM versions WHERE team=?", (team,))
+            conn.execute("DELETE FROM meta WHERE key=?", (f"presence:{team}",))
+        return removed
+
     def set_remote_key(self, team: str, key_hash: str) -> None:
         with self._conn() as conn:
             conn.execute(

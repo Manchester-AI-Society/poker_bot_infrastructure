@@ -3,12 +3,19 @@
 Your bot runs on YOUR machine (so any model, GPU or API key stays with you);
 this program only carries its moves to the arena over a websocket.
 
-    python -m arena.connect --url ws://HOST:8765 --key YOUR_KEY bots/mybot
+First time (the organiser announces the address and a join code):
+
+    python -m arena.connect --url ws://HOST:8765 --team fox --code CODE bots/x
+
+That registers your team and saves your secret key on this computer. After
+that you only need:
+
+    python -m arena.connect --url ws://HOST:8765 --team fox bots/mybot
 
 ``bots/mybot`` is a folder with ``bot.py`` (or a single ``.py`` file), exactly
-as for ``python -m arena match``. The key is the secret the organiser gave
-your team; keep it to yourselves (or set the ARENA_KEY environment variable
-instead of putting it on the command line).
+as for ``python -m arena match``. Your key is the secret that proves you are
+that team: keep it to yourselves. (You can also give it explicitly with
+``--key``, or the ARENA_KEY environment variable.)
 
 Leave it running for the whole event. If the connection drops it reconnects
 by itself; the arena asks for each move with a time limit (the organiser says
@@ -23,8 +30,9 @@ import os
 import sys
 import time
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union
 
 from player_sdk.bot_interface import PokerBot
 from player_sdk.parser import GameStateParser
@@ -41,6 +49,43 @@ CONNECT_TIMEOUT_SECONDS = 5.0
 
 class Rejected(Exception):
     """The arena refused this connection (wrong key, old client)."""
+
+
+@dataclass
+class Credentials:
+    """How to log in: a key, or a team name and join code to get one."""
+
+    key: Optional[str] = None
+    team: Optional[str] = None
+    code: Optional[str] = None
+    # Called with (team, key) once a registration succeeds.
+    on_key: Optional[Callable[[str, str], None]] = None
+
+
+def key_file(team: str) -> Path:
+    """Where this computer keeps a team's key (ARENA_HOME overrides)."""
+    home = os.environ.get("ARENA_HOME")
+    base = Path(home) if home else Path.home() / ".arena"
+    return base / "keys" / f"{team}.key"
+
+
+def save_key(team: str, key: str) -> Path:
+    path = key_file(team)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(key + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)  # owner only, where the system supports it
+    except OSError:
+        pass
+    return path
+
+
+def load_key(team: str) -> Optional[str]:
+    try:
+        value = key_file(team).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return value or None
 
 
 def _log(message: str) -> None:
@@ -77,14 +122,42 @@ def _call_hook(bot: PokerBot, name: str, log: Callable[[str], None]) -> None:
 
 
 def serve_connection(
-    ws, bot: PokerBot, key: str, log: Callable[[str], None] = _log
+    ws,
+    bot: PokerBot,
+    credentials: Union[str, Credentials],
+    log: Callable[[str], None] = _log,
 ) -> None:
     """Plays on one open connection until it closes."""
-    ws.send(json.dumps({"type": "hello", "key": key, "protocol": PROTOCOL}))
+    if isinstance(credentials, str):
+        credentials = Credentials(key=credentials)
+    if credentials.key:
+        ws.send(
+            json.dumps(
+                {"type": "hello", "key": credentials.key, "protocol": PROTOCOL}
+            )
+        )
+    else:
+        ws.send(
+            json.dumps(
+                {
+                    "type": "register",
+                    "team": credentials.team,
+                    "code": credentials.code,
+                    "protocol": PROTOCOL,
+                }
+            )
+        )
     first = json.loads(ws.recv(timeout=15))
     if first.get("type") == "rejected":
         raise Rejected(str(first.get("message", "rejected")))
-    if first.get("type") != "welcome":
+    if first.get("type") == "registered":
+        # Keep the key: from now on this computer logs in with it.
+        credentials.key = first["key"]
+        credentials.team = first["team"]
+        if credentials.on_key is not None:
+            credentials.on_key(first["team"], first["key"])
+        log(f"registered team {first['team']!r}")
+    elif first.get("type") != "welcome":
         raise Rejected(f"unexpected reply from the arena: {first!r}")
     log(f"connected as team {first.get('team')!r}; waiting for matches")
 
@@ -114,7 +187,7 @@ def serve_connection(
 def run(
     bot: PokerBot,
     url: str,
-    key: str,
+    credentials: Union[str, Credentials],
     *,
     log: Callable[[str], None] = _log,
     stop: Optional[Callable[[], bool]] = None,
@@ -127,6 +200,8 @@ def run(
     )
     from websockets.sync.client import connect
 
+    if isinstance(credentials, str):
+        credentials = Credentials(key=credentials)
     delay = RECONNECT_FIRST_SECONDS
     while stop is None or not stop():
         try:
@@ -134,7 +209,7 @@ def run(
                 url, max_size=64 * 1024, open_timeout=CONNECT_TIMEOUT_SECONDS
             ) as ws:
                 delay = RECONNECT_FIRST_SECONDS
-                serve_connection(ws, bot, key, log)
+                serve_connection(ws, bot, credentials, log)
         except Rejected as exc:
             log(f"the arena refused the connection: {exc}")
             return EXIT_REJECTED
@@ -160,6 +235,32 @@ def run(
     return 0
 
 
+def resolve_credentials(
+    key: Optional[str], team: Optional[str], code: Optional[str]
+) -> Optional[Credentials]:
+    """Chooses how to log in, or None if there is not enough to go on.
+
+    An explicit key wins, then a key saved for the team on this computer
+    (so running the registration command twice is harmless), and only then a
+    registration with the join code.
+    """
+
+    def remember(name: str, value: str) -> None:
+        path = save_key(name, value)
+        _log(f"your team key is saved in {path}")
+        _log("keep that file private; if you lose it, ask the organiser")
+
+    if key:
+        return Credentials(key=key, team=team)
+    if team:
+        saved = load_key(team)
+        if saved:
+            return Credentials(key=saved, team=team)
+        if code:
+            return Credentials(team=team, code=code, on_key=remember)
+    return None
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m arena.connect",
@@ -167,12 +268,23 @@ def main(argv: Optional[list] = None) -> int:
     )
     parser.add_argument("bot", help="bot folder (with bot.py) or .py file")
     parser.add_argument("--url", required=True, help="ws://HOST:PORT")
+    parser.add_argument("--team", help="your team name")
+    parser.add_argument(
+        "--code",
+        default=os.environ.get("ARENA_CODE"),
+        help="the join code the organiser announced (first time only)",
+    )
     parser.add_argument(
         "--key", default=os.environ.get("ARENA_KEY"), help="your team's key"
     )
     args = parser.parse_args(argv)
-    if not args.key:
-        print("give your team's key with --key (or set ARENA_KEY)")
+    credentials = resolve_credentials(args.key, args.team, args.code)
+    if credentials is None:
+        print(
+            "to register: --team NAME --code JOINCODE (the organiser gives "
+            "you the code); to play with a key you already have: "
+            "--team NAME, or --key KEY"
+        )
         return 2
     try:
         bot = load_bot(Path(args.bot).resolve())
@@ -182,7 +294,7 @@ def main(argv: Optional[list] = None) -> int:
         return 1
     _log(f"bot loaded; connecting to {args.url}")
     try:
-        return run(bot, args.url, args.key)
+        return run(bot, args.url, credentials)
     except KeyboardInterrupt:
         return 0
 

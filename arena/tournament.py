@@ -24,6 +24,7 @@ hand, which the scoring punishes exactly as it does for a crashed bot.
 
 from __future__ import annotations
 
+import hmac
 import math
 import os
 import random
@@ -113,6 +114,97 @@ def generate_keys(
     if state is None and store.remote_teams():
         store.set_tournament(_blank_state())
     return keys
+
+
+# -- self-registration ------------------------------------------------------
+
+DEFAULT_MAX_TEAMS = 64
+
+
+def open_registration(
+    store: Store,
+    code: Optional[str] = None,
+    max_teams: int = DEFAULT_MAX_TEAMS,
+) -> str:
+    """Lets teams register themselves with a join code; returns the code.
+
+    The code is announced to the people at the event. Only a hash is stored.
+    Registration is possible until the groups are drawn.
+    """
+    if max_teams < 2:
+        raise TournamentError("--max-teams must be at least 2")
+    state = store.tournament() or _blank_state()
+    if state["phase"] != "registration":
+        raise TournamentError(
+            "registration is over: the groups have been drawn"
+        )
+    code = (code or secrets.token_hex(3)).strip()
+    if len(code) < 4:
+        raise TournamentError("the join code must be at least 4 characters")
+    state["registration"] = {
+        "open": True,
+        "code_hash": hash_key(code),
+        "max_teams": max_teams,
+    }
+    store.set_tournament(state)
+    return code
+
+
+def close_registration(store: Store) -> None:
+    state = state_of(store)
+    if state.get("registration"):
+        state["registration"]["open"] = False
+        store.set_tournament(state)
+
+
+def registration_is_open(store: Store) -> bool:
+    state = store.tournament()
+    return bool(
+        state
+        and state["phase"] == "registration"
+        and (state.get("registration") or {}).get("open")
+    )
+
+
+def register_team(store: Store, team: str, code: str) -> str:
+    """Creates a team for someone who knows the join code; returns its key.
+
+    Raises TournamentError with a message that is safe to show the caller.
+    """
+    state = store.tournament()
+    registration = (state or {}).get("registration") or {}
+    if not registration.get("open") or state["phase"] != "registration":
+        raise TournamentError("registration is not open")
+    if not isinstance(code, str) or not hmac.compare_digest(
+        hash_key(code.strip()), registration["code_hash"]
+    ):
+        raise TournamentError("that join code is not right")
+    if not isinstance(team, str) or not TEAM_NAME.match(team):
+        raise TournamentError(
+            "a team name is lowercase letters, digits, '-' and '_', up to "
+            "32 characters, starting with a letter or digit"
+        )
+    teams = store.remote_teams()
+    if team in teams:
+        raise TournamentError(
+            f"the name {team!r} is taken; if it is your team and you lost "
+            "its key, ask the organiser for a new one"
+        )
+    if len(teams) >= registration.get("max_teams", DEFAULT_MAX_TEAMS):
+        raise TournamentError("registration is full")
+    key = new_key()
+    if not store.add_remote_team(team, hash_key(key)):
+        raise TournamentError(f"the name {team!r} is taken")
+    return key
+
+
+def remove_team(store: Store, team: str) -> None:
+    """Removes a team before the draw (a mistaken or unwanted sign-up)."""
+    state = state_of(store)
+    if state["phase"] != "registration":
+        raise TournamentError("teams can only be removed before the draw")
+    if not store.remove_remote_team(team):
+        raise TournamentError(f"there is no team called {team!r}")
 
 
 def _blank_state() -> Dict[str, Any]:
@@ -509,6 +601,7 @@ def status(store: Store) -> Dict[str, Any]:
             bucket[job["status"]] = bucket.get(job["status"], 0) + 1
     return {
         "phase": state["phase"],
+        "registration_open": registration_is_open(store),
         "teams": teams,
         "groups": state["groups"],
         "finalists": state["finalists"],
