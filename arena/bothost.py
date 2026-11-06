@@ -27,7 +27,7 @@ from player_sdk._run import load_bot_from_file
 from player_sdk.bot_interface import PokerBot
 from player_sdk.client import translate_action
 from player_sdk.parser import GameStateParser
-from player_sdk.response import validate_response
+from player_sdk.response import InvalidResponse, validate_response
 
 
 def resolve_bot_file(target: Path) -> Path:
@@ -106,6 +106,11 @@ def main(argv: list[str] | None = None) -> int:
             if message.get("type") == "quit":
                 return 0
             reply = act_on_message(bot, parser, message)
+        except InvalidResponse as exc:
+            # A mistake in the bot's answer, not a crash: report just the
+            # sentence (no traceback), and keep it in the team's own log.
+            print(f"invalid response: {exc}", file=sys.stderr, flush=True)
+            reply = {"type": "error", "message": str(exc)}
         except Exception:
             reply = {
                 "type": "error",

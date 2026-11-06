@@ -13,7 +13,7 @@ from arena.duel import PairingConfig, play_pairing
 
 HEADER = """
 from player_sdk.bot_interface import PokerBot
-from player_sdk.models import Action
+from player_sdk.models import Action, Response
 """
 
 
@@ -259,3 +259,26 @@ def test_a_teardown_timeout_does_not_raise(tmp_path, monkeypatch):
     monkeypatch.setattr(agent._proc, "wait", slow_wait)
     agent.close()  # kill path with a wait that times out: no exception
     real_wait(10)
+
+
+def test_a_bad_response_is_reported_as_one_sentence_and_logged(tmp_path):
+    path = write_bot(
+        tmp_path,
+        "tiny",
+        """
+        class Tiny(PokerBot):
+            def act(self, game_state):
+                return Response.raise_to(1)
+        """,
+    )
+    contestant = process_contestant(path, tmp_path, max_faults=1000)
+    result = run(contestant)
+    assert result.faults_a > 0
+    reason = result.fault_log_a[0]
+    # The sentence itself, not the tail of a traceback.
+    assert reason.endswith("must be between 40 and 2000 chips")
+    assert "raise_to(1) is outside the allowed range" in reason
+    assert "Traceback" not in reason and "File " not in reason
+    # And the team's own log has it too.
+    log = (tmp_path / f"{path.stem}.log").read_text(encoding="utf-8")
+    assert "invalid response: raise_to(1) is outside" in log

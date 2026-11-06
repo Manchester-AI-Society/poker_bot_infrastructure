@@ -64,11 +64,9 @@ def cmd_draw(args: argparse.Namespace) -> int:
 
 
 def _summary(store: Store) -> str:
+    """One status line (no clock, so it changes only on progress)."""
     report = status(store)
-    parts = [
-        f"[{time.strftime('%H:%M:%S')}] {report['phase']}",
-        f"{len(report['teams'])} teams",
-    ]
+    parts = [report["phase"], f"{len(report['teams'])} teams"]
     for kind, counts in (report.get("matches") or {}).items():
         total = sum(counts.values())
         parts.append(f"{kind}: {counts.get('done', 0)}/{total} played")
@@ -101,7 +99,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             runner.step()
             line = _summary(store)
             if line != last:
-                print(line, flush=True)
+                print(f"[{time.strftime('%H:%M:%S')}] {line}", flush=True)
                 last = line
             time.sleep(0.5)
     except KeyboardInterrupt:
