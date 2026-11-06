@@ -50,13 +50,19 @@ def cmd_draw(args: argparse.Namespace) -> int:
             advance=args.advance,
             seed=args.seed,
             redo=args.redo,
+            single_round=args.single_round,
         )
     except TournamentError as exc:
         print(f"cannot do that: {exc}")
         return 2
+    ending = (
+        "one round: everyone plays everyone and the best team wins"
+        if state.get("single_round")
+        else f"the best {state['advance']} of each group reach the finals"
+    )
     print(
         f"drawn with seed {state['seed']} (the same seed gives the same "
-        f"draw); the best {state['advance']} of each group reach the finals"
+        f"draw); {ending}"
     )
     for group in state["groups"]:
         print(f"  group {group['name']}: {', '.join(group['teams'])}")
@@ -178,6 +184,11 @@ def add_tournament_parser(commands) -> None:
     )
     p.add_argument("--seed", type=int)
     p.add_argument("--redo", action="store_true")
+    p.add_argument(
+        "--single-round",
+        action="store_true",
+        help="one group with every team: a single round robin, no finals",
+    )
 
     p = command("start-groups", "begin round 1", cmd_start_groups)
     p.add_argument(

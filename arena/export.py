@@ -62,6 +62,9 @@ class ExportOptions:
     # Markdown for the 'How to submit' page (normally SUBMITTING.md);
     # empty means the site has no such page.
     guide: str = ""
+    # The Home page's text (event.json, see load_event); None means the site
+    # has no Home page and opens on the tournament.
+    event: Optional[Dict[str, Any]] = None
     # OWNER/REPO of the registry (issues are registrations). Empty means
     # the site has no Register page.
     registry_repo: str = ""
@@ -442,8 +445,13 @@ def _export_replays(
     options: ExportOptions,
     pairings: Dict[str, List[Dict[str, Any]]],
     rows: Dict[str, Dict[str, Any]],
+    deciding: str = "final",
 ) -> tuple[int, int, bool]:
-    """Writes replay files; returns (count, total bytes, anything changed)."""
+    """Writes replay files; returns (count, total bytes, anything changed).
+
+    ``deciding`` is the kind of match whose replays the default policy
+    ("final") publishes: the final, or the only round when there is one.
+    """
     folder = out / "data" / "replays"
     policy_file = folder / ".policy"
     changed = False
@@ -457,7 +465,7 @@ def _export_replays(
     wanted: set[Path] = set()
     for kind, entries in pairings.items():
         if options.replays == "none" or (
-            options.replays == "final" and kind != "final"
+            options.replays == "final" and kind != deciding
         ):
             continue
         for entry in entries:
@@ -582,6 +590,7 @@ def _tournament_built(
     from .tournament import revealed, team_names
 
     show = revealed(state)
+    single = bool(state.get("single_round"))
     pairings: Dict[str, List[Dict[str, Any]]] = {}
     rows: Dict[str, Dict[str, Any]] = {}
     group_boards: Dict[str, Dict[str, Any]] = {}
@@ -617,6 +626,7 @@ def _tournament_built(
         finalists = state["finalists"] if show["groups"] else []
         return {
             "phase": state["phase"],
+            "rounds": 1 if single else 2,
             "advance": state["advance"],
             "groups": [
                 {
@@ -629,10 +639,14 @@ def _tournament_built(
             "qualified": finalists,
             "finals": (
                 {"teams": finalists, "board": final_board}
-                if state["phase"] in ("finals", "done")
+                if state["phase"] in ("finals", "done") and not single
                 else None
             ),
-            "champion": state["champion"] if show["finals"] else None,
+            "champion": (
+                state["champion"]
+                if (show["finals"] or (single and show["groups"]))
+                else None
+            ),
         }
 
     def render() -> Dict[str, str]:
@@ -733,8 +747,14 @@ def export_site(
     else:
         built = _ladder_built(store)
 
+    one_round = bool(state is not None and state.get("single_round"))
     count, size, replays_changed = _export_replays(
-        store, out, options, built.pairings, built.rows
+        store,
+        out,
+        options,
+        built.pairings,
+        built.rows,
+        deciding="group" if one_round else "final",
     )
     changed = changed or replays_changed
 
@@ -756,12 +776,23 @@ def export_site(
         guide_path.unlink()
         changed = True
 
+    # The Home page's text travels as its own small JSON file.
+    event_path = data / "event.json"
+    if options.event:
+        changed = (
+            _write_if_changed(event_path, dumps(options.event)) or changed
+        )
+    elif event_path.exists():
+        event_path.unlink()
+        changed = True
+
     fingerprint = hashlib.sha256(
         "".join(files[name] for name in sorted(files)).encode()
         + options.fingerprint().encode()
         + options.title.encode()
         + options.submit_text.encode()
         + options.guide.encode()
+        + dumps(options.event or {}).encode()
         + options.registry_repo.encode()
         + options.register_form.encode()
         + json.dumps(built.manifest, sort_keys=True).encode()
@@ -785,6 +816,7 @@ def export_site(
         "title": options.title,
         "submit_text": options.submit_text,
         "has_guide": bool(options.guide.strip()),
+        "has_event": bool(options.event),
         "registry_repo": options.registry_repo or None,
         "register_form": options.register_form or None,
         "fingerprint": fingerprint,
@@ -813,6 +845,46 @@ def export_site(
 
 
 # -- publishing --------------------------------------------------------
+
+
+def load_event(path: Path | str) -> Dict[str, Any]:
+    """Reads and tidies the Home page text (event.json).
+
+    Only the known fields survive, as short plain strings, so a typo in the
+    file cannot break the page or smuggle anything into it.
+    """
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        raise ExportError(f"cannot read the event file {path}: {exc}")
+    if not isinstance(raw, dict):
+        raise ExportError("the event file must hold one JSON object")
+
+    def text(value: Any, limit: int = 1200) -> str:
+        return value.strip()[:limit] if isinstance(value, str) else ""
+
+    def texts(value: Any) -> List[str]:
+        items = value if isinstance(value, list) else []
+        return [t for t in (text(v) for v in items[:20]) if t]
+
+    timeline = []
+    for row in (raw.get("timeline") or [])[:30]:
+        if isinstance(row, dict) and text(row.get("title")):
+            timeline.append(
+                {
+                    "time": text(row.get("time"), 40),
+                    "title": text(row.get("title"), 120),
+                    "detail": text(row.get("detail")),
+                }
+            )
+    return {
+        "tagline": text(raw.get("tagline"), 200),
+        "intro": texts(raw.get("intro")),
+        "prize": text(raw.get("prize"), 200),
+        "timeline": timeline,
+        "rules": texts(raw.get("rules")),
+        "contact": text(raw.get("contact")),
+    }
 
 
 def git_publish(out: Path | str, message: str) -> bool:

@@ -3,6 +3,7 @@
 // are keyed by it so a CDN or browser can cache them between changes.
 
 import { isTournament, normalizeTeams, normalizeTournament, tournamentFiles } from './tournament-core.js';
+import { normalizeEvent } from './event-core.js';
 
 export const data = {
   manifest: null,
@@ -63,9 +64,10 @@ async function loadTournament(manifest) {
   const files = tournamentFiles(manifest);
   const pairingKinds = Object.keys(files.pairings);
   const boardKinds = Object.keys(files.boards);
-  const [tournament, teams, ...rest] = await Promise.all([
+  const [tournament, teams, event, ...rest] = await Promise.all([
     getJSON(files.tournament, bust),
     getOptionalJSON(files.teams, bust),
+    manifest.has_event ? getOptionalJSON('data/event.json', bust) : null,
     ...pairingKinds.map((kind) => getOptionalJSON(files.pairings[kind], bust)),
     ...boardKinds.map((kind) => getOptionalJSON(files.boards[kind], bust)),
   ]);
@@ -79,6 +81,7 @@ async function loadTournament(manifest) {
     if (board) data.boards[kind] = board;
   });
   data.tournament = normalizeTournament(tournament);
+  data.event = normalizeEvent(event);
   data.teams = normalizeTeams(teams && teams.teams);
   data.registrations = [];
   data.manifest = manifest;

@@ -8,6 +8,7 @@ import { h } from './dom.js';
 import { parseHash } from './format.js';
 import { isTournament, registerFormOpen, updatedText } from './tournament-core.js';
 import { guideView } from './views/guide.js';
+import { homeView } from './views/home.js';
 import { leaderboardView } from './views/leaderboard.js';
 import { matchesView } from './views/matches.js';
 import { matrixView } from './views/matrix.js';
@@ -52,7 +53,8 @@ function recall(key) {
 // watched, the TV rotation) keep running and read fresh data when they need it.
 const ROUTES = {
   // The home page is the leaderboard, or the tournament in that format.
-  '': { view: (ctx) => (isTournament(ctx.data.manifest) ? tournamentView(ctx) : leaderboardView(ctx)), live: true },
+  '': { view: homePage, live: true },
+  tournament: { view: tournamentView, live: true },
   matrix: { view: matrixView, live: true },
   matches: { view: matchesView, live: true },
   team: { view: teamView, live: true },
@@ -62,6 +64,13 @@ const ROUTES = {
   replay: { view: replayView, live: false },
   tv: { view: tvView, live: false },
 };
+
+// The home page: the event's Home (when the organiser gave event.json), else
+// the tournament, or the leaderboard in the ladder format.
+function homePage(ctx) {
+  if (!isTournament(ctx.data.manifest)) return leaderboardView(ctx);
+  return ctx.data.event ? homeView(ctx) : tournamentView(ctx);
+}
 
 // Pages that exist only for the repository-submission format. In a tournament
 // the Register page (a team-name form) exists only when the organiser set one up.
@@ -168,8 +177,12 @@ function paintNav() {
   // A tournament has no repository submissions.
   const submissions = document.getElementById('nav-submissions');
   if (submissions) submissions.hidden = tournament;
+  // With a Home page the Tournament gets its own tab.
+  const hasHome = tournament && Boolean(data.event);
+  const tab = document.getElementById('nav-tournament');
+  if (tab) tab.hidden = !hasHome;
   const home = document.getElementById('nav-home');
-  if (home) home.textContent = tournament ? 'Tournament' : 'Leaderboard';
+  if (home) home.textContent = hasHome ? 'Home' : tournament ? 'Tournament' : 'Leaderboard';
 }
 
 function paintKindSwitch() {

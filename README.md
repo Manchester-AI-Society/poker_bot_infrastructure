@@ -9,16 +9,13 @@ everyone's bot on one machine. **The prize pot is £300.**
 | Time | What happens |
 |---|---|
 | **12:00** | Hacking starts. Set up, write your bot, test it. |
-| **16:00** | Submission deadline. Upload your `.pkl` in the form; the last working one you upload is the one that plays. |
-| **18:00** | Finals. |
+| **18:00** | Submission deadline. Upload your `.pkl` in the form; the last working one you upload is the one that plays. |
+| **After 18:00** | The round: every bot plays every other bot. |
 
-* **Round 1, groups.** Teams are drawn at random into groups of at most 8. Each
-  group plays a round robin of heads-up matches.
-* **Round 2, finals.** The best 2 bots of each group play a round robin. The
-  final table decides the winner.
-* **No live standings.** Nothing about results is published until a round is
-  finished. The group tables appear when Round 1 ends, the final table when
-  Round 2 ends.
+* **One round.** Every submitted bot plays every other bot (a round robin of
+  heads-up matches). The bot with the best score is the champion.
+* **No live standings.** Nothing about results is published until the round is
+  finished. Then the table and the champion appear on the event website.
 
 Each deal is played twice with the two bots swapping seats, so card luck mostly
 cancels. A score is the average number of big blinds won per hand, with a 95%
@@ -119,7 +116,7 @@ python -m arena pack bots/myteam --team myteam
 
 Choose your team name once: lowercase letters, digits, `-` and `_`, up to 32
 characters. Then upload `myteam.pkl` in the submission form (the link is on the
-event website). You can submit again until 16:00: pack again and upload the new
+event website). You can submit again until 18:00: pack again and upload the new
 file. The newest file that works is the one that plays, and a newer file that is
 broken never replaces a working one.
 
@@ -150,13 +147,15 @@ State lives under `arena_data/` (the downloaded form uploads go in any folder).
 
 ```bash
 python -m arena import downloads                       # read every .pkl, check each bot
-python -m arena tournament draw --group-size 8 --advance 2
+python -m arena tournament draw --single-round         # everyone in one group
 python -m arena tournament start-groups --deals 100
-python -m arena tournament run                         # leave running; Ctrl+C when done
-python -m arena tournament start-finals --deals 200    # when status says "between"
+python -m arena tournament run                         # leave running until status says done
 python -m arena tournament status
-python -m arena export --out arena_site --git-push     # publish the results site
+python -m arena export --out arena_site --git-push     # publish the site (Home text: event.json)
 ```
+
+For two rounds (groups, then finals) draw with `--group-size 8 --advance 2`
+instead and run `start-finals` when status says `between`.
 
 Unpickling runs the team's code, so bots are not sandboxed: run the event on a
 machine you can spare. A file's label is read without running anything, and the

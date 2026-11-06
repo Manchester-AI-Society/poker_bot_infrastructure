@@ -72,7 +72,7 @@ export function groupCard(group, t, { limit = null } = {}) {
 /** Round 1: the note, then every group. */
 export function roundOneSection(t, opts = {}) {
   const section = h('section', { class: 'round', 'aria-labelledby': 'round-1' });
-  section.appendChild(h('h2', { id: 'round-1' }, 'Round 1: groups'));
+  section.appendChild(h('h2', { id: 'round-1' }, t.rounds === 1 ? 'The round' : 'Round 1: groups'));
   const note = roundOneNote(t);
   if (note) section.appendChild(h('p', { class: 'note' }, note));
   if (!t.groups.length) return section;
@@ -81,7 +81,13 @@ export function roundOneSection(t, opts = {}) {
   );
   if (groupsRevealed(t)) {
     section.appendChild(
-      h('p', { class: 'note' }, `Teams marked Qualified (the top ${t.advance} of each group) go through to the finals.`),
+      h(
+        'p',
+        { class: 'note' },
+        t.rounds === 1
+          ? 'One round: every team plays every other, and the team with the best score is the champion.'
+          : `Teams marked Qualified (the top ${t.advance} of each group) go through to the finals.`,
+      ),
     );
   }
   return section;
@@ -165,7 +171,7 @@ export function tournamentView(ctx) {
       : null,
     roundOneSection(t),
     t.groups.length ? undrawnCard(undrawnTeams(ctx.data.teams, t)) : null,
-    finalsSection(t, ctx.data.boards.final),
+    t.rounds === 1 ? null : finalsSection(t, ctx.data.boards.final),
     groupsRevealed(t) ? h('p', { class: 'note' }, SCORE_NOTE) : null,
   );
   return { el: page, title: 'Tournament' };

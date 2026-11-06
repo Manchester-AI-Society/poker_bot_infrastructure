@@ -1,0 +1,32 @@
+{
+  "tagline": "Write a poker bot. Submit it. Best bot wins.",
+  "intro": [
+    "Today you write a Python bot that plays heads-up no-limit Texas Hold'em. Your bot only decides what to do each turn; the arena deals the cards and enforces the rules.",
+    "When hacking ends you pack your bot into one .pkl file and upload it in the submission form. There is one round: every submitted bot plays every other bot, each pairing over many deals with the seats swapped so card luck mostly cancels. The bot with the best score is the champion."
+  ],
+  "prize": "£300 prize pot",
+  "timeline": [
+    {
+      "time": "12:00",
+      "title": "Hacking starts",
+      "detail": "Set up, write your bot and test it against the built-in opponents. Pack it with arena pack as soon as it works, so you know the process before the deadline."
+    },
+    {
+      "time": "18:00",
+      "title": "Submission deadline",
+      "detail": "Upload your .pkl in the submission form. The last working file you upload before 18:00 is the one that plays."
+    },
+    {
+      "time": "After 18:00",
+      "title": "The round",
+      "detail": "Every bot plays every other bot. Nothing is shown until the round is finished, then the results and the champion appear on this site."
+    }
+  ],
+  "rules": [
+    "One bot per team, packed with arena pack and uploaded as a .pkl file.",
+    "Every move has a time limit of 1 second. A crash, a timeout or an illegal move is a fault: a safe move is played, and after 20 faults your bot folds for the rest of that match.",
+    "Load data and models in your bot's __init__; files on disk are not available when the arena plays your bot.",
+    "Do not attack the arena or other teams' bots, do not use the network, and do not read files outside your bot."
+  ],
+  "contact": "Stuck? Find an organiser in the room. Run python -m arena validate bots/myteam to see why your bot is failing."
+}

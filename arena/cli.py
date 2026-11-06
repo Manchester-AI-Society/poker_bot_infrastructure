@@ -42,6 +42,7 @@ from .export import (
     ExportOptions,
     export_site,
     git_publish,
+    load_event,
 )
 from .history import HandWriter
 from .intake import SubmissionError, scan_directory, submit
@@ -74,6 +75,7 @@ DEFAULT_GUIDE = next(
     _ROOT / "README.md",
 )
 ORGANISER_HEADING = "\n## For the organiser"
+DEFAULT_EVENT = _ROOT / "event.json"
 
 
 def _fmt_bb(value: Optional[float]) -> str:
@@ -580,6 +582,16 @@ def cmd_export(args: argparse.Namespace) -> int:
         elif args.guide:
             print(f"export failed: cannot read the guide {guide_path}")
             return 1
+    event = None
+    event_path = args.event_file or (
+        str(DEFAULT_EVENT) if DEFAULT_EVENT.is_file() else ""
+    )
+    if event_path and not args.no_event:
+        try:
+            event = load_event(event_path)
+        except ExportError as exc:
+            print(f"export failed: {exc}")
+            return 1
     options = ExportOptions(
         title=args.title,
         replays=args.replays,
@@ -587,6 +599,7 @@ def cmd_export(args: argparse.Namespace) -> int:
         max_replay_hands=args.max_replay_hands,
         submit_text=submit_text,
         guide=guide,
+        event=event,
         registry_repo=args.registry_repo or "",
         registrations=args.registrations or "",
         register_form=args.register_form or "",
@@ -846,6 +859,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-guide",
         action="store_true",
         help="leave the 'How to submit' page out of the site",
+    )
+    sub.add_argument(
+        "--event-file",
+        metavar="FILE",
+        help="the Home page text (default: event.json in the repository)",
+    )
+    sub.add_argument(
+        "--no-event",
+        action="store_true",
+        help="leave the Home page out of the site",
     )
     sub.add_argument(
         "--loop",

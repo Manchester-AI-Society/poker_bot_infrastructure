@@ -65,6 +65,8 @@ export function normalizeTournament(raw) {
   const board = (b) => (b && Array.isArray(b.teams) ? b : null);
   return {
     phase: t.phase || '',
+    // One round (a single round robin, no finals) or the usual two.
+    rounds: t.rounds === 1 ? 1 : 2,
     advance,
     groups: Array.isArray(t.groups)
       ? t.groups.map((g) => ({
@@ -159,6 +161,7 @@ export function advanceText(advance) {
 /** What to say under the Round 1 heading, or null once results are shown. */
 export function roundOneNote(t) {
   if (groupsRevealed(t)) return null;
+  if (t.rounds === 1 && t.phase === 'registration') return 'The draw is made when submissions close. Everyone plays everyone in one round.';
   switch (t.phase) {
     case 'registration':
       return 'The groups are drawn when submissions close.';
@@ -199,6 +202,8 @@ export function qualifiedInGroup(group, t) {
 
 /** Marks for a group table: team name -> text. */
 export function groupMarks(group, t) {
+  // One round: the champion is the top of the table; nobody "qualifies".
+  if (t.rounds === 1) return t.champion && group.teams.includes(t.champion) ? new Map([[t.champion, 'Champion']]) : new Map();
   return new Map([...qualifiedInGroup(group, t)].map((name) => [name, 'Qualified']));
 }
 

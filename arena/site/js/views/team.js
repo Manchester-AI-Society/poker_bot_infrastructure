@@ -87,7 +87,7 @@ function tournamentTeamView(ctx, name, entry) {
       h('h1', {}, name),
       me.group ? h('span', { class: 'badge' }, `GROUP ${me.group}`) : null,
       me.champion ? h('span', { class: 'badge final mark' }, h('span', { 'aria-hidden': 'true' }, '★'), 'Champion') : null,
-      me.qualified ? h('span', { class: 'badge ok' }, h('span', { 'aria-hidden': 'true' }, '✓'), 'Qualified for the finals') : null,
+      me.qualified && t.rounds !== 1 ? h('span', { class: 'badge ok' }, h('span', { 'aria-hidden': 'true' }, '✓'), 'Qualified for the finals') : null,
     ),
   );
   if (!ctx.data.manifest.kinds.length) {
@@ -111,7 +111,7 @@ function tournamentTeamView(ctx, name, entry) {
       stat(row && row.score != null ? `#${row.rank}` : '–', 'rank in group'),
       stat(row ? fmtBB(row.score) : '—', 'bb/hand'),
       stat(row ? `${row.wins}–${row.draws}–${row.losses}` : '—', 'W–D–L'),
-      stat(me.qualified == null ? '—' : me.qualified ? 'Yes' : 'No', 'in the finals'),
+      t.rounds === 1 ? null : stat(me.qualified == null ? '—' : me.qualified ? 'Yes' : 'No', 'in the finals'),
     ),
   );
   for (const [kind, heading] of [

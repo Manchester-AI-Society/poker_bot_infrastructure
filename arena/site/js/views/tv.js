@@ -114,12 +114,12 @@ export function tvView(ctx) {
             { class: 'tvstatus' },
             phaseBanner(t),
             championBanner(t),
-            finalsStage(t) === 'unknown' ? h('p', { class: 'note' }, advanceText(t.advance)) : null,
+            t.rounds !== 1 && finalsStage(t) === 'unknown' ? h('p', { class: 'note' }, advanceText(t.advance)) : null,
           );
         },
       },
       {
-        name: 'Round 1: groups',
+        name: t.rounds === 1 ? 'The round' : 'Round 1: groups',
         build() {
           // Before the reveal: the draw. After it, each group has its own slide.
           return boards.some((b) => b.kind === 'group') || !t.groups.length ? null : roundOneSection(t);
@@ -134,7 +134,7 @@ export function tvView(ctx) {
       {
         name: 'Finals',
         build() {
-          return finalsStage(t) === 'unknown' ? null : finalsSection(t, ctx.data.boards.final);
+          return t.rounds === 1 || finalsStage(t) === 'unknown' ? null : finalsSection(t, ctx.data.boards.final);
         },
       },
       ...boards.map((b) => ({

@@ -1,4 +1,4 @@
-"""The two-round tournament.
+"""The tournament: two rounds, or one (``draw --single-round``).
 
 Round 1 (groups): every team that handed in a working bot is drawn into a
 group of at most ``group_size`` bots (groups are as even as possible), and
@@ -67,6 +67,7 @@ def _blank_state() -> Dict[str, Any]:
         "group_size": 8,
         "advance": 2,
         "groups": [],
+        "single_round": False,
         "finalists": [],
         "finals_freeze": None,
         "deals": {},
@@ -140,8 +141,13 @@ def draw(
     advance: int = 2,
     seed: Optional[int] = None,
     redo: bool = False,
+    single_round: bool = False,
 ) -> Dict[str, Any]:
-    """Draws the groups (round 1). Allowed until the groups start playing."""
+    """Draws the groups (round 1). Allowed until the groups start playing.
+
+    ``single_round`` puts every team in ONE group: a single round robin, and
+    the best team is the champion (no finals).
+    """
     state = store.tournament() or _blank_state()
     if state["phase"] not in ("registration", "drawn"):
         raise TournamentError(
@@ -160,12 +166,17 @@ def draw(
             "at least two teams with a working bot are needed "
             f"({len(teams)} so far)"
         )
+    if single_round:
+        group_size = len(teams)
     if seed is None:
         seed = secrets.randbits(32)
     by_team = {v.team: v for v in store.current_versions()}
     groups = draw_groups(teams, group_size, seed)
     state.update(
         phase="drawn",
+        # Asked for with --single-round: everyone plays everyone in one
+        # group and the best team is the champion (there are no finals).
+        single_round=single_round,
         seed=seed,
         group_size=group_size,
         advance=advance,
@@ -229,6 +240,8 @@ def start_groups(store: Store, deals: Optional[int] = None) -> int:
 def qualifiers(store: Store, state: Dict[str, Any]) -> List[str]:
     """The best ``advance`` teams of each group, group by group."""
     chosen: List[str] = []
+    if state.get("single_round"):
+        return chosen  # one round: nobody "qualifies", the best wins
     for group in state["groups"]:
         board = leaderboard.compute(store, "group", group["freeze"])
         chosen += [t["team"] for t in board["teams"][: state["advance"]]]
@@ -238,6 +251,8 @@ def qualifiers(store: Store, state: Dict[str, Any]) -> List[str]:
 def cut_ties(store: Store, state: Dict[str, Any]) -> List[str]:
     """Groups where the last qualifier cannot be told from the first out."""
     notes = []
+    if state.get("single_round"):
+        return notes
     for group in state["groups"]:
         board = leaderboard.compute(store, "group", group["freeze"])
         teams = board["teams"]
@@ -282,7 +297,15 @@ def settle(store: Store) -> Optional[str]:
     jobs = store.jobs_of(kind)
     if not jobs or any(j["status"] != "done" for j in jobs):
         return None
-    if kind == "group":
+    if kind == "group" and state.get("single_round"):
+        board = leaderboard.compute(
+            store, "group", state["groups"][0]["freeze"]
+        )
+        state["champion"] = (
+            board["teams"][0]["team"] if board["teams"] else None
+        )
+        state["phase"] = "done"
+    elif kind == "group":
         state["finalists"] = qualifiers(store, state)
         state["phase"] = "between"
     else:
@@ -298,9 +321,10 @@ def settle(store: Store) -> Optional[str]:
 def revealed(state: Optional[Dict[str, Any]]) -> Dict[str, bool]:
     """What the public site may show: results only after a round is over."""
     phase = state["phase"] if state else "registration"
+    single = bool(state and state.get("single_round"))
     return {
         "groups": phase in ("between", "finals", "done"),
-        "finals": phase == "done",
+        "finals": phase == "done" and not single,
     }
 
 
