@@ -78,7 +78,32 @@ export function normalizeInfo(raw, manifest = null) {
     delay_seconds: number(i.delay_seconds, manifest && number(manifest.delay_seconds) !== null ? manifest.delay_seconds : null),
     interval_seconds: number(i.interval_seconds),
     note: typeof i.note === 'string' ? i.note.trim() : '',
+    event: normalizeEvent(i.event),
   };
+}
+
+/**
+ * The Home page's text (event.json via info.json). Every field is optional and
+ * only short plain strings survive; null when the organiser gave nothing.
+ */
+export function normalizeEvent(raw) {
+  if (!isObject(raw)) return null;
+  const text = (v, max = 1200) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  const texts = (v) => list(v).map((x) => text(x)).filter(Boolean).slice(0, 20);
+  const timeline = list(raw.timeline)
+    .filter((row) => isObject(row) && text(row.title))
+    .slice(0, 30)
+    .map((row) => ({ time: text(row.time, 40), title: text(row.title, 120), detail: text(row.detail) }));
+  const event = {
+    tagline: text(raw.tagline, 200),
+    intro: texts(raw.intro),
+    prize: text(raw.prize, 200),
+    timeline,
+    rules: texts(raw.rules),
+    contact: text(raw.contact),
+  };
+  const empty = !event.tagline && !event.intro.length && !event.prize && !timeline.length && !event.rules.length && !event.contact;
+  return empty ? null : event;
 }
 
 /** teams.json's list for the live format: {team, status}, status one of TEAM_STATUSES. */

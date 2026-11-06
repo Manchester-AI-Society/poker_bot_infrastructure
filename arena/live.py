@@ -411,6 +411,7 @@ class LiveOptions:
     registrations: str = ""  # that form's sheet, as CSV file or https address
     note: str = ""  # free text for the top of the Info page
     guide: str = ""  # markdown for the Info page
+    event: Optional[Dict[str, Any]] = None  # the Home page (event.json)
 
     def validate(self) -> None:
         if self.delay < 0:
@@ -425,6 +426,46 @@ class LiveOptions:
             value = getattr(self, name)
             if value and not value.startswith(("http://", "https://")):
                 raise ExportError(f"{name} must start with http(s)://")
+
+
+def load_event(path: str) -> Dict[str, Any]:
+    """Reads and tidies the Home page text (event.json).
+
+    Only the known fields survive, as short plain strings, so a typo in the
+    file cannot break the page or smuggle anything into it.
+    """
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        raise ExportError(f"cannot read the event file {path}: {exc}")
+    if not isinstance(raw, dict):
+        raise ExportError("the event file must hold one JSON object")
+
+    def text(value: Any, limit: int = 600) -> str:
+        return value.strip()[:limit] if isinstance(value, str) else ""
+
+    def texts(value: Any, limit: int = 600) -> List[str]:
+        items = value if isinstance(value, list) else []
+        return [t for t in (text(v, limit) for v in items[:20]) if t]
+
+    timeline = []
+    for row in (raw.get("timeline") or [])[:30]:
+        if isinstance(row, dict) and text(row.get("title")):
+            timeline.append(
+                {
+                    "time": text(row.get("time"), 40),
+                    "title": text(row.get("title"), 120),
+                    "detail": text(row.get("detail")),
+                }
+            )
+    return {
+        "tagline": text(raw.get("tagline"), 200),
+        "intro": texts(raw.get("intro"), 1200),
+        "prize": text(raw.get("prize"), 200),
+        "timeline": timeline,
+        "rules": texts(raw.get("rules")),
+        "contact": text(raw.get("contact")),
+    }
 
 
 def export_live(
@@ -456,6 +497,7 @@ def export_live(
         "delay_seconds": options.delay,
         "interval_seconds": options.interval,
         "note": options.note,
+        "event": options.event,
     }
     files = build_files(feed, now, options.delay, info, registered)
 

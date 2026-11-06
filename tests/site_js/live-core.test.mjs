@@ -10,6 +10,7 @@ import {
   isLive,
   latestEnd,
   liveRegisterForm,
+  normalizeEvent,
   normalizeInfo,
   normalizeLive,
   normalizeLiveTeams,
@@ -77,7 +78,7 @@ test('live.json is normalised whatever it holds', () => {
 });
 
 test('info.json and teams.json are normalised', () => {
-  assert.deepEqual(normalizeInfo(null), { server_url: null, join_code: null, form_url: null, delay_seconds: null, interval_seconds: null, note: '' });
+  assert.deepEqual(normalizeInfo(null), { server_url: null, join_code: null, form_url: null, delay_seconds: null, interval_seconds: null, note: '', event: null });
   const info = normalizeInfo({ server_url: ' https://x.test ', join_code: '', form_url: 5, note: 7, interval_seconds: 300, delay_seconds: 30 });
   assert.equal(info.server_url, 'https://x.test');
   assert.equal(info.join_code, null);
@@ -88,6 +89,31 @@ test('info.json and teams.json are normalised', () => {
     { team: 'b', status: 'registered' },
   ]);
   assert.deepEqual(normalizeLiveTeams(null), []);
+});
+
+test('the Home page text keeps only short plain strings and known fields', () => {
+  assert.equal(normalizeEvent(null), null);
+  assert.equal(normalizeEvent({}), null);
+  assert.equal(normalizeEvent([1]), null);
+  const event = normalizeEvent({
+    tagline: ' Go ',
+    intro: ['a', 5, '', ' b '],
+    prize: '£300',
+    timeline: [{ time: '12:00', title: 'Start', detail: 'd', evil: '<b>' }, { time: '1' }, 'x', { title: 7 }],
+    rules: 'not a list',
+    contact: 'ask',
+    other: 'ignored',
+  });
+  assert.deepEqual(event, {
+    tagline: 'Go',
+    intro: ['a', 'b'],
+    prize: '£300',
+    timeline: [{ time: '12:00', title: 'Start', detail: 'd' }],
+    rules: [],
+    contact: 'ask',
+  });
+  assert.equal(normalizeEvent({ prize: 'x'.repeat(500) }).prize.length, 200);
+  assert.equal(normalizeInfo({ event: { prize: 'p' } }).event.prize, 'p');
 });
 
 test('only plain table ids are ever requested', () => {

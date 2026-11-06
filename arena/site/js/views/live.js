@@ -236,7 +236,7 @@ export function liveTableView(ctx) {
   if (!entry) {
     page.append(
       h('header', {}, h('h1', {}, 'Table')),
-      h('div', { class: 'empty card' }, 'That table is not in the feed. ', h('a', { href: '#/' }, 'Back to the live page')),
+      h('div', { class: 'empty card' }, 'That table is not in the feed. ', h('a', { href: '#/live' }, 'Back to the live page')),
     );
     return { el: page, title: 'Table' };
   }
@@ -248,7 +248,7 @@ export function liveTableView(ctx) {
       h('h1', {}, label),
       h('span', { class: 'badge' }, `Round ${entry.round}`),
       h('span', { class: table.status === 'finished' ? 'badge' : 'badge ok' }, table.status),
-      h('a', { class: 'small', href: '#/' }, 'All tables'),
+      h('a', { class: 'small', href: '#/live' }, 'All tables'),
     ),
     noticeEl(live),
   );

@@ -9,6 +9,7 @@ import { parseHash } from './format.js';
 import { isLive, liveRegisterForm } from './live-core.js';
 import { isTournament, registerFormOpen, updatedText } from './tournament-core.js';
 import { guideView } from './views/guide.js';
+import { homeView as liveFormatHome } from './views/home.js';
 import { infoView } from './views/info.js';
 import { liveHomeView, liveTableView } from './views/live.js';
 import { liveTvView } from './views/live-tv.js';
@@ -67,21 +68,22 @@ const ROUTES = {
   replay: { view: replayView, live: false },
   tv: { view: (ctx) => (isLive(ctx.data.manifest) ? liveTvView(ctx) : tvView(ctx)), live: false },
   // The live format only.
+  live: { view: liveHomeView, live: true },
   info: { view: infoView, live: true },
   table: { view: liveTableView, live: true },
   teams: { view: teamsView, live: true },
 };
 
 function homeView(ctx) {
-  if (isLive(ctx.data.manifest)) return liveHomeView(ctx);
+  if (isLive(ctx.data.manifest)) return liveFormatHome(ctx);
   return isTournament(ctx.data.manifest) ? tournamentView(ctx) : leaderboardView(ctx);
 }
 
 // The live format shows a stream of one tournament: no ladder, head-to-head,
 // matches, submissions or replays, and the Info page is the old guide's place.
-const LIVE_PAGES = new Set(['', 'table', 'teams', 'info', 'submit', 'register', 'tv']);
+const LIVE_PAGES = new Set(['', 'live', 'table', 'teams', 'info', 'submit', 'register', 'tv']);
 // ...and the other formats have none of its own pages.
-const LIVE_ONLY = new Set(['info', 'table', 'teams']);
+const LIVE_ONLY = new Set(['live', 'info', 'table', 'teams']);
 
 // Pages that exist only for the repository-submission format. In a tournament
 // the Register page (a team-name form) exists only when the organiser set one up.
@@ -167,7 +169,7 @@ async function render({ keepScroll = false } = {}) {
 
   paintNav();
   // In the live format a table page belongs to the Live tab, and #/submit is the Info page.
-  const aliases = isLive(data.manifest) ? { submit: 'info', table: '' } : {};
+  const aliases = isLive(data.manifest) ? { submit: 'info', table: 'live' } : {};
   const here = path[0] || '';
   const tab = Object.hasOwn(aliases, here) ? aliases[here] : here;
   for (const link of document.querySelectorAll('.tabs a')) {
@@ -185,8 +187,8 @@ async function render({ keepScroll = false } = {}) {
 
 // ---- header controls --------------------------------------------------
 
-// Where each menu item sits in the live format (Live, Teams, Info, Register, TV).
-const LIVE_ORDER = { 'li-teams': 1, 'li-submit': 2, 'li-register': 3, 'li-tv': 4 };
+// Where each menu item sits in the live format (Home, Live, Teams, Info, Register, TV).
+const LIVE_ORDER = { 'li-live': 1, 'li-teams': 2, 'li-submit': 3, 'li-register': 4, 'li-tv': 5 };
 
 function paintNav() {
   const tournament = isTournament(data.manifest);
@@ -210,8 +212,9 @@ function paintNav() {
   set('nav-matrix', live);
   set('nav-matches', live);
   set('nav-teams', !live);
+  set('nav-live', !live);
   const home = document.getElementById('nav-home');
-  if (home) home.textContent = live ? 'Live' : tournament ? 'Tournament' : 'Leaderboard';
+  if (home) home.textContent = live ? 'Home' : tournament ? 'Tournament' : 'Leaderboard';
   // The guide's tab is the Info page in a live event.
   const guide = document.getElementById('nav-submit');
   if (guide) {

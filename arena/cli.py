@@ -68,6 +68,7 @@ from .tournament_cli import add_tournament_parser
 from .validate import smoke_test
 
 DEFAULT_GUIDE = Path(__file__).resolve().parents[1] / "SUBMITTING.md"
+DEFAULT_EVENT = Path(__file__).resolve().parents[1] / "event.json"
 
 
 def _fmt_bb(value: Optional[float]) -> str:
@@ -214,7 +215,7 @@ def cmd_backup_run(args: argparse.Namespace) -> int:
 
 
 def cmd_live(args: argparse.Namespace) -> int:
-    from .live import LiveOptions, describe, run_live
+    from .live import LiveOptions, describe, load_event, run_live
 
     guide = ""
     if not args.no_guide:
@@ -224,6 +225,16 @@ def cmd_live(args: argparse.Namespace) -> int:
             )
         except OSError as exc:
             print(f"cannot read the info page text: {exc}")
+            return 2
+    event = None
+    event_path = args.event_file or (
+        str(DEFAULT_EVENT) if DEFAULT_EVENT.exists() else ""
+    )
+    if event_path and not args.no_event:
+        try:
+            event = load_event(event_path)
+        except ExportError as exc:
+            print(f"cannot do that: {exc}")
             return 2
     options = LiveOptions(
         server=args.server,
@@ -237,6 +248,7 @@ def cmd_live(args: argparse.Namespace) -> int:
         registrations=args.registrations or "",
         note=args.note or "",
         guide=guide,
+        event=event,
     )
     try:
         options.validate()
@@ -812,7 +824,7 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument(
         "--join-code",
         metavar="CODE",
-        help="publish the join code on the Info page (off by default)",
+        help="the join code to show on the Info page",
     )
     live.add_argument(
         "--form-url", metavar="URL", help="the backup submission form"
@@ -832,6 +844,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--guide", help="markdown for the Info page (default SUBMITTING.md)"
     )
     live.add_argument("--no-guide", action="store_true")
+    live.add_argument(
+        "--event-file",
+        metavar="FILE",
+        help="the Home page text (default event.json in the repository)",
+    )
+    live.add_argument("--no-event", action="store_true")
     live.add_argument("--git-push", action="store_true")
     live.add_argument(
         "--once", action="store_true", help="publish once and stop"

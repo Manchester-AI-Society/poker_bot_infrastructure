@@ -163,6 +163,12 @@ to register and connect. Anyone who finds the site's address can therefore
 register a bot; pass `-HideCode` and read the code out in the room if you do not
 want that.
 
+The site's Home page (the challenge, prize, timeline, rules and who to ask) comes
+from `event.json` in the repository root. Edit the times, prize and contact line
+there before the event; the next publication (and every one after) picks the
+change up, no rebuild needed. `python -m arena live --event-file OTHER.json`
+uses a different file.
+
 ## 6. The website on Vercel
 
 The site is the static folder the live feed writes. Point it at a git clone of the

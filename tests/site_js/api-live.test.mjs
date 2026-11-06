@@ -52,7 +52,7 @@ test('a table file that is missing (404) is tolerated; so are missing info and t
   assert.equal(await refresh(), true);
   assert.deepEqual(data.tables, {});
   assert.equal(data.live.rounds.length, 2);
-  assert.deepEqual(data.info, { server_url: null, join_code: null, form_url: null, delay_seconds: 30, interval_seconds: null, note: '' });
+  assert.deepEqual(data.info, { server_url: null, join_code: null, form_url: null, delay_seconds: 30, interval_seconds: null, note: '', event: null });
   assert.deepEqual(data.teams, []);
 });
 

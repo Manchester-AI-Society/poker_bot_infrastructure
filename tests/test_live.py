@@ -15,6 +15,7 @@ from arena.live import (
     LiveOptions,
     build_files,
     export_live,
+    load_event,
     parse_events,
 )
 from game.game_domain_models import InvalidActionError
@@ -523,6 +524,59 @@ def test_the_join_code_is_published_only_when_asked(server, tmp_path):
     export_live(feed, out, options(join_code="abc123"), now=5000.0)
     info = json.loads((out / "data" / "info.json").read_text())
     assert info["join_code"] == "abc123"
+
+
+def test_the_event_file_is_tidied_and_published(server, tmp_path):
+    path = tmp_path / "event.json"
+    path.write_text(
+        json.dumps(
+            {
+                "tagline": " Go ",
+                "intro": ["a", 3, ""],
+                "prize": "300",
+                "timeline": [
+                    {"time": "12:00", "title": "Start", "detail": "d", "x": 1},
+                    {"time": "13:00"},
+                    "junk",
+                ],
+                "rules": "nope",
+                "unknown": "dropped",
+            }
+        ),
+        encoding="utf-8",
+    )
+    event = load_event(str(path))
+    assert event == {
+        "tagline": "Go",
+        "intro": ["a"],
+        "prize": "300",
+        "timeline": [{"time": "12:00", "title": "Start", "detail": "d"}],
+        "rules": [],
+        "contact": "",
+    }
+    feed = Feed("http://server")
+    feed.poll()
+    out = tmp_path / "site"
+    export_live(feed, out, options(event=event), now=5000.0)
+    info = json.loads((out / "data" / "info.json").read_text())
+    assert info["event"] == event
+
+
+def test_a_bad_event_file_is_refused(tmp_path):
+    for body in ("not json", "[1, 2]"):
+        bad = tmp_path / "bad.json"
+        bad.write_text(body, encoding="utf-8")
+        with pytest.raises(ExportError):
+            load_event(str(bad))
+    with pytest.raises(ExportError):
+        load_event(str(tmp_path / "missing.json"))
+
+
+def test_the_repository_event_file_loads():
+    from arena.cli import DEFAULT_EVENT
+
+    event = load_event(str(DEFAULT_EVENT))
+    assert event["timeline"] and event["intro"] and event["prize"]
 
 
 def test_files_of_the_other_modes_and_old_tables_are_removed(server, tmp_path):

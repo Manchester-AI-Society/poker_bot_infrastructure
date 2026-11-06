@@ -1,0 +1,32 @@
+{
+  "tagline": "Write a poker bot. Connect it. Last bot standing wins.",
+  "intro": [
+    "Today you build a Python bot that plays no-limit Texas Hold'em. Your bot runs on your own laptop and connects over the internet to the organiser's server, which deals the cards and enforces the rules. Your bot only decides what to do each turn.",
+    "When hacking ends, every connected bot is shuffled onto tables of up to 23 and plays a knockout until one bot holds all the chips on its table. The table winners meet at a final table, and the winner of that is the champion. Blinds double every few hands, so waiting for perfect cards loses."
+  ],
+  "prize": "£300 for the champion",
+  "timeline": [
+    {
+      "time": "12:00",
+      "title": "Hacking starts",
+      "detail": "Set up, write your bot and test it against the built-in opponents. Register your team and connect to the server from the Info page whenever you are ready; you can leave your bot running from the start."
+    },
+    {
+      "time": "16:00",
+      "title": "Submission deadline",
+      "detail": "Your bot must be connected (or your backup zip handed in) by now. Only bots in the lobby at the start get a seat."
+    },
+    {
+      "time": "18:00",
+      "title": "Finals",
+      "detail": "The table winners meet at the final table. Watch it here on the Live page, a few minutes behind the real game."
+    }
+  ],
+  "rules": [
+    "One bot per team, any library or hardware you have.",
+    "Every turn has a time limit (about 15 seconds). If it runs out, the server checks for you, or folds if checking is not allowed.",
+    "A crash or an illegal answer costs you the turn, never your seat.",
+    "Do not attack the server, the website, or other teams' connections, and do not try to find out other teams' cards."
+  ],
+  "contact": "Stuck or cannot connect? Find an organiser in the room. If your network blocks the connection, use the backup form on the Info page."
+}
