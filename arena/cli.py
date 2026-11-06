@@ -190,7 +190,10 @@ def cmd_import(args: argparse.Namespace) -> int:
     if not find_zips(folder):
         print(f"no .zip files under {folder}")
         return 2
+    from .tournament import ensure_tournament
+
     store = Store(args.root)
+    ensure_tournament(store)
     results = import_submissions(store, folder, validate=not args.no_validate)
     bad = 0
     for r in results:

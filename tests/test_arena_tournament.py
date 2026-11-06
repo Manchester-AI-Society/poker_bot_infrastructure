@@ -1,16 +1,13 @@
-"""The two-round tournament, run with real websocket clients as the teams."""
+"""The two-round tournament, played with real bot processes."""
 
 from __future__ import annotations
 
-import threading
 import time
 
 import pytest
 
-from arena import connect as client
 from arena import leaderboard
-from arena.baselines import CallBot, FoldBot, ShoveBot
-from arena.gateway import Gateway
+from arena.intake import submit
 from arena.store import Store
 from arena.tournament import (
     Runner,
@@ -19,17 +16,31 @@ from arena.tournament import (
     balanced_sizes,
     draw,
     draw_groups,
-    generate_keys,
     qualifiers,
+    remove_team,
     revealed,
     settle,
     start_finals,
     start_groups,
     state_of,
     status,
+    team_names,
 )
 
-# -- the draw ----------------------------------------------------------------
+HEADER = (
+    "from player_sdk.bot_interface import PokerBot\n"
+    "from player_sdk.models import Response\n"
+)
+BODIES = {
+    "call": "class B(PokerBot):\n    def act(self, s):\n"
+    "        return Response.call()\n",
+    "fold": "class B(PokerBot):\n    def act(self, s):\n"
+    "        return Response.fold()\n",
+    "shove": "class B(PokerBot):\n    def act(self, s):\n"
+    "        return Response.all_in()\n",
+}
+
+# -- the draw -------------------
 
 
 @pytest.mark.parametrize(
@@ -63,7 +74,7 @@ def test_the_draw_places_everyone_once_and_is_reproducible():
     assert draw_groups(teams, 8, seed=43) != first
 
 
-# -- keys and phases -------------------------------------------------
+# -- teams from imported bots -------------------
 
 
 @pytest.fixture
@@ -71,56 +82,47 @@ def store(tmp_path):
     return Store(tmp_path / "data")
 
 
-def test_keys_are_made_once_and_only_a_hash_is_kept(store):
-    keys = generate_keys(store, ["fox", "owl"])
-    assert set(keys) == {"fox", "owl"} and keys["fox"] != keys["owl"]
-    assert all(len(k) >= 30 for k in keys.values())
-    assert keys["fox"] not in " ".join(store.remote_teams().values())
-    assert generate_keys(store, ["fox", "owl"]) == {}  # nothing new, no keys
+def add(store, tmp_path, team, kind="call"):
+    """Imports a real bot for ``team`` (a comment keeps each hash unique)."""
+    folder = tmp_path / "src" / team
+    folder.mkdir(parents=True)
+    (folder / "bot.py").write_text(
+        HEADER + BODIES[kind] + f"# {team}\n", encoding="utf-8"
+    )
+    result = submit(store, team, str(folder), validate=False)
+    assert result.accepted
+    return result
 
 
-def test_a_key_never_starts_with_a_dash(store):
-    """A key starting with "-" is taken for a command-line option, so the
-    client could not even start (found when a real team's key did)."""
-    from arena.tournament import new_key
-
-    keys = [new_key() for _ in range(5000)]
-    assert not any(k.startswith("-") for k in keys)
-    assert len(set(keys)) == len(keys)
-    assert all(k.startswith("ak_") for k in keys)
+def fake(store, team):
+    """A team without a bot process, for tests that never play."""
+    store.add_version(team, f"h-{team}", "", "valid", "")
+    store.set_current(team, f"h-{team}")
 
 
-def test_a_dash_leading_key_still_works_with_equals_syntax():
-    """And if someone does hold such a key, --key=VALUE is accepted."""
-    from arena.connect import main
-
-    assert main(["--url", "ws://x", "--key=-abc"] + ["/no/such/bot"]) == 1
-
-
-def test_a_key_can_be_rotated_and_the_old_one_stops_working(store):
-    old = generate_keys(store, ["fox"])["fox"]
-    new = generate_keys(store, [], rotate=["fox"])["fox"]
-    assert new != old
-    from arena.gateway import hash_key
-
-    assert store.remote_teams()["fox"] == hash_key(new)
-    with pytest.raises(TournamentError):
-        generate_keys(store, [], rotate=["ghost"])
-
-
-@pytest.mark.parametrize("name", ["Fox", "a b", "-x", "", "x" * 33, "a/b"])
-def test_bad_team_names_are_refused(store, name):
-    with pytest.raises(TournamentError):
-        generate_keys(store, [name])
-
-
-def test_the_draw_needs_teams_and_cannot_be_redone_silently(store):
-    with pytest.raises(TournamentError):
+def test_a_tournament_needs_teams_with_working_bots(store):
+    with pytest.raises(TournamentError, match="import the submissions"):
         state_of(store)
-    generate_keys(store, ["a"])
-    with pytest.raises(TournamentError, match="two teams"):
+    fake(store, "a")
+    with pytest.raises(TournamentError, match="at least two teams"):
         draw(store)
-    generate_keys(store, ["b", "c", "d"])
+    assert team_names(store) == ["a"]
+
+
+def test_a_bot_that_failed_its_check_is_not_a_team(store, tmp_path):
+    folder = tmp_path / "bad"
+    folder.mkdir()
+    (folder / "bot.py").write_text(
+        HEADER + "class B(PokerBot):\n    def act(self, s):\n        raise 1\n"
+    )
+    assert submit(store, "bad", str(folder)).status == "invalid"
+    fake(store, "good")
+    assert team_names(store) == ["good"]
+
+
+def test_the_draw_cannot_be_redone_silently(store):
+    for t in "abcd":
+        fake(store, t)
     draw(store, group_size=2, seed=1)
     with pytest.raises(TournamentError, match="redo"):
         draw(store, group_size=2, seed=2)
@@ -129,8 +131,9 @@ def test_the_draw_needs_teams_and_cannot_be_redone_silently(store):
 
 
 def test_phases_must_come_in_order(store):
-    generate_keys(store, ["a", "b", "c", "d"])
-    with pytest.raises(TournamentError, match="draw"):
+    for t in "abcd":
+        fake(store, t)
+    with pytest.raises(TournamentError, match="import the submissions"):
         start_groups(store)
     draw(store, group_size=2, seed=1)
     with pytest.raises(TournamentError, match="finals start"):
@@ -138,10 +141,20 @@ def test_phases_must_come_in_order(store):
     assert start_groups(store, deals=2) == 2  # two groups of two: 1 + 1
     with pytest.raises(TournamentError, match="final once"):
         draw(store, redo=True)
-    with pytest.raises(TournamentError, match="draw"):
+    with pytest.raises(TournamentError, match="draw the groups first"):
         start_groups(store)
-    with pytest.raises(TournamentError, match="once play has begun"):
-        generate_keys(store, ["late"])
+
+
+def test_a_team_can_be_removed_only_before_the_draw(store):
+    for t in "abc":
+        fake(store, t)
+    remove_team(store, "b")
+    assert team_names(store) == ["a", "c"]
+    with pytest.raises(TournamentError, match="no team"):
+        remove_team(store, "b")
+    draw(store, group_size=8, seed=1)
+    with pytest.raises(TournamentError, match="before the draw"):
+        remove_team(store, "a")
 
 
 def test_results_are_revealed_only_when_a_round_is_over():
@@ -160,83 +173,48 @@ def test_results_are_revealed_only_when_a_round_is_over():
         }
 
 
-# -- a whole tournament over real sockets --------------------------------
+# -- a whole tournament with real bots -------------------
 
 BOTS = {
-    "fox": CallBot,
-    "owl": FoldBot,
-    "bear": ShoveBot,
-    "wolf": CallBot,
-    "mole": FoldBot,
-    "hare": ShoveBot,
+    "fox": "call",
+    "owl": "fold",
+    "bear": "shove",
+    "wolf": "call",
+    "mole": "fold",
+    "hare": "shove",
 }
 
 
-class Connected:
-    """A team's bot on the real client, in a thread, logging its matches."""
-
-    def __init__(self, gateway, team, key, bot):
-        self.team = team
-        self.logs = []
-        self.stop = threading.Event()
-        self.thread = threading.Thread(
-            target=client.run,
-            args=(bot, f"ws://127.0.0.1:{gateway.port}", key),
-            kwargs=dict(log=self.logs.append, stop=self.stop.is_set),
-            daemon=True,
-        )
-        self.thread.start()
-
-    def matches(self):
-        return [m for m in self.logs if m.startswith("match")]
-
-
-@pytest.fixture
-def arena(store):
-    keys = generate_keys(store, sorted(BOTS))
-    gateway = Gateway(store, "127.0.0.1", 0).start()
-    teams = {
-        name: Connected(gateway, name, keys[name], BOTS[name]())
-        for name in BOTS
-    }
-    deadline = time.time() + 40
-    while len(gateway.connected_teams()) < len(BOTS):
-        assert time.time() < deadline, (
-            "teams did not connect: "
-            f"{sorted(gateway.connected_teams())} "
-            f"{ {n: t.logs[-2:] for n, t in teams.items()} }"
-        )
-        time.sleep(0.02)
-    yield store, gateway, teams
-    for t in teams.values():
-        t.stop.set()
-    gateway.stop()
-
-
-def run_until(runner, store, phase, seconds=90):
-    deadline = time.time() + seconds
-    while store.tournament()["phase"] != phase:
-        assert time.time() < deadline, f"stuck at {store.tournament()}"
-        runner.step()
-        time.sleep(0.02)
-
-
-def folders_apart(seed_range=range(1, 200)):
+def folders_apart():
     """A seed whose groups of three each hold exactly one folder."""
-    for seed in seed_range:
+    for seed in range(1, 300):
         groups = draw_groups(sorted(BOTS), 3, seed)
         if all(sum(t in ("owl", "mole") for t in g) == 1 for g in groups):
             return seed
     raise AssertionError("no such seed")
 
 
-def test_a_full_tournament_groups_then_finals(arena):
-    store, gateway, teams = arena
+def run_until(runner, store, phase, seconds=180):
+    deadline = time.time() + seconds
+    while store.tournament()["phase"] != phase:
+        assert time.time() < deadline, f"stuck at {store.tournament()}"
+        runner.step()
+        time.sleep(0.05)
+
+
+@pytest.fixture
+def played(store, tmp_path):
+    for team, kind in BOTS.items():
+        add(store, tmp_path, team, kind)
+    settings = TournamentSettings(concurrency=4, think_budget_per_deal=60)
+    runner = Runner(store, settings, log=lambda m: None)
+    yield store, runner
+    runner.close()
+
+
+def test_a_full_tournament_groups_then_finals(played):
+    store, runner = played
     draw(store, group_size=3, advance=2, seed=folders_apart())
-    settings = TournamentSettings(
-        deals_group=3, deals_final=3, grace_seconds=60
-    )
-    runner = Runner(store, gateway, settings, log=lambda m: None)
 
     assert start_groups(store, deals=3) == 6  # two groups of three: 3 + 3
     run_until(runner, store, "between")
@@ -246,7 +224,6 @@ def test_a_full_tournament_groups_then_finals(arena):
     # A folder loses to everyone, so neither folder reaches the final.
     assert "owl" not in state["finalists"] and "mole" not in state["finalists"]
     assert state["finalists"] == qualifiers(store, state)
-    # Each group's table is complete and honest: callers beat folders.
     for group in state["groups"]:
         board = leaderboard.compute(store, "group", group["freeze"])
         assert board["pairs_done"] == board["pairs_total"] == 3
@@ -260,133 +237,43 @@ def test_a_full_tournament_groups_then_finals(arena):
     assert final["pairs_done"] == final["pairs_total"] == 6
     assert state_of(store)["champion"] == final["teams"][0]["team"]
     assert state_of(store)["champion"] in state["finalists"]
-    runner.close()
-
-    # Everyone's bot played the matches it was scheduled for: a group team
-    # played 2 group matches; a finalist 3 more.
-    assert len(teams["fox"].matches()) % 2 == 0  # start/finish pairs
-    # No team ever played two matches at the same time: its log alternates.
-    for team in teams.values():
-        kinds = [m.split()[1] for m in team.matches()]
-        assert kinds[::2] == ["starting"] * len(kinds[::2])
-        assert kinds[1::2] == ["finished"] * len(kinds[1::2])
+    # Every match left a hand history behind.
+    assert len(list((store.root / "hands").glob("*.jsonl.gz"))) == 12
 
 
-def test_a_team_that_never_connects_forfeits_after_the_grace_period(store):
-    keys = generate_keys(store, ["fox", "owl", "ghost"])
-    gateway = Gateway(store, "127.0.0.1", 0).start()
-    fox = Connected(gateway, "fox", keys["fox"], CallBot())
-    owl = Connected(gateway, "owl", keys["owl"], CallBot())
-    deadline = time.time() + 40
-    while len(gateway.connected_teams()) < 2:
-        assert time.time() < deadline
-        time.sleep(0.02)
-    try:
-        draw(store, group_size=8, seed=1)
-        start_groups(store, deals=3)
-        now = [1000.0]
-        state = state_of(store)
-        state["started"]["groups"] = now[0]
-        store.set_tournament(state)
-        runner = Runner(
-            store,
-            gateway,
-            TournamentSettings(grace_seconds=100),
-            clock=lambda: now[0],
-            log=lambda m: None,
-        )
-        runner.step()  # inside the grace period: only fox-owl can be played
-        run_until_idle(runner)
-        done = [j for j in store.jobs_of("group") if j["status"] == "done"]
-        assert len(done) == 1  # the one match between connected teams
-
-        now[0] += 101  # grace over: the ghost's matches are forfeited
-        run_until(runner, store, "between")
-        board = leaderboard.compute(
-            store, "group", state_of(store)["groups"][0]["freeze"]
-        )
-        teams = {t["team"]: t for t in board["teams"]}
-        assert board["teams"][-1]["team"] == "ghost"
-        assert teams["ghost"]["score"] < -0.5
-        assert teams["fox"]["score"] > 0 and teams["owl"]["score"] > 0
-        runner.close()
-    finally:
-        fox.stop.set()
-        owl.stop.set()
-        gateway.stop()
-
-
-def kick(gateway, team):
-    """Disconnects a team for good (its client is told not to come back)."""
-    import asyncio
-
-    team.stop.set()
-    link = gateway._links[team.team]
-    asyncio.run_coroutine_threadsafe(
-        link.ws.close(1011, "test"), gateway._loop
-    ).result(5)
-
-
-def run_until_idle(runner, seconds=60):
-    """Steps until nothing is running and nothing more can be started."""
-    deadline = time.time() + seconds
-    store = runner.store
-
-    def queued():
-        return sum(
-            1
-            for kind in ("group", "final")
-            for j in store.jobs_of(kind)
-            if j["status"] == "queued"
-        )
-
-    while True:
-        assert time.time() < deadline
-        before = queued()
-        runner.step()
-        while not runner.idle():
-            assert time.time() < deadline
-            time.sleep(0.02)
-            runner.step()
-        runner.step()
-        if queued() == before:
-            return
-        time.sleep(0.02)
-
-
-def test_matches_wait_for_a_team_that_is_still_inside_its_grace(arena):
-    store, gateway, teams = arena
-    kick(gateway, teams["fox"])  # fox leaves
-    deadline = time.time() + 10
-    while "fox" in gateway.connected_teams():
-        assert time.time() < deadline
-        time.sleep(0.02)
-    draw(store, group_size=8, seed=1)
-    start_groups(store, deals=2)
-    runner = Runner(
-        store,
-        gateway,
-        TournamentSettings(grace_seconds=3600),
-        log=lambda m: None,
-    )
-    run_until_idle(runner)
-    jobs = store.jobs_of("group")
-    fox_hash = store.get_version("remote-fox").hash
-    waiting = [j for j in jobs if j["status"] == "queued"]
-    assert waiting and all(
-        fox_hash in (j["a_hash"], j["b_hash"]) for j in waiting
-    )
-    assert state_of(store)["phase"] == "groups"  # not finished without fox
-    runner.close()
-
-
-def test_a_failed_match_keeps_the_round_open(arena):
-    store, gateway, _ = arena
+def test_a_match_left_running_by_a_dead_run_is_replayed_on_restart(
+    store, tmp_path
+):
+    for team, kind in BOTS.items():
+        add(store, tmp_path, team, kind)
     draw(store, group_size=8, seed=1)
     start_groups(store, deals=2)
     job = store.jobs_of("group")[0]
-    store.claim_job_by_id(job["id"], "test")
-    store.fail_job(job["id"], "boom")
+    # A previous `tournament run` died while this match was running.
+    assert store.claim_job_by_id(job["id"], "scheduler-2147483000")
+    assert store.jobs_of("group")[0]["status"] == "running"
+
+    runner = Runner(
+        store,
+        TournamentSettings(concurrency=6, think_budget_per_deal=60),
+        log=lambda m: None,
+    )
+    try:
+        assert store.jobs_of("group")[0]["status"] == "queued"
+        run_until(runner, store, "between")
+        assert all(j["status"] == "done" for j in store.jobs_of("group"))
+    finally:
+        runner.close()
+
+
+def test_a_failed_match_keeps_the_round_open(store):
+    for t in "abc":
+        fake(store, t)
+    draw(store, group_size=8, seed=1)
+    start_groups(store, deals=2)
+    first = store.jobs_of("group")[0]
+    store.claim_job_by_id(first["id"], "test")
+    store.fail_job(first["id"], "boom")
     for other in store.jobs_of("group")[1:]:
         store.claim_job_by_id(other["id"], "test")
         store.finish_job(other["id"], {"mean_bb": 0.0}, None)
@@ -394,42 +281,42 @@ def test_a_failed_match_keeps_the_round_open(arena):
     assert state_of(store)["phase"] == "groups"
 
 
-def test_status_reports_who_is_connected_and_how_far_it_is(arena):
-    store, gateway, _ = arena
-    draw(store, group_size=3, seed=1)
-    start_groups(store, deals=2)
-    report = status(store)
-    assert report["phase"] == "groups"
-    assert all(report["teams"].values())  # all six are connected
-    assert report["matches"]["group"] == {"queued": 6}
-
-
-def test_a_match_left_running_by_a_dead_server_is_replayed_on_restart(arena):
-    store, gateway, _ = arena
-    draw(store, group_size=8, seed=1)
-    start_groups(store, deals=2)
-    job = store.jobs_of("group")[0]
-    # A previous `serve` died while this match was running.
-    assert store.claim_job_by_id(job["id"], "scheduler-2147483000")
-    assert store.jobs_of("group")[0]["status"] == "running"
-
-    runner = Runner(
-        store,
-        gateway,
-        TournamentSettings(grace_seconds=60),
-        log=lambda m: None,
-    )
-    assert store.jobs_of("group")[0]["status"] == "queued"
-    run_until(runner, store, "between")  # and the round completes
-    assert all(j["status"] == "done" for j in store.jobs_of("group"))
-    runner.close()
-
-
-def test_the_phase_survives_a_restart_of_everything(arena, tmp_path):
-    store, gateway, _ = arena
+def test_the_phase_survives_reopening_the_database(store):
+    for t in "abcdef":
+        fake(store, t)
     draw(store, group_size=3, seed=1)
     start_groups(store, deals=2)
     reopened = Store(store.root)  # a new process opening the same folder
     assert state_of(reopened)["phase"] == "groups"
     assert len(state_of(reopened)["groups"]) == 2
     assert len(reopened.jobs_of("group")) == 6
+
+
+def test_status_reports_the_teams_and_how_far_it_is(store):
+    for t in "abcdef":
+        fake(store, t)
+    assert status(store)["phase"] == "registration"
+    draw(store, group_size=3, seed=1)
+    start_groups(store, deals=2)
+    report = status(store)
+    assert report["phase"] == "groups" and len(report["teams"]) == 6
+    assert report["matches"]["group"] == {"queued": 6}
+
+
+def test_the_organiser_commands(tmp_path, capsys):
+    from arena.cli import main
+
+    root = str(tmp_path / "root")
+    for t in "abcd":
+        fake(Store(root), t)
+    assert main(["tournament", "status", "--root", root]) == 0
+    assert "4" in capsys.readouterr().out
+    assert main(["tournament", "remove", "d", "--root", root]) == 0
+    assert main(["tournament", "remove", "d", "--root", root]) == 2
+    assert main(["tournament", "draw", "--root", root, "--seed", "5"]) == 0
+    out = capsys.readouterr().out
+    assert "drawn with seed 5" in out and "group A" in out
+    assert main(["tournament", "draw", "--root", root]) == 2  # no silent redo
+    assert main(["tournament", "start-groups", "--root", root]) == 0
+    assert main(["tournament", "start-finals", "--root", root]) == 2
+    assert "finals start" in capsys.readouterr().out

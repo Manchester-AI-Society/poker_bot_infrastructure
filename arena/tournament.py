@@ -1,34 +1,32 @@
 """The two-round tournament.
 
-Round 1 (groups): every registered team is drawn into a group of at most
-``group_size`` bots (groups are as even as possible), and each group plays a
-round robin. Round 2 (finals): the best ``advance`` bots of each group play
-a round robin among themselves. Nothing is published as a live standing: the
-group tables are revealed when round 1 is complete, and the final table when
-round 2 is.
+Round 1 (groups): every team that handed in a working bot is drawn into a
+group of at most ``group_size`` bots (groups are as even as possible), and
+each group plays a round robin. Round 2 (finals): the best ``advance`` bots of
+each group play a round robin among themselves. Nothing is published as a live
+standing: the group tables are revealed when round 1 is complete, and the
+final table when round 2 is.
 
 Phases::
 
     registration -> drawn -> groups -> between -> finals -> done
 
+(``registration`` is the time the form is open and bots are being imported.)
 ``draw`` and the two ``start-*`` steps are taken by the organiser (they change
 the stored state); ``between`` and ``done`` are reached by themselves when the
 last match of a round ends. A running :class:`Runner` plays whatever the stored
 state says is due, so it can be stopped and started again at any time.
 
-Bots connect over the gateway. A pairing is played when both its teams are
-connected and free. A team that is still not connected ``grace`` seconds after
-its round began forfeits the matches it has not played: its side folds every
-hand, which the scoring punishes exactly as it does for a crashed bot.
+The bots are the versions imported from the teams' submission zips and run on
+this machine, as child processes, under the same time limits and fault rules
+as everywhere else in the arena.
 """
 
 from __future__ import annotations
 
-import hmac
 import math
 import os
 import random
-import re
 import secrets
 import threading
 import time
@@ -39,12 +37,11 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 from . import leaderboard
 from .contestant import Contestant
 from .duel import PairingConfig, play_pairing
-from .gateway import Gateway, hash_key
 from .history import HandWriter
-from .scheduler import pair_seed
-from .store import Store, remote_hash
+from .scheduler import default_workers, pair_seed
+from .specs import contestant_from_spec
+from .store import Store
 
-TEAM_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 PHASES = ("registration", "drawn", "groups", "between", "finals", "done")
 
 
@@ -54,157 +51,13 @@ class TournamentError(Exception):
 
 @dataclass(frozen=True)
 class TournamentSettings:
-    deals_group: int = 100
-    deals_final: int = 200
     move_timeout: float = 1.0
     max_faults: int = 20
-    # Per deal, per bot: the network time to the bot is part of it.
-    think_budget_per_deal: float = 3.0
+    # Per deal, per half: how long a bot may think in total.
+    think_budget_per_deal: float = 0.2
     time_cap_seconds: Optional[float] = 1800.0
-    grace_seconds: float = 300.0
-    concurrency: int = 8
-
-
-def new_key() -> str:
-    """A secret key for one team.
-
-    The fixed prefix matters: a bare url-safe token can start with "-", and a
-    command line then reads ``--key -abc`` as a second option (the client
-    refused to start for the team that was given such a key).
-    """
-    return "ak_" + secrets.token_urlsafe(24)
-
-
-# -- teams and keys ----------------------------------------------------------
-
-
-def generate_keys(
-    store: Store, names: Sequence[str], rotate: Sequence[str] = ()
-) -> Dict[str, str]:
-    """Creates teams and returns the NEW secret keys (team -> key).
-
-    Only a hash of each key is kept, so a key can be shown once, when it is
-    made. A team that already exists is left alone unless it is in ``rotate``,
-    which gives it a new key (the old one stops working).
-    """
-    bad = [n for n in list(names) + list(rotate) if not TEAM_NAME.match(n)]
-    if bad:
-        raise TournamentError(
-            "team names are lowercase letters, digits, '-' and '_' (up to "
-            f"32 characters); not valid: {', '.join(sorted(set(bad)))}"
-        )
-    state = store.tournament()
-    if state and state["phase"] not in ("registration", "drawn"):
-        if [n for n in names if n not in store.remote_teams()]:
-            raise TournamentError("teams cannot be added once play has begun")
-    keys: Dict[str, str] = {}
-    existing = store.remote_teams()
-    for name in names:
-        if name in existing:
-            continue
-        key = new_key()
-        if store.add_remote_team(name, hash_key(key)):
-            keys[name] = key
-    for name in rotate:
-        if name not in existing:
-            raise TournamentError(f"no team called {name!r} to rotate")
-        key = new_key()
-        store.set_remote_key(name, hash_key(key))
-        keys[name] = key
-    if state is None and store.remote_teams():
-        store.set_tournament(_blank_state())
-    return keys
-
-
-# -- self-registration ------------------------------------------------------
-
-DEFAULT_MAX_TEAMS = 64
-
-
-def open_registration(
-    store: Store,
-    code: Optional[str] = None,
-    max_teams: int = DEFAULT_MAX_TEAMS,
-) -> str:
-    """Lets teams register themselves with a join code; returns the code.
-
-    The code is announced to the people at the event. Only a hash is stored.
-    Registration is possible until the groups are drawn.
-    """
-    if max_teams < 2:
-        raise TournamentError("--max-teams must be at least 2")
-    state = store.tournament() or _blank_state()
-    if state["phase"] != "registration":
-        raise TournamentError(
-            "registration is over: the groups have been drawn"
-        )
-    code = (code or secrets.token_hex(3)).strip()
-    if len(code) < 4:
-        raise TournamentError("the join code must be at least 4 characters")
-    state["registration"] = {
-        "open": True,
-        "code_hash": hash_key(code),
-        "max_teams": max_teams,
-    }
-    store.set_tournament(state)
-    return code
-
-
-def close_registration(store: Store) -> None:
-    state = state_of(store)
-    if state.get("registration"):
-        state["registration"]["open"] = False
-        store.set_tournament(state)
-
-
-def registration_is_open(store: Store) -> bool:
-    state = store.tournament()
-    return bool(
-        state
-        and state["phase"] == "registration"
-        and (state.get("registration") or {}).get("open")
-    )
-
-
-def register_team(store: Store, team: str, code: str) -> str:
-    """Creates a team for someone who knows the join code; returns its key.
-
-    Raises TournamentError with a message that is safe to show the caller.
-    """
-    state = store.tournament()
-    registration = (state or {}).get("registration") or {}
-    if not registration.get("open") or state["phase"] != "registration":
-        raise TournamentError("registration is not open")
-    if not isinstance(code, str) or not hmac.compare_digest(
-        hash_key(code.strip()), registration["code_hash"]
-    ):
-        raise TournamentError("that join code is not right")
-    if not isinstance(team, str) or not TEAM_NAME.match(team):
-        raise TournamentError(
-            "a team name is lowercase letters, digits, '-' and '_', up to "
-            "32 characters, starting with a letter or digit"
-        )
-    teams = store.remote_teams()
-    if team in teams:
-        raise TournamentError(
-            f"the name {team!r} is taken; if it is your team and you lost "
-            "its key, ask the organiser for a new one"
-        )
-    if len(teams) >= registration.get("max_teams", DEFAULT_MAX_TEAMS):
-        raise TournamentError("registration is full")
-    key = new_key()
-    if not store.add_remote_team(team, hash_key(key)):
-        raise TournamentError(f"the name {team!r} is taken")
-    return key
-
-
-def remove_team(store: Store, team: str) -> None:
-    """Removes a team before the draw (a mistaken or unwanted sign-up)."""
-    state = state_of(store)
-    if state["phase"] != "registration":
-        raise TournamentError("teams can only be removed before the draw")
-    if not store.remove_remote_team(team):
-        raise TournamentError(f"there is no team called {team!r}")
+    # Matches played at the same time (each runs two bot processes).
+    concurrency: int = max(1, default_workers() // 2)
 
 
 def _blank_state() -> Dict[str, Any]:
@@ -222,14 +75,38 @@ def _blank_state() -> Dict[str, Any]:
     }
 
 
+def ensure_tournament(store: Store) -> None:
+    """Starts a tournament (in its submissions phase) if there is none."""
+    if store.tournament() is None:
+        store.set_tournament(_blank_state())
+
+
 def state_of(store: Store) -> Dict[str, Any]:
     state = store.tournament()
     if state is None:
-        raise TournamentError("no teams yet: run 'arena keys' first")
+        raise TournamentError(
+            "nothing to run yet: import the submissions first "
+            "('arena import FOLDER')"
+        )
     return state
 
 
-# -- the draw ----------------------------------------------------------------
+def team_names(store: Store) -> List[str]:
+    """Teams that have a working bot, sorted."""
+    return sorted(v.team for v in store.current_versions())
+
+
+def remove_team(store: Store, team: str) -> None:
+    """Takes a team out before the draw (a disqualification, a mistake)."""
+    state = store.tournament() or _blank_state()
+    if state["phase"] != "registration":
+        raise TournamentError("teams can only be removed before the draw")
+    if team not in team_names(store):
+        raise TournamentError(f"there is no team called {team!r}")
+    store.unset_current(team)
+
+
+# -- the draw -----------------------------
 
 
 def balanced_sizes(count: int, largest: int) -> List[int]:
@@ -265,7 +142,7 @@ def draw(
     redo: bool = False,
 ) -> Dict[str, Any]:
     """Draws the groups (round 1). Allowed until the groups start playing."""
-    state = state_of(store)
+    state = store.tournament() or _blank_state()
     if state["phase"] not in ("registration", "drawn"):
         raise TournamentError(
             f"the draw is final once round 1 has started (phase: "
@@ -277,11 +154,15 @@ def draw(
         raise TournamentError("--group-size must be at least 2")
     if advance < 1:
         raise TournamentError("--advance must be at least 1")
-    teams = sorted(store.remote_teams())
+    teams = team_names(store)
     if len(teams) < 2:
-        raise TournamentError("at least two teams are needed")
+        raise TournamentError(
+            "at least two teams with a working bot are needed "
+            f"({len(teams)} so far)"
+        )
     if seed is None:
         seed = secrets.randbits(32)
+    by_team = {v.team: v for v in store.current_versions()}
     groups = draw_groups(teams, group_size, seed)
     state.update(
         phase="drawn",
@@ -292,9 +173,7 @@ def draw(
             {
                 "name": group_name(index),
                 "teams": members,
-                "freeze": store.create_freeze(
-                    [store.get_version(remote_hash(t)) for t in members]
-                ),
+                "freeze": store.create_freeze([by_team[t] for t in members]),
             }
             for index, members in enumerate(groups)
         ],
@@ -303,7 +182,7 @@ def draw(
     return state
 
 
-# -- phases ------------------------------------------------------------------
+# -- phases -----------------------------
 
 
 def _create_jobs(store: Store, kind: str, freeze: int, deals: int) -> int:
@@ -335,7 +214,7 @@ def start_groups(store: Store, deals: Optional[int] = None) -> int:
         raise TournamentError(
             f"draw the groups first (phase is {state['phase']!r})"
         )
-    deals = deals or TournamentSettings.deals_group
+    deals = deals or 100
     made = sum(
         _create_jobs(store, "group", g["freeze"], deals)
         for g in state["groups"]
@@ -383,10 +262,9 @@ def start_finals(store: Store, deals: Optional[int] = None) -> int:
     finalists = state["finalists"]
     if len(finalists) < 2:
         raise TournamentError("fewer than two teams qualified")
-    freeze = store.create_freeze(
-        [store.get_version(remote_hash(t)) for t in finalists]
-    )
-    deals = deals or TournamentSettings.deals_final
+    by_team = {v.team: v for v in store.current_versions()}
+    freeze = store.create_freeze([by_team[t] for t in finalists])
+    deals = deals or 200
     made = _create_jobs(store, "final", freeze, deals)
     state.update(phase="finals", finals_freeze=freeze)
     state["deals"]["final"] = deals
@@ -426,7 +304,7 @@ def revealed(state: Optional[Dict[str, Any]]) -> Dict[str, bool]:
     }
 
 
-# -- running the matches -----------------------------------------------------
+# -- running the matches -----------------------------
 
 
 class Runner:
@@ -435,75 +313,45 @@ class Runner:
     def __init__(
         self,
         store: Store,
-        gateway: Gateway,
-        settings: TournamentSettings = TournamentSettings(),
+        settings: Optional[TournamentSettings] = None,
         *,
-        clock: Callable[[], float] = time.time,
         log: Callable[[str], None] = print,
     ) -> None:
         self.store = store
-        self.gateway = gateway
-        self.settings = settings
-        self._clock = clock
+        self.settings = settings or TournamentSettings()
         self._log = log
         self._pool = ThreadPoolExecutor(
-            max_workers=max(1, settings.concurrency),
+            max_workers=max(1, self.settings.concurrency),
             thread_name_prefix="arena-match",
         )
         self._active: Dict[int, Future] = {}
-        self._busy: Dict[int, tuple] = {}
         self._worker = f"scheduler-{os.getpid()}"
         store.requeue_running()
 
-    # -- scheduling ---------------------------------------------------------
-
     def step(self) -> None:
-        """One pass: reap finished matches, start any that can start."""
+        """One pass: reap finished matches, start any that are due."""
         self._reap()
         state = self.store.tournament()
         if state is None or state["phase"] not in ("groups", "finals"):
             return
         kind = "group" if state["phase"] == "groups" else "final"
-        started = state["started"].get(
-            "groups" if kind == "group" else "finals", self._clock()
-        )
-        forfeit_open = self._clock() - started >= self.settings.grace_seconds
-        connected = self.gateway.connected_teams()
-        busy = {team for pair in self._busy.values() for team in pair}
-
         for job in self.store.jobs_of(kind):
             if job["status"] != "queued":
                 continue
             if len(self._active) >= self.settings.concurrency:
                 break
-            a, b = self._team(job["a_hash"]), self._team(job["b_hash"])
-            if a in busy or b in busy:
-                continue
-            absent = [t for t in (a, b) if t not in connected]
-            if absent and not forfeit_open:
-                continue
             if not self.store.claim_job_by_id(job["id"], self._worker):
                 continue
-            busy.update((a, b))
-            self._busy[job["id"]] = (a, b)
-            self._active[job["id"]] = self._pool.submit(
-                self._play, job["id"], absent
-            )
+            self._active[job["id"]] = self._pool.submit(self._play, job["id"])
         self._reap()
         if not self._active:
             moved = settle(self.store)
             if moved:
                 self._log(f"[tournament] phase is now {moved!r}")
 
-    def _team(self, version_hash: str) -> str:
-        version = self.store.get_version(version_hash)
-        return version.team if version else version_hash
-
     def _reap(self) -> None:
         for job_id in [j for j, f in self._active.items() if f.done()]:
-            future = self._active.pop(job_id)
-            self._busy.pop(job_id, None)
-            error = future.exception()
+            error = self._active.pop(job_id).exception()
             if error is not None:
                 self.store.fail_job(job_id, repr(error))
                 self._log(f"[tournament] match {job_id} failed: {error!r}")
@@ -522,42 +370,25 @@ class Runner:
 
     # -- one match -----------------------------------------------------------
 
-    def _contestant(self, team: str, absent: bool) -> Contestant:
+    def _contestant(self, version, opponent: str, kind: str) -> Contestant:
         s = self.settings
-        if absent:
-            return Contestant(
-                name=team,
-                factory=lambda: None,
-                disabled=True,
-                disabled_reason="not connected: forfeited",
-                move_timeout=s.move_timeout,
-            )
-        return Contestant(
-            name=team,
-            factory=lambda: self.gateway.agent(team),
+        return contestant_from_spec(
+            version.path,
+            name=version.team,
+            log_name=f"{kind}-vs-{opponent}",
+            log_dir=self.store.root / "logs" / version.team / version.hash,
             move_timeout=s.move_timeout,
             max_faults=s.max_faults,
         )
 
-    def _play(self, job_id: int, absent: List[str]) -> None:
+    def _play(self, job_id: int) -> None:
         job = self.store.get_job(job_id)
-        first, second = self._team(job.a_hash), self._team(job.b_hash)
-        contestants = [
-            self._contestant(first, first in absent),
-            self._contestant(second, second in absent),
-        ]
+        first = self.store.get_version(job.a_hash)
+        second = self.store.get_version(job.b_hash)
+        if first is None or second is None:
+            raise RuntimeError("a match refers to an unknown bot version")
         match_id = f"{job.kind}-{job.id}"
-        for team in (first, second):
-            if team not in absent:
-                self.gateway.notify(
-                    team,
-                    {
-                        "type": "match_start",
-                        "match": match_id,
-                        "deals": job.deals,
-                    },
-                )
-        self._log(f"[tournament] {match_id}: {first} vs {second}")
+        self._log(f"[tournament] {match_id}: {first.team} vs {second.team}")
         config = PairingConfig(
             deals=job.deals,
             seed=job.seed,
@@ -565,35 +396,27 @@ class Runner:
             time_cap_seconds=self.settings.time_cap_seconds,
         )
         hands_rel = f"hands/{match_id}.jsonl.gz"
-        try:
-            with HandWriter(self.store.root / hands_rel) as writer:
-                result = play_pairing(
-                    contestants[0], contestants[1], config, writer.write
-                )
-        finally:
-            for team in (first, second):
-                if team not in absent:
-                    self.gateway.notify(
-                        team, {"type": "match_end", "match": match_id}
-                    )
+        with HandWriter(self.store.root / hands_rel) as writer:
+            result = play_pairing(
+                self._contestant(first, second.team, job.kind),
+                self._contestant(second, first.team, job.kind),
+                config,
+                writer.write,
+            )
         data = result.to_dict()
-        data["a_team"], data["b_team"] = first, second
+        data["a_team"], data["b_team"] = first.team, second.team
         self.store.finish_job(job.id, data, hands_rel)
 
 
-# -- status for the organiser ------------------------------------------------
+# -- status for the organiser -----------------------------
 
 
 def status(store: Store) -> Dict[str, Any]:
     """Plain facts about where the tournament stands (for the CLI)."""
     state = store.tournament()
+    teams = team_names(store)
     if state is None:
-        return {"phase": None, "teams": sorted(store.remote_teams())}
-    presence = store.presences()
-    teams = {
-        name: bool(presence.get(name, {}).get("connected"))
-        for name in sorted(store.remote_teams())
-    }
+        return {"phase": "registration", "teams": teams, "matches": {}}
     counts: Dict[str, Dict[str, int]] = {}
     for kind in ("group", "final"):
         for job in store.jobs_of(kind):
@@ -601,7 +424,6 @@ def status(store: Store) -> Dict[str, Any]:
             bucket[job["status"]] = bucket.get(job["status"], 0) + 1
     return {
         "phase": state["phase"],
-        "registration_open": registration_is_open(store),
         "teams": teams,
         "groups": state["groups"],
         "finalists": state["finalists"],

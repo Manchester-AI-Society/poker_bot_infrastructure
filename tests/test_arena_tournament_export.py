@@ -8,11 +8,10 @@ import json
 import pytest
 
 from arena.export import ExportOptions, export_site
-from arena.gateway import hash_key
 from arena.store import Store
 from arena.tournament import (
     draw,
-    generate_keys,
+    ensure_tournament,
     settle,
     start_finals,
     start_groups,
@@ -27,7 +26,10 @@ RANK = {name: i for i, name in enumerate(TEAMS)}
 @pytest.fixture
 def store(tmp_path):
     store = Store(tmp_path / "data")
-    generate_keys(store, TEAMS)
+    for team in TEAMS:  # teams with a working bot (no bot is run here)
+        store.add_version(team, f"h-{team}", "", "valid", "")
+        store.set_current(team, f"h-{team}")
+    ensure_tournament(store)
     return store
 
 
@@ -225,34 +227,6 @@ def test_results_disappear_again_if_the_state_is_rolled_back(store, tmp_path):
     _, files = export(store, tmp_path)
     assert_no_results(files)
     assert "pairings-group.json" not in files
-
-
-def test_no_key_or_key_hash_is_ever_published(store, tmp_path):
-    keys = {t: "k-" + t for t in TEAMS}
-    for team, key in keys.items():
-        store.set_remote_key(team, hash_key(key))
-    draw(store, group_size=3, seed=5)
-    start_groups(store, deals=10)
-    play(store, "group")
-    settle(store)
-    _, files = export(store, tmp_path)
-    everything = "\n".join(files.values())
-    for team, key in keys.items():
-        assert key not in everything
-        assert hash_key(key) not in everything
-
-
-def test_connection_status_is_not_published(store, tmp_path):
-    """Whether a team's bot is online changes constantly; publishing it would
-    redeploy the site every time anyone's Wi-Fi blinked."""
-    draw(store, group_size=3, seed=5)
-    _, before = export(store, tmp_path)
-    store.set_presence("ant", True)
-    store.set_presence("bee", True)
-    store.set_presence("ant", False)
-    _, after = export(store, tmp_path)
-    assert after == before
-    assert "connected" not in "".join(after.values())
 
 
 def test_an_unchanged_tournament_is_not_republished(store, tmp_path):

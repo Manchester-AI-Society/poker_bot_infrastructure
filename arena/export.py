@@ -560,7 +560,7 @@ def _tournament_built(store: Store, state: Dict[str, Any]) -> _Built:
     That also means the data does not change while a round is played, so a
     git host is not asked to redeploy for every match.
     """
-    from .tournament import revealed
+    from .tournament import revealed, team_names
 
     show = revealed(state)
     pairings: Dict[str, List[Dict[str, Any]]] = {}
@@ -639,7 +639,7 @@ def _tournament_built(store: Store, state: Dict[str, Any]) -> _Built:
                         "sync": None,
                         "versions": [],
                     }
-                    for team in sorted(store.remote_teams())
+                    for team in team_names(store)
                 ],
                 "registrations": [],
             }
@@ -667,7 +667,7 @@ def _tournament_built(store: Store, state: Dict[str, Any]) -> _Built:
             "kinds": kinds,
             "final_available": show["finals"],
         },
-        teams=len(store.remote_teams()),
+        teams=len(team_names(store)),
         ladder_pairings=len(pairings.get("group", [])),
         final_pairings=len(pairings.get("final", [])),
         final_available=show["finals"],
