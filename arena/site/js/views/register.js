@@ -12,7 +12,7 @@ function registrationsCard(list) {
   const now = Date.now() / 1000;
   return h(
     'div',
-    { class: 'card tablewrap', style: 'margin-top:1rem' },
+    { class: 'card tablewrap' },
     h('h2', {}, 'Registrations that are not teams yet'),
     h(
       'table',

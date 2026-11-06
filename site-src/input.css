@@ -1,0 +1,758 @@
+/* The arena site's stylesheet source (Tailwind CSS v4).
+   Build: `npm run build` in site-src/. The minified result is committed as
+   arena/site/css/site.css; arena export copies it as is.
+
+   Style: flat, JetBrains Mono, zinc greys, blue as the only accent, square
+   bordered cards, no shadows or gradients, dark mode follows the OS. The JS
+   builds the DOM with semantic class names (card, badge, tbl, ...); they are
+   defined here with @apply so every view picks the style up. */
+
+@import "tailwindcss" source(none);
+
+/* Only the site's own markup and scripts name classes. */
+@source "../arena/site/index.html";
+@source "../arena/site/js";
+
+@theme {
+  /* One typeface for everything; `monospace` is the fallback while it loads. */
+  --font-sans: "JetBrains Mono", monospace;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+/* ---- fonts: bundled files, no network ----------------------------------- */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-latin-400-italic.woff2") format("woff2");
+}
+
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* Chart colours. The scripts read these (charts.js uses them in SVG, and
+     matrix.js needs plain hex to mix cell colours), so they are hex copies of
+     zinc and blue, not Tailwind's oklch values. */
+  --surface: #f4f4f5; /* zinc-100: the card */
+  --grid: #d4d4d8; /* zinc-300 */
+  --axis: #9f9fa9; /* zinc-400 */
+  --series: #155dfc; /* blue-600 */
+  --pos: #155dfc; /* blue-600: the row team is ahead */
+  --neg: #52525c; /* zinc-600: the row team is behind */
+  --mid: #e4e4e7; /* zinc-200: level */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #27272a; /* zinc-800 */
+    --grid: #3f3f46; /* zinc-700 */
+    --axis: #71717b; /* zinc-500 */
+    --series: #51a2ff; /* blue-400 */
+    --pos: #3080ff; /* blue-500 */
+    --neg: #9f9fa9; /* zinc-400 */
+    --mid: #3f3f46; /* zinc-700 */
+  }
+}
+
+/* Inline code only; fenced blocks are styled with .md pre below. */
+:not(pre) > code:not(.latex) {
+  background-color: var(--color-zinc-200);
+  padding: 5px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :not(pre) > code:not(.latex) {
+    background-color: var(--color-zinc-800);
+  }
+}
+
+@layer base {
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-blue-500;
+  }
+  main:focus {
+    outline: none;
+  }
+  [hidden] {
+    display: none !important;
+  }
+}
+
+/* ---- components ----------------------------------------------------------
+   In a layer, so a utility class added in the JS can still override them. */
+
+@layer components {
+  /* page and section headings: text-xl, regular weight, a divider below */
+  .page {
+    @apply flex flex-col gap-4;
+  }
+  .page > * {
+    @apply min-w-0;
+  }
+  .page > header {
+    @apply flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-zinc-300 pb-4 dark:border-white/10;
+  }
+  h1 {
+    @apply text-xl dark:text-white;
+  }
+  h2 {
+    @apply text-lg dark:text-white;
+  }
+  h3 {
+    @apply dark:text-white;
+  }
+  .page > h2 {
+    @apply -mb-2 mt-2;
+  }
+
+  .muted {
+    @apply text-zinc-600 dark:text-zinc-400;
+  }
+  .small {
+    @apply text-sm;
+  }
+  .meta {
+    @apply text-xs text-zinc-400;
+  }
+  .num {
+    @apply text-right whitespace-nowrap tabular-nums;
+  }
+  .nowrap {
+    @apply whitespace-nowrap;
+  }
+  .mono {
+    @apply text-sm;
+  }
+  .loading,
+  .empty {
+    @apply text-sm italic text-zinc-500 dark:text-zinc-400;
+  }
+  .loading {
+    @apply py-8 text-center;
+  }
+  .empty {
+    @apply py-2;
+  }
+  .empty.card {
+    @apply py-8 text-center;
+  }
+  .note {
+    @apply text-sm text-zinc-600 dark:text-zinc-400;
+  }
+
+  /* links: plain ones are underlined in the text colour and fade on hover */
+  main a {
+    @apply duration-200;
+  }
+  .note a,
+  p a,
+  .empty a,
+  .mrow > a,
+  .tbl td:not(.team) a,
+  .tvexit {
+    @apply underline underline-offset-2 hover:text-zinc-400;
+  }
+  .md a {
+    @apply text-blue-400 underline underline-offset-2 hover:text-blue-600;
+  }
+
+  /* card */
+  .card {
+    @apply rounded-none border border-zinc-300 bg-zinc-100 p-4 dark:border-zinc-700 dark:bg-zinc-800;
+  }
+  .card > h2:first-child,
+  .card > h3:first-child {
+    @apply mb-2;
+  }
+
+  /* badge: small, square, bordered; blue marks the notable ones */
+  .badge {
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-zinc-400 px-2 py-0.5 text-xs text-zinc-700 dark:border-zinc-500 dark:text-zinc-300;
+  }
+  .badge.final {
+    @apply border-blue-600 font-bold text-blue-600 dark:border-blue-400 dark:text-blue-400;
+  }
+  /* the champion mark is the one filled badge */
+  .badge.final.mark {
+    @apply border-blue-600 bg-blue-600 text-white dark:border-blue-600 dark:text-white;
+  }
+  .badge.prov {
+    @apply border-dashed;
+  }
+  .badge.ok {
+    @apply border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400;
+  }
+  .badge.bad {
+    @apply border-zinc-900 font-bold text-zinc-900 dark:border-white dark:text-white;
+  }
+  .win {
+    @apply font-medium text-blue-600 dark:text-blue-400;
+  }
+  .lose {
+    @apply font-bold;
+  }
+  .sym {
+    @apply mr-1;
+  }
+
+  /* buttons, selects, inputs */
+  button {
+    @apply cursor-pointer rounded-sm border border-zinc-300 bg-zinc-100 px-3 py-1 text-sm duration-200 hover:bg-zinc-200 active:opacity-75 active:duration-100 disabled:cursor-default disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700;
+    transition-timing-function: var(--ease-out);
+  }
+  .seg {
+    @apply inline-flex overflow-hidden rounded-sm border border-zinc-300 dark:border-zinc-700;
+  }
+  .seg button {
+    @apply rounded-none border-0;
+  }
+  .seg button[aria-pressed="true"] {
+    @apply bg-blue-600 text-white hover:bg-blue-600;
+  }
+  select {
+    @apply rounded-sm border border-zinc-300 bg-zinc-100 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800;
+  }
+  input[type="checkbox"],
+  input[type="range"] {
+    @apply accent-blue-600 dark:accent-blue-500;
+  }
+  .btn-primary {
+    @apply mt-4 inline-block justify-self-start rounded-sm bg-blue-600 px-4 py-2 text-white no-underline duration-200 hover:bg-blue-700 active:opacity-75 active:duration-100;
+  }
+  .btn-primary[aria-disabled="true"] {
+    @apply pointer-events-none cursor-not-allowed opacity-40;
+  }
+
+  /* footer status */
+  .updated.stale {
+    @apply font-bold text-zinc-900 dark:text-white;
+  }
+  .updated.stale::before {
+    content: "⚠️ ";
+  }
+
+  /* ---- tables ---- */
+  .tablewrap {
+    @apply overflow-x-auto;
+  }
+  .tbl {
+    @apply w-full border-collapse text-sm;
+  }
+  .tbl th {
+    @apply whitespace-nowrap border-b border-zinc-300 px-2 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-600 dark:border-zinc-700 dark:text-zinc-400;
+  }
+  .tbl th.num {
+    @apply text-right;
+  }
+  .tbl td {
+    @apply border-b border-zinc-300/70 px-2 py-2 align-middle dark:border-white/10;
+  }
+  .tbl tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .tbl .team {
+    @apply whitespace-nowrap;
+  }
+  .tbl .team a {
+    @apply no-underline hover:underline;
+  }
+  .rank {
+    @apply w-10 text-zinc-600 dark:text-zinc-400;
+  }
+  .tie {
+    @apply ml-2 text-xs text-zinc-600 dark:text-zinc-400;
+  }
+  .tbl .mark {
+    @apply ml-2;
+  }
+  .plotcell {
+    @apply min-w-44 py-1;
+    width: 34%;
+  }
+  .plotcell svg {
+    @apply block h-auto w-full max-w-md overflow-visible;
+  }
+  .axis-label {
+    font-size: 11px;
+    fill: var(--color-zinc-600);
+  }
+  @media (prefers-color-scheme: dark) {
+    .axis-label {
+      fill: var(--color-zinc-400);
+    }
+  }
+
+  /* ---- head-to-head matrix ---- */
+  .matrix {
+    border-collapse: separate;
+    border-spacing: 2px;
+    @apply mx-auto;
+  }
+  .matrix th {
+    @apply px-1 font-medium leading-tight text-zinc-900 dark:text-white;
+    font-size: min(0.8rem, calc(var(--cell, 2.4rem) * 0.5));
+  }
+  .matrix thead th {
+    @apply align-bottom;
+  }
+  .matrix thead th span {
+    @apply inline-block overflow-hidden text-ellipsis whitespace-nowrap;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    max-height: var(--label, 9rem);
+  }
+  .matrix tbody th {
+    @apply whitespace-nowrap text-right;
+  }
+  .matrix td {
+    @apply rounded-none p-0 text-center text-xs tabular-nums;
+    min-width: var(--cell, 2.4rem);
+    height: var(--cell, 2.4rem);
+  }
+  .matrix td a {
+    @apply flex h-full w-full items-center justify-center no-underline;
+    color: inherit;
+    min-height: var(--cell, 2.4rem);
+  }
+  .matrix td.self {
+    @apply bg-zinc-200 dark:bg-zinc-700;
+  }
+  .matrix td.none {
+    @apply text-zinc-500 dark:text-zinc-400;
+  }
+  .matrix th a {
+    @apply no-underline hover:underline;
+  }
+  .legend {
+    @apply mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-600 dark:text-zinc-400;
+  }
+  .legend .ramp {
+    @apply inline-block h-3 w-48 rounded-none align-middle;
+  }
+  .controls {
+    @apply flex flex-wrap items-center gap-x-4 gap-y-2 text-sm;
+  }
+  .controls label {
+    @apply inline-flex items-center gap-2;
+  }
+
+  /* ---- matches ---- */
+  .mlist {
+    @apply m-0 list-none p-0;
+  }
+  .mrow {
+    @apply grid items-center gap-x-4 gap-y-1 border-b border-zinc-300/70 px-1 py-3 text-sm dark:border-white/10;
+    grid-template-columns: 7rem 1fr auto auto;
+  }
+  .mlist > .mrow:last-child {
+    @apply border-b-0;
+  }
+  .mrow .when {
+    @apply text-xs text-zinc-400;
+  }
+  .mrow .vs a {
+    @apply no-underline hover:underline;
+  }
+  .mrow .res {
+    @apply text-right tabular-nums;
+  }
+  .mrow .meta {
+    @apply text-xs text-zinc-600 dark:text-zinc-400;
+    grid-column: 2 / -1;
+  }
+  @media (max-width: 640px) {
+    .mrow {
+      grid-template-columns: 1fr auto;
+    }
+    .mrow .when,
+    .mrow .meta {
+      grid-column: 1 / -1;
+    }
+  }
+
+  /* ---- team page ---- */
+  .stats {
+    @apply flex flex-wrap gap-2;
+  }
+  .stat {
+    @apply min-w-32 rounded-none border border-zinc-300 bg-zinc-100 px-4 py-2 dark:border-zinc-700 dark:bg-zinc-800;
+  }
+  .stat .v {
+    @apply text-xl tabular-nums dark:text-white;
+  }
+  .stat .k {
+    @apply text-xs text-zinc-600 dark:text-zinc-400;
+  }
+  .versions {
+    @apply list-none;
+  }
+  .versions li {
+    @apply flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-zinc-300/70 py-2 text-sm dark:border-white/10;
+  }
+  .versions li:first-child {
+    @apply pt-0;
+  }
+  .versions li:last-child {
+    @apply border-b-0 pb-0;
+  }
+
+  /* ---- replay ---- */
+  .replay {
+    @apply grid items-start gap-2;
+    grid-template-columns: 15rem 1fr;
+  }
+  @media (max-width: 860px) {
+    .replay {
+      grid-template-columns: 1fr;
+    }
+    .replay .stage {
+      order: -1; /* the table first, the hand list below */
+    }
+    .handlist {
+      max-height: 16rem;
+    }
+  }
+  .handlist {
+    @apply max-h-[34rem] overflow-y-auto p-2;
+  }
+  .handlist h2 {
+    @apply mb-2 px-1;
+  }
+  .handlist ol {
+    @apply m-0 list-none p-0;
+  }
+  .handlist button {
+    @apply flex w-full justify-between gap-2 rounded-sm border-0 bg-transparent px-2 py-1 text-left text-sm hover:bg-zinc-200 dark:bg-transparent dark:hover:bg-zinc-700;
+  }
+  .handlist button[aria-current="true"] {
+    @apply bg-blue-600 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-600;
+  }
+  /* The selected row is filled, so its inner text follows the white. */
+  .handlist button[aria-current="true"] .muted,
+  .handlist button[aria-current="true"] .win,
+  .handlist button[aria-current="true"] .lose {
+    @apply text-white;
+  }
+  .stage {
+    @apply min-w-0;
+  }
+  .felt {
+    @apply grid gap-3 rounded-none border border-zinc-300 bg-zinc-100 p-4 dark:border-zinc-700 dark:bg-zinc-800;
+  }
+  .seat {
+    @apply grid items-center gap-x-4 gap-y-1 rounded-none border border-zinc-300 bg-white px-4 py-2 dark:border-zinc-700 dark:bg-zinc-900;
+    grid-template-columns: 1fr auto;
+  }
+  .seat.acting {
+    @apply border-blue-500 ring-1 ring-blue-500;
+  }
+  .seat.folded {
+    @apply opacity-60;
+  }
+  .seat .nm {
+    @apply font-medium dark:text-white;
+  }
+  .seat .nm .btn {
+    @apply ml-2 inline-grid h-5 w-5 place-items-center rounded-sm border-0 bg-zinc-900 p-0 text-xs text-white dark:bg-white dark:text-zinc-900;
+  }
+  .seat .stk {
+    @apply text-sm text-zinc-600 tabular-nums dark:text-zinc-400;
+  }
+  .seat .bet {
+    @apply min-h-6 text-sm tabular-nums;
+  }
+  .seat .say {
+    @apply min-h-5 text-xs text-zinc-600 dark:text-zinc-400;
+  }
+  .cards {
+    @apply flex items-center gap-1;
+  }
+  /* A playing card: a white face in both schemes. Red suits are the one
+     data-driven colour (the suit is the data); the glyph names the suit too. */
+  .card-pl {
+    @apply inline-flex h-14 w-10 flex-col items-center justify-center rounded-sm border border-zinc-400 bg-white text-base leading-none font-bold text-zinc-900;
+  }
+  .card-pl i {
+    @apply text-lg not-italic;
+  }
+  .card-pl.red {
+    color: #c0302f;
+  }
+  .card-pl.back {
+    @apply border-blue-700 bg-blue-600;
+  }
+  .card-pl.empty {
+    @apply border-dashed border-zinc-400 bg-transparent;
+  }
+  .board {
+    @apply flex flex-wrap items-center justify-center gap-1;
+  }
+  .potline {
+    @apply mt-2 text-center tabular-nums dark:text-white;
+  }
+  .controls-bar {
+    @apply mt-3 flex flex-wrap items-center gap-1;
+  }
+  .controls-bar input[type="range"] {
+    @apply min-w-32 flex-1;
+  }
+  .steps {
+    @apply m-0 mt-3 max-h-56 list-none overflow-y-auto p-0;
+  }
+  .steps li button {
+    @apply block w-full rounded-sm border-0 bg-transparent px-2 py-1 text-left text-sm hover:bg-zinc-200 dark:bg-transparent dark:hover:bg-zinc-700;
+  }
+  .steps li button[aria-current="step"] {
+    @apply bg-zinc-200 font-bold dark:bg-zinc-700 dark:hover:bg-zinc-700;
+  }
+  .verdict {
+    @apply mt-2 font-medium;
+  }
+
+  /* ---- the how-to-submit guide: the skill's "Article page" ---- */
+  .md {
+    @apply flow-root max-w-3xl dark:text-white;
+  }
+  .md > * {
+    @apply mb-4;
+  }
+  .md :is(h2, h3, h4, h5) {
+    @apply scroll-mt-24;
+  }
+  .md img {
+    @apply mx-auto;
+  }
+  .md h2 {
+    @apply text-xl font-bold;
+  }
+  .md h3 {
+    @apply text-lg font-semibold;
+  }
+  .md h4 {
+    @apply underline;
+  }
+  .md ul {
+    @apply ml-3 list-disc;
+  }
+  .md ol {
+    @apply ml-5 list-decimal;
+  }
+  .md ul,
+  .md ol {
+    @apply pl-4;
+  }
+  .md li {
+    @apply my-1;
+  }
+  .md > p,
+  .md li {
+    @apply text-zinc-600 dark:text-zinc-300;
+  }
+  .md strong {
+    @apply font-bold text-zinc-900 dark:text-white;
+  }
+  .md pre {
+    @apply overflow-x-auto rounded-none border border-zinc-300 bg-zinc-900 p-4 text-sm text-zinc-200 dark:border-zinc-700 dark:bg-zinc-950;
+  }
+  .md pre code {
+    @apply whitespace-pre bg-transparent p-0 text-sm;
+  }
+  .md blockquote {
+    @apply rounded-none border-l-2 border-blue-500 bg-zinc-100 px-4 py-2 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300;
+  }
+  .md .tbl {
+    min-width: 32rem; /* room to scroll sideways, not to be squeezed */
+  }
+  .md .tbl td {
+    @apply align-top text-zinc-600 dark:text-zinc-300;
+  }
+  .md .tbl.labels td:first-child {
+    @apply whitespace-nowrap;
+  }
+  @media (max-width: 640px) {
+    /* Label tables become a stack: the label above its text. */
+    .md .tbl.labels {
+      min-width: 0;
+    }
+    .md .tbl.labels,
+    .md .tbl.labels tbody,
+    .md .tbl.labels tr,
+    .md .tbl.labels td {
+      display: block;
+    }
+    .md .tbl.labels tr {
+      @apply border-b border-zinc-300/70 py-2 dark:border-white/10;
+    }
+    .md .tbl.labels td {
+      @apply border-0 px-1 py-0.5;
+    }
+    .md .tbl.labels td:first-child {
+      @apply whitespace-normal font-bold;
+    }
+  }
+
+  /* the register page: plain text and a numbered list inside one card */
+  .guide .card > * + * {
+    @apply mt-3;
+  }
+  .guide .card > ol {
+    @apply ml-5 list-decimal space-y-1;
+  }
+  .guide .card > h2 {
+    @apply mt-6;
+  }
+
+  /* ---- tournament ---- */
+  .phase {
+    @apply flex flex-wrap items-center gap-x-4 gap-y-2;
+  }
+  .phase p {
+    @apply m-0;
+  }
+  .round {
+    @apply mt-4 flex flex-col gap-2;
+  }
+  .round > h2 {
+    @apply text-xl;
+  }
+  .groups {
+    @apply mt-2 grid gap-2;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  }
+  .groups.ranked {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .group > h3 {
+    @apply mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1;
+  }
+  .card > h3 {
+    @apply mb-2;
+  }
+  .chips {
+    @apply m-0 flex list-none flex-wrap gap-1 p-0;
+  }
+  .chips a {
+    @apply inline-block rounded-sm border border-zinc-300 px-2 py-0.5 text-sm no-underline duration-200 hover:bg-zinc-200 dark:border-zinc-600 dark:hover:bg-zinc-700;
+  }
+  .champion {
+    @apply border-blue-500 text-center dark:border-blue-500;
+  }
+  .champion .k {
+    @apply text-sm font-bold tracking-widest text-blue-600 uppercase dark:text-blue-400;
+  }
+  .champion .name {
+    @apply text-3xl leading-snug;
+  }
+  .champion .name a {
+    @apply no-underline hover:underline;
+  }
+
+  /* ---- TV mode: the rotation's own parts ---- */
+  .tvwrap {
+    @apply flex min-h-screen flex-col gap-3 px-8 py-6;
+  }
+  .tvhead {
+    @apply flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1;
+  }
+  .tvhead h1 {
+    @apply m-0 text-2xl;
+  }
+  .tvbody {
+    @apply min-h-0 flex-1;
+  }
+  .tvdots {
+    @apply flex flex-wrap items-center gap-2;
+  }
+  .tvdots span {
+    @apply h-2.5 w-2.5 rounded-none bg-zinc-300 dark:bg-zinc-600;
+  }
+  .tvdots span.on {
+    @apply bg-blue-600 dark:bg-blue-500;
+  }
+  .tvbar {
+    @apply h-1 overflow-hidden bg-zinc-200 dark:bg-zinc-700;
+  }
+  .tvbar i {
+    @apply block h-full w-0 bg-blue-600 dark:bg-blue-500;
+  }
+  .tvexit {
+    @apply fixed top-4 right-4 text-sm opacity-0 transition-opacity duration-200;
+  }
+  .tvstatus {
+    @apply flex flex-col gap-2;
+  }
+}
+
+/* ---- TV mode: the page around it (unlayered, so it beats the utilities
+   on the chrome in index.html) ------------------------------------------- */
+
+html.tv {
+  font-size: clamp(16px, 1.3vw, 28px);
+}
+html.tv #top,
+html.tv footer,
+html.tv .skip {
+  display: none;
+}
+html.tv body {
+  overflow: hidden;
+}
+html.tv main {
+  max-width: none;
+  padding: 0;
+}
+html.tv .champion .name {
+  font-size: 3rem;
+}
+html.tv .phase p {
+  font-size: 1.4rem;
+}
+/* The slide title already names these. */
+html.tv .tvbody .round > h2,
+html.tv .tvbody > .group > h3,
+html.tv .tvbody .phase .badge {
+  display: none;
+}
+html.tv .tvbody:hover ~ .tvexit,
+html.tv body:hover .tvexit,
+html.tv .tvexit:focus-visible {
+  opacity: 1;
+}
+html.tv .tbl td {
+  padding-block: 0.4rem;
+}
+html.tv .plotcell {
+  width: 38%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

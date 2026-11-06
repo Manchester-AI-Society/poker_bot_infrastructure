@@ -1,5 +1,6 @@
 // App shell: hash router, header controls, and the polling loop that keeps
-// the data fresh. There is no framework; each view returns an element (or
+// the data fresh. Light and dark follow the OS (CSS only); there is no switch.
+// There is no framework; each view returns an element (or
 // {el, title, dispose}) and the shell swaps it into <main>.
 
 import { data, refresh } from './api.js';
@@ -171,17 +172,6 @@ kindSwitch.addEventListener('click', (event) => {
     history.replaceState(null, '', '#/' + path.join('/') + (rest ? `?${rest}` : ''));
   }
   render();
-});
-
-document.getElementById('theme').addEventListener('click', () => {
-  const root = document.documentElement;
-  const dark =
-    root.getAttribute('data-theme') === 'dark' ||
-    (!root.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches);
-  const next = dark ? 'light' : 'dark';
-  root.setAttribute('data-theme', next);
-  try { localStorage.setItem('arena-theme', next); } catch { /* ignore */ }
-  render({ keepScroll: true }); // charts read their colours when drawn
 });
 
 function paintUpdated() {

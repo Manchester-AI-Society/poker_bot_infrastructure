@@ -51,13 +51,13 @@ export function submissionsView(ctx) {
     const notes = [];
     if (fetchProblem) {
       notes.push(
-        h('div', {}, h('span', { class: 'lose' }, 'Fetch problem: '), fetchProblem,
+        h('div', {}, h('span', { class: 'lose' }, '⚠️ Fetch problem: '), fetchProblem,
           current ? ' The previous version keeps playing.' : ''),
       );
     }
     if (problem) {
       notes.push(
-        h('div', {}, h('span', { class: 'lose' }, 'Latest push failed: '), problem,
+        h('div', {}, h('span', { class: 'lose' }, '⚠️ Latest push failed: '), problem,
           current ? ' (the previous version keeps playing)' : ''),
       );
     }
@@ -75,7 +75,7 @@ export function submissionsView(ctx) {
   page.appendChild(
     h(
       'div',
-      { class: 'card tablewrap', style: 'margin-top:1rem' },
+      { class: 'card tablewrap' },
       h(
         'table',
         { class: 'tbl' },

@@ -86,7 +86,7 @@ function tournamentTeamView(ctx, name, entry) {
       {},
       h('h1', {}, name),
       me.group ? h('span', { class: 'badge' }, `GROUP ${me.group}`) : null,
-      me.champion ? h('span', { class: 'badge final' }, h('span', { 'aria-hidden': 'true' }, '★'), 'Champion') : null,
+      me.champion ? h('span', { class: 'badge final mark' }, h('span', { 'aria-hidden': 'true' }, '★'), 'Champion') : null,
       me.qualified ? h('span', { class: 'badge ok' }, h('span', { 'aria-hidden': 'true' }, '✓'), 'Qualified for the finals') : null,
     ),
   );
@@ -149,7 +149,7 @@ export function teamView(ctx) {
   const fetchProblem = syncProblemText(entry.sync);
   if (fetchProblem) {
     page.appendChild(
-      h('div', { class: 'card', style: 'margin-bottom:1rem' }, h('span', { class: 'lose' }, 'Fetch problem: '), fetchProblem),
+      h('div', { class: 'card' }, h('span', { class: 'lose' }, '⚠️ Fetch problem: '), fetchProblem),
     );
   }
 

@@ -5,44 +5,51 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Poker Bot Competition</title>
   <meta name="description" content="Live results for the poker bot competition: leaderboard, head-to-head matrix, matches and hand replays.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white'%3E%E2%99%A0%3C/text%3E%3C/svg%3E">
-  <script>
-    // Apply a saved theme before first paint so the page does not flash.
-    try {
-      var saved = localStorage.getItem('arena-theme');
-      if (saved === 'light' || saved === 'dark') {
-        document.documentElement.setAttribute('data-theme', saved);
-      }
-    } catch (e) { /* storage can be blocked; follow the OS setting */ }
-  </script>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23155dfc'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white'%3E%E2%99%A0%3C/text%3E%3C/svg%3E">
+  <link rel="preload" href="fonts/jetbrains-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/site.css">
 </head>
-<body>
-  <a class="skip" href="#main">Skip to content</a>
-  <header class="top" id="top">
-    <a class="brand" href="#/" id="brand">Poker Bot Competition</a>
-    <nav class="tabs" aria-label="Sections">
-      <a href="#/" data-route="" id="nav-home">Leaderboard</a>
-      <a href="#/matrix" data-route="matrix">Head-to-head</a>
-      <a href="#/matches" data-route="matches">Matches</a>
-      <a href="#/register" data-route="register" id="nav-register" hidden>Register</a>
-      <a href="#/submit" data-route="submit">How to submit</a>
-      <a href="#/submissions" data-route="submissions" id="nav-submissions">Submissions</a>
-      <a href="#/tv" data-route="tv">TV mode</a>
-    </nav>
-    <div class="tools">
-      <div class="seg" id="kind-switch" role="group" aria-label="Which results" hidden>
-        <button type="button" data-kind="final">Final</button>
-        <button type="button" data-kind="ladder">Ladder</button>
+<body class="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white antialiased">
+  <a class="skip sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:bg-white dark:focus:bg-zinc-800 focus:px-4 focus:py-2 focus:border focus:border-zinc-300 focus:dark:border-zinc-700" href="#main">Skip to content</a>
+  <nav id="top" aria-label="Sections" class="bg-white dark:bg-zinc-900 sticky top-0 z-40">
+    <div class="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto px-4 py-4 md:px-8">
+      <a href="#/" id="brand" class="text-2xl font-semibold whitespace-nowrap dark:text-white">Poker Bot Competition</a>
+      <button id="navbar-toggle" type="button" aria-controls="navbar-default" aria-expanded="false"
+        class="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-zinc-500 rounded-lg border-0 bg-transparent lg:hidden hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-transparent dark:text-zinc-400 dark:hover:bg-zinc-700">
+        <span class="sr-only">Open main menu</span>
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 17 14" aria-hidden="true"><path stroke="currentColor" stroke-linecap="round" stroke-width="2" d="M1 1h15M1 7h15M1 13h15"/></svg>
+      </button>
+      <div id="navbar-default" class="transition-all duration-300 ease-in-out overflow-hidden lg:overflow-visible w-full lg:block lg:w-auto lg:ml-auto max-h-0 invisible lg:visible lg:max-h-full">
+        <ul class="tabs font-medium flex flex-col p-4 lg:p-0 mt-4 border border-zinc-100 rounded-sm bg-zinc-50 lg:flex-row lg:items-center lg:space-x-6 lg:mt-0 lg:border-0 lg:bg-white dark:bg-zinc-800 lg:dark:bg-zinc-900 dark:border-zinc-700">
+          <li><a href="#/" data-route="" id="nav-home" class="block py-2 px-3 text-zinc-900 rounded-sm lg:text-sm hover:bg-zinc-100 aria-[current=page]:text-white aria-[current=page]:bg-blue-700 lg:hover:bg-transparent lg:hover:text-blue-600 lg:p-0 lg:aria-[current=page]:bg-transparent lg:aria-[current=page]:text-blue-600 dark:text-white lg:dark:hover:text-blue-500 dark:hover:bg-zinc-700 lg:dark:hover:bg-transparent lg:dark:aria-[current=page]:text-blue-500 transition-[color] duration-200">Leaderboard</a></li>
+          <li><a href="#/matrix" data-route="matrix" class="block py-2 px-3 text-zinc-900 rounded-sm lg:text-sm hover:bg-zinc-100 aria-[current=page]:text-white aria-[current=page]:bg-blue-700 lg:hover:bg-transparent lg:hover:text-blue-600 lg:p-0 lg:aria-[current=page]:bg-transparent lg:aria-[current=page]:text-blue-600 dark:text-white lg:dark:hover:text-blue-500 dark:hover:bg-zinc-700 lg:dark:hover:bg-transparent lg:dark:aria-[current=page]:text-blue-500 transition-[color] duration-200">Head-to-head</a></li>
+          <li><a href="#/matches" data-route="matches" class="block py-2 px-3 text-zinc-900 rounded-sm lg:text-sm hover:bg-zinc-100 aria-[current=page]:text-white aria-[current=page]:bg-blue-700 lg:hover:bg-transparent lg:hover:text-blue-600 lg:p-0 lg:aria-[current=page]:bg-transparent lg:aria-[current=page]:text-blue-600 dark:text-white lg:dark:hover:text-blue-500 dark:hover:bg-zinc-700 lg:dark:hover:bg-transparent lg:dark:aria-[current=page]:text-blue-500 transition-[color] duration-200">Matches</a></li>
+          <li class="has-[a[hidden]]:hidden"><a href="#/register" data-route="register" id="nav-register" hidden class="block py-2 px-3 text-zinc-900 rounded-sm lg:text-sm hover:bg-zinc-100 aria-[current=page]:text-white aria-[current=page]:bg-blue-700 lg:hover:bg-transparent lg:hover:text-blue-600 lg:p-0 lg:aria-[current=page]:bg-transparent lg:aria-[current=page]:text-blue-600 dark:text-white lg:dark:hover:text-blue-500 dark:hover:bg-zinc-700 lg:dark:hover:bg-transparent lg:dark:aria-[current=page]:text-blue-500 transition-[color] duration-200">Register</a></li>
+          <li><a href="#/submit" data-route="submit" class="block py-2 px-3 text-zinc-900 rounded-sm lg:text-sm hover:bg-zinc-100 aria-[current=page]:text-white aria-[current=page]:bg-blue-700 lg:hover:bg-transparent lg:hover:text-blue-600 lg:p-0 lg:aria-[current=page]:bg-transparent lg:aria-[current=page]:text-blue-600 dark:text-white lg:dark:hover:text-blue-500 dark:hover:bg-zinc-700 lg:dark:hover:bg-transparent lg:dark:aria-[current=page]:text-blue-500 transition-[color] duration-200">How to submit</a></li>
+          <li class="has-[a[hidden]]:hidden"><a href="#/submissions" data-route="submissions" id="nav-submissions" class="block py-2 px-3 text-zinc-900 rounded-sm lg:text-sm hover:bg-zinc-100 aria-[current=page]:text-white aria-[current=page]:bg-blue-700 lg:hover:bg-transparent lg:hover:text-blue-600 lg:p-0 lg:aria-[current=page]:bg-transparent lg:aria-[current=page]:text-blue-600 dark:text-white lg:dark:hover:text-blue-500 dark:hover:bg-zinc-700 lg:dark:hover:bg-transparent lg:dark:aria-[current=page]:text-blue-500 transition-[color] duration-200">Submissions</a></li>
+          <li><a href="#/tv" data-route="tv" class="block py-2 px-3 text-zinc-900 rounded-sm lg:text-sm hover:bg-zinc-100 aria-[current=page]:text-white aria-[current=page]:bg-blue-700 lg:hover:bg-transparent lg:hover:text-blue-600 lg:p-0 lg:aria-[current=page]:bg-transparent lg:aria-[current=page]:text-blue-600 dark:text-white lg:dark:hover:text-blue-500 dark:hover:bg-zinc-700 lg:dark:hover:bg-transparent lg:dark:aria-[current=page]:text-blue-500 transition-[color] duration-200">TV mode</a></li>
+          <li>
+            <div class="seg" id="kind-switch" role="group" aria-label="Which results" hidden>
+              <button type="button" data-kind="final">Final</button>
+              <button type="button" data-kind="ladder">Ladder</button>
+            </div>
+          </li>
+        </ul>
       </div>
-      <button type="button" class="ghost" id="theme" aria-label="Switch light and dark theme">Theme</button>
-      <span class="updated" id="updated" role="status" aria-live="polite"></span>
     </div>
-  </header>
-  <main id="main" tabindex="-1">
+  </nav>
+  <main id="main" tabindex="-1" class="container mx-auto max-w-screen-xl p-8 focus:outline-none">
     <p class="loading">Loading results&hellip;</p>
   </main>
-  <noscript><p class="page">This page needs JavaScript to show the results.</p></noscript>
+  <noscript><p class="container mx-auto max-w-screen-xl p-8">This page needs JavaScript to show the results.</p></noscript>
+  <footer class="container mx-auto max-w-screen-xl p-8">
+    <div class="flex flex-wrap items-baseline justify-between gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+      <span class="updated" id="updated" role="status" aria-live="polite"></span>
+      <span>Poker Bot Competition</span>
+    </div>
+  </footer>
+  <script type="module" src="js/nav.js"></script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

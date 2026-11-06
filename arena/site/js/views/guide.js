@@ -20,7 +20,7 @@ export async function guideView(ctx) {
     page.appendChild(h('div', { class: 'empty card' }, 'The guide could not be loaded. This page tries again every few seconds.'));
     return { el: page, title: 'How to submit' };
   }
-  page.appendChild(h('div', { class: 'card' }, renderMarkdown(text)));
+  page.appendChild(renderMarkdown(text));
   if (!isTournament(ctx.data.manifest)) {
     // The tournament has no repository submissions to check on.
     page.appendChild(

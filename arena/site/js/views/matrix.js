@@ -135,7 +135,7 @@ function matrixBody(board) {
       'p',
       { class: 'note' },
       'Each cell is the row team’s average big blinds won per hand against the column team. ' +
-        'Blue means the row team is ahead, red that it is behind; a faded cell means the ' +
+        'Blue means the row team is ahead, grey that it is behind (the sign and the number say the same); a faded cell means the ' +
         'difference could just be luck.',
     ),
   ];

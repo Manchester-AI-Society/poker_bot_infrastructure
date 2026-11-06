@@ -32,6 +32,7 @@ function seatEl(index, frame, hand, replay) {
       h(
         'div',
         { class: 'nm' },
+        frame.actor === index ? h('span', { 'aria-hidden': 'true', class: 'mr-1' }, '▶') : null,
         hand.seats[index],
         index === hand.dealer
           ? h('span', { class: 'btn', title: 'Dealer, and small blind heads-up' }, 'D')

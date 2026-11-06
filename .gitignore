@@ -224,3 +224,6 @@ submissions/
 teams.txt
 # Teams' secret keys for the websocket tournament (never commit these)
 keys*.txt
+
+# Node (site-src build-time dependencies)
+node_modules/
