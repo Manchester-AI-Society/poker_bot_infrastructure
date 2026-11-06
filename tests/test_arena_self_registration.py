@@ -260,6 +260,9 @@ def test_the_client_registers_saves_its_key_and_reuses_it(gateway, opened):
     stop, logs, _, _ = run_client(gateway, creds)
     try:
         assert wait_for(lambda: gateway.is_connected("fox"))
+        # The gateway sees the team the moment it sends the key; the client
+        # writes the key file a moment later.
+        assert wait_for(lambda: client.load_key("fox"))
         saved = client.load_key("fox")
         assert saved and opened.remote_teams()["fox"] == hash_key(saved)
         assert any("registered team" in line for line in logs)
@@ -278,6 +281,7 @@ def test_running_the_register_command_twice_just_connects(gateway, opened):
     )
     try:
         assert wait_for(lambda: gateway.is_connected("fox"))
+        assert wait_for(lambda: client.load_key("fox"))
     finally:
         stop.set()
     # The same command again: a saved key exists, so no second registration
