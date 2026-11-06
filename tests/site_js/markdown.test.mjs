@@ -150,20 +150,23 @@ test('every command in the guide survives as code, character for character', () 
   assert.match(code, /python -m arena match bots\/myteam call --deals 200/);
   assert.match(code, /pip install -r requirements\.txt/);
   assert.match(code, /python -m arena pack bots\/myteam --team myteam/);
-  assert.doesNotMatch(code, /arena\.connect|ws:\/\//, 'the old websocket flow is gone');
+  assert.match(code, /python -m player_sdk bots\/myteam\/bot\.py --tournament --server-url SERVER_URL --api-key YOUR_KEY/);
+  assert.match(code, /SERVER_URL\/v1\/register/);
+  assert.doesNotMatch(code, /arena\.connect/, 'the old arena.connect client is gone');
 });
 
-test('the relative link to bots/README.md is plain text on the site, not a broken link', () => {
+test('a relative link to a repo file is plain text on the site, not a broken link', () => {
   const links = [];
   const walk = (pieces) =>
     pieces.forEach((p) => {
       if (p.t === 'link') links.push(p.href);
       if (p.children) walk(p.children);
     });
-  for (const b of parseMarkdown(guide)) {
+  const sample = 'See [the examples](bots/README.md) and [the site](https://example.com).';
+  for (const b of parseMarkdown(sample)) {
     [b.inline, ...(b.items || [])].filter(Boolean).forEach(walk);
   }
 
-  assert.ok(links.length > 0);
-  assert.ok(links.some((href) => !isSafeLink(href)), 'the guide links to a repo file');
+  assert.deepEqual(links, ['bots/README.md', 'https://example.com']);
+  assert.deepEqual(links.map(isSafeLink), [false, true]);
 });
