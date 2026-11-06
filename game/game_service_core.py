@@ -28,6 +28,8 @@ from .turn_timeout_manager import TurnTimeoutManager
 LOGGER = logging.getLogger(__name__)
 
 ConnectedCheckCallback = Callable[[str], bool]
+# 23 players x 2 hole cards + 5 board cards = 51 of the 52-card deck.
+MAX_PLAYERS_PER_TABLE = 23
 MatchEndedCallback = Callable[[MatchRuntime], Awaitable[None]]
 
 
@@ -83,6 +85,10 @@ class GameService:
         """Creates and stores a new match runtime."""
         if len(player_ids) < 2:
             raise MatchStateError("At least 2 players are required")
+        if len(player_ids) > MAX_PLAYERS_PER_TABLE:
+            raise MatchStateError(
+                f"At most {MAX_PLAYERS_PER_TABLE} players fit at one table"
+            )
         if len(set(player_ids)) != len(player_ids):
             raise MatchStateError("Duplicate player ids are not allowed")
         if small_blind >= big_blind:
@@ -347,8 +353,6 @@ class GameService:
                     "player_id": player_id,
                 }
                 self._log_event(runtime, "timeout", {"player_id": player_id})
-            else:
-                self._timeout_manager.cancel(runtime)
 
             normalised_action = "raise_to" if action == "raise" else action
             action_name, emitted_amount = apply_action(
@@ -357,6 +361,10 @@ class GameService:
                 normalised_action,
                 amount,
             )
+            # Only a legal action stops the clock: a rejected one leaves
+            # the turn timer running so a bad bot cannot stall the table.
+            if not from_timeout:
+                self._timeout_manager.cancel(runtime)
 
             action_event = {
                 "type": "action",

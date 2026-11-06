@@ -13,7 +13,7 @@ import random
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from .game_domain_models import MatchStateError
-from .game_service_core import GameService
+from .game_service_core import MAX_PLAYERS_PER_TABLE, GameService
 from .match_runtime import MatchRuntime
 
 MAX_TABLES = 10
@@ -27,6 +27,12 @@ def split_into_tables(player_ids: List[str]) -> List[List[str]]:
     """
     if len(player_ids) < 2:
         raise MatchStateError("At least 2 players are required")
+    capacity = MAX_TABLES * MAX_PLAYERS_PER_TABLE
+    if len(player_ids) > capacity:
+        raise MatchStateError(
+            f"At most {capacity} players can enter"
+            f" ({len(player_ids)} connected)"
+        )
     table_count = min(MAX_TABLES, len(player_ids) // 2)
     return [player_ids[i::table_count] for i in range(table_count)]
 
@@ -77,8 +83,14 @@ class Tournament:
             self.tables = []
             self.champion = None
             self.status = "running"
-            # A lone table is already the final.
-            launched = self._create_round(1 if len(groups) > 1 else 2, groups)
+            try:
+                # A lone table is already the final.
+                launched = self._create_round(
+                    1 if len(groups) > 1 else 2, groups
+                )
+            except Exception:
+                self.status = "idle"
+                raise
         await self._start_tables(launched)
 
     async def on_match_ended(self, runtime: MatchRuntime) -> None:

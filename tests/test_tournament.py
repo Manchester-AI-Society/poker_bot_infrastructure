@@ -75,6 +75,7 @@ class TestSplitting:
             (3, [3]),
             (2, [2]),
             (150, [15] * 10),
+            (230, [23] * 10),
         ],
     )
     def test_tables_are_as_even_as_possible(self, count, expected_sizes):
@@ -83,6 +84,23 @@ class TestSplitting:
 
         assert [len(t) for t in tables] == expected_sizes
         assert sorted(p for t in tables for p in t) == sorted(players)
+
+    def test_rejects_more_players_than_the_deck_can_seat(self):
+        with pytest.raises(MatchStateError, match="At most 230"):
+            split_into_tables([f"p{i}" for i in range(231)])
+
+    def test_failed_start_leaves_tournament_restartable(self):
+        async def scenario():
+            _, tournament, _ = make_tournament()
+            with pytest.raises(MatchStateError):
+                await tournament.start(
+                    [f"p{i}" for i in range(250)], **SETTINGS
+                )
+            assert tournament.status == "idle"
+            await tournament.start(["a", "b"], **SETTINGS)
+            assert tournament.status == "running"
+
+        asyncio.run(scenario())
 
     def test_needs_two_players(self):
         with pytest.raises(MatchStateError):
@@ -255,3 +273,64 @@ class TestTournament:
                 await tournament.start(["a", "b"], **SETTINGS)
 
         asyncio.run(scenario())
+
+
+class TestTablesCannotStall:
+    async def _bb_option(self, timeout: int = 3600):
+        service = GameService()
+        runtime = service.create_match(
+            player_ids=["a", "b"],
+            starting_stack=100,
+            small_blind=5,
+            big_blind=10,
+            turn_timeout_seconds=timeout,
+            wait_for_players=False,
+        )
+        await service.start_match(runtime.match_id, force=True)
+        # Heads-up: the button (a) limps, leaving b the big-blind option.
+        await service.submit_action(
+            match_id=runtime.match_id,
+            player_id="a",
+            action="call",
+            amount=None,
+            turn_id=None,
+        )
+        return service, runtime
+
+    def test_bet_on_big_blind_option_is_treated_as_raise(self):
+        async def scenario():
+            service, runtime = await self._bb_option()
+            await service.submit_action(
+                match_id=runtime.match_id,
+                player_id="b",
+                action="bet",
+                amount=30,
+                turn_id=None,
+            )
+            return runtime
+
+        runtime = asyncio.run(scenario())
+        assert runtime.players[1].curr_bet_amount == 30
+        assert runtime.engine.call_amount == 30
+
+    def test_rejected_action_keeps_turn_timer_running(self):
+        from game import InvalidActionError
+
+        async def scenario():
+            service, runtime = await self._bb_option(timeout=2)
+            turn_before = runtime.turn_id
+            with pytest.raises(InvalidActionError):
+                await service.submit_action(
+                    match_id=runtime.match_id,
+                    player_id="b",
+                    action="call",  # illegal: nothing to call
+                    amount=None,
+                    turn_id=None,
+                )
+            await asyncio.sleep(2.5)
+            return runtime, turn_before
+
+        runtime, turn_before = asyncio.run(scenario())
+        # The timeout auto-checked b and play moved on.
+        assert runtime.turn_id > turn_before
+        assert any(e["type"] == "timeout" for e in runtime.action_log)

@@ -14,7 +14,7 @@ def legal_actions(runtime: MatchRuntime, actor_index: int) -> list[str]:
     actions = ["fold"]
     if to_call == 0:
         actions.append("check")
-        if seat.curr_balance > 0:
+        if seat.curr_balance > 0 and runtime.engine.call_amount == 0:
             actions.append("bet")
     else:
         actions.append("call")
@@ -51,6 +51,12 @@ def apply_action(
     seat = runtime.players[actor_index]
     to_call = max(0, runtime.engine.call_amount - seat.curr_bet_amount)
     legal = legal_actions(runtime, actor_index)
+
+    # "bet" and "raise_to" both mean "make my street total X"; which name
+    # applies depends on whether a bet (e.g. the big blind) already stands,
+    # which clients easily get wrong on the big blind's preflop option.
+    if action in ("bet", "raise_to"):
+        action = "raise_to" if runtime.engine.call_amount > 0 else "bet"
 
     if action not in legal:
         raise InvalidActionError(
