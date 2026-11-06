@@ -1,6 +1,7 @@
 import { cellColors, matrixMax } from '../charts.js';
 import { h } from '../dom.js';
-import { MINUS, fmtBB, fmtPlain } from '../format.js';
+import { MINUS, buildHash, fmtBB, fmtPlain } from '../format.js';
+import { NOT_YET, isTournament, revealedBoards } from '../tournament-core.js';
 import { emptyBoard, kindBadge } from './leaderboard.js';
 
 /** Reads the colour tokens as hex so cell text contrast can be computed. */
@@ -105,7 +106,73 @@ export function matrixGrid(board, { numbers, cellPx = null }) {
   };
 }
 
+/**
+ * The controls, the grid and the explanation for one board. Returns the
+ * elements to put on the page.
+ */
+function matrixBody(board) {
+  const holder = h('div', { class: 'card' });
+  const toggle = h('input', {
+    type: 'checkbox',
+    id: 'show-numbers',
+    onchange: () => draw(),
+  });
+  toggle.checked = board.teams.length <= 12;
+  function draw() {
+    const { grid, legend: key } = matrixGrid(board, { numbers: toggle.checked });
+    holder.replaceChildren(grid, key);
+  }
+  draw();
+  return [
+    h(
+      'div',
+      { class: 'controls' },
+      h('label', { for: 'show-numbers' }, toggle, 'Show numbers (bb/hand)'),
+      h('span', { class: 'muted small' }, 'Click a cell to see those matches.'),
+    ),
+    holder,
+    h(
+      'p',
+      { class: 'note' },
+      'Each cell is the row team’s average big blinds won per hand against the column team. ' +
+        'Blue means the row team is ahead, red that it is behind; a faded cell means the ' +
+        'difference could just be luck.',
+    ),
+  ];
+}
+
+/** Tournament format: pick which group (or the finals) to look at. */
+function tournamentMatrixView(ctx) {
+  const boards = revealedBoards(ctx.data.tournament, ctx.data.boards.final);
+  const page = h('div', { class: 'page' }, h('header', {}, h('h1', {}, 'Head-to-head')));
+  if (!boards.length) {
+    page.appendChild(h('div', { class: 'empty card' }, NOT_YET));
+    return { el: page, title: 'Head-to-head' };
+  }
+  // Default to the finals once they exist: that is where the champion is decided.
+  const chosen =
+    boards.find((b) => b.id === ctx.query.board) || boards.find((b) => b.kind === 'final') || boards[0];
+  const select = h(
+    'select',
+    {
+      id: 'f-board',
+      onchange: (e) => (location.hash = buildHash(['matrix'], { board: e.target.value })),
+    },
+    boards.map((b) => h('option', { value: b.id, selected: b.id === chosen.id }, b.label)),
+  );
+  page.appendChild(
+    h('div', { class: 'controls' }, h('label', { for: 'f-board' }, 'Show ', select)),
+  );
+  if (chosen.board.teams.length < 2) {
+    page.appendChild(h('div', { class: 'empty card' }, `${chosen.label} has fewer than two teams, so there is nothing to compare.`));
+    return { el: page, title: 'Head-to-head' };
+  }
+  page.append(...matrixBody(chosen.board));
+  return { el: page, title: 'Head-to-head' };
+}
+
 export function matrixView(ctx) {
+  if (isTournament(ctx.data.manifest)) return tournamentMatrixView(ctx);
   const board = ctx.data.boards[ctx.kind];
   const page = h('div', { class: 'page' });
   page.appendChild(
@@ -115,36 +182,6 @@ export function matrixView(ctx) {
     page.appendChild(emptyBoard(ctx.kind));
     return { el: page, title: 'Head-to-head' };
   }
-  const defaultNumbers = board.teams.length <= 12;
-  const holder = h('div', { class: 'card' });
-  const toggle = h('input', {
-    type: 'checkbox',
-    id: 'show-numbers',
-    onchange: () => draw(),
-  });
-  toggle.checked = defaultNumbers;
-  page.appendChild(
-    h(
-      'div',
-      { class: 'controls' },
-      h('label', { for: 'show-numbers' }, toggle, 'Show numbers (bb/hand)'),
-      h('span', { class: 'muted small' }, 'Click a cell to see those matches.'),
-    ),
-  );
-  page.appendChild(holder);
-  function draw() {
-    const { grid, legend: key } = matrixGrid(board, { numbers: toggle.checked });
-    holder.replaceChildren(grid, key);
-  }
-  draw();
-  page.appendChild(
-    h(
-      'p',
-      { class: 'note' },
-      'Each cell is the row team’s average big blinds won per hand against the column team. ' +
-        'Blue means the row team is ahead, red that it is behind; a faded cell means the ' +
-        'difference could just be luck.',
-    ),
-  );
-  return { el: page, title: 'Head-to-head', redraw: draw };
+  page.append(...matrixBody(board));
+  return { el: page, title: 'Head-to-head' };
 }

@@ -1,9 +1,11 @@
 import { allPairings } from '../api.js';
 import { h } from '../dom.js';
 import { ago, buildHash, fmtBB, fmtPlain, plural } from '../format.js';
+import { NOT_YET, isTournament } from '../tournament-core.js';
 import { kindBadge } from './leaderboard.js';
 
 const PAGE_SIZE = 50;
+const KIND_LABEL = { all: 'All matches', final: 'Final', ladder: 'Ladder', group: 'Round 1 (groups)' };
 
 /** The result line from the winner's side (or a neutral one for a tie). */
 export function resultText(p) {
@@ -46,7 +48,7 @@ export function matchRow(p, now) {
     h(
       'span',
       { class: 'meta' },
-      kindBadge(p.kind),
+      kindBadge(p.kind, p.group),
       ` ${plural(p.hands, 'hand')} (${plural(p.deals_completed, 'deal')})`,
       p.rounds > 1 ? ` · pooled over ${p.rounds} rounds` : '',
       p.status !== 'complete' ? ' · incomplete' : '',
@@ -56,11 +58,21 @@ export function matchRow(p, now) {
 }
 
 export function matchesView(ctx) {
+  const tournament = isTournament(ctx.data.manifest);
   const query = { ...ctx.query };
-  const kind = query.kind || ctx.kind;
+  // The tournament has no "current" kind: show everything unless asked.
+  const kind = query.kind || (tournament ? 'all' : ctx.kind);
   const team = query.team || '';
   const other = query.other || '';
   const shown = Number(query.n) || PAGE_SIZE;
+
+  if (tournament && !ctx.data.manifest.kinds.length) {
+    // Nothing has been published, so there are no matches (and no filters) to offer.
+    return {
+      el: h('div', { class: 'page' }, h('header', {}, h('h1', {}, 'Matches')), h('div', { class: 'empty card' }, NOT_YET)),
+      title: 'Matches',
+    };
+  }
 
   const names = ctx.data.teams.map((t) => t.team);
   const go = (changes) =>
@@ -69,9 +81,9 @@ export function matchesView(ctx) {
   const kindSelect = h(
     'select',
     { id: 'f-kind', onchange: (e) => go({ kind: e.target.value }) },
-    ...['final', 'ladder', 'all']
+    ...(tournament ? ['all', 'group', 'final'] : ['final', 'ladder', 'all'])
       .filter((k) => k === 'all' || ctx.data.pairings[k])
-      .map((k) => h('option', { value: k, selected: k === kind }, k === 'all' ? 'All matches' : k === 'final' ? 'Final' : 'Ladder')),
+      .map((k) => h('option', { value: k, selected: k === kind }, KIND_LABEL[k])),
   );
   const teamSelect = h(
     'select',

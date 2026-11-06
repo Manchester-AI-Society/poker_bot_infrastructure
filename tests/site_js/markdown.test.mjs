@@ -122,11 +122,11 @@ test('SUBMITTING.md is read into the structure it was written with', () => {
   const count = (type) => blocks.filter((b) => b.type === type).length;
 
   assert.equal(blocks[0].type, 'heading');
-  assert.equal(inlineText(blocks[0].inline), 'How to submit your bot');
-  assert.ok(count('heading') >= 8, 'a heading per step');
+  assert.equal(inlineText(blocks[0].inline), 'How to enter your bot');
+  assert.ok(count('heading') >= 6, 'a heading per step');
   assert.ok(count('code') >= 4, 'the command blocks');
-  assert.equal(count('table'), 3, 'what the bot is given, the problems table, the rules table');
-  assert.ok(count('list') >= 3);
+  assert.equal(count('table'), 2, 'what the bot is given, the rules table');
+  assert.ok(count('list') >= 2);
 });
 
 test('no markdown syntax is left showing in the rendered text of SUBMITTING.md', () => {
@@ -149,7 +149,7 @@ test('every command in the guide survives as code, character for character', () 
   assert.match(code, /python -m arena validate bots\/myteam/);
   assert.match(code, /python -m arena match bots\/myteam call --deals 200/);
   assert.match(code, /pip install -r requirements\.txt/);
-  assert.match(code, /bot\.py {10}<- required, at the top level/);
+  assert.match(code, /python -m arena\.connect --url ws:\/\/ADDRESS:8765 --key YOUR_KEY bots\/myteam/);
 });
 
 test('the relative link to bots/README.md is plain text on the site, not a broken link', () => {

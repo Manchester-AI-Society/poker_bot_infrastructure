@@ -360,16 +360,42 @@ select {
 .btn-primary[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 .btn-primary:hover { text-decoration: underline; }
 
+/* ---- tournament (groups, then finals) ------------------------------- */
+
+.phase { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.9rem; margin-bottom: 1.25rem; }
+.phase p { margin: 0; font-size: 1.05rem; }
+.round { margin-top: 1.75rem; }
+.round > h2 { margin-bottom: 0.4rem; }
+.groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.9rem; margin-top: 0.75rem; }
+.groups.ranked { grid-template-columns: minmax(0, 1fr); }
+.group h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
+.chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.chips a {
+  display: inline-block; padding: 0.15rem 0.65rem; border: 1px solid var(--axis);
+  border-radius: 999px; color: var(--ink); text-decoration: none;
+}
+.chips a:hover { background: var(--hilite); }
+.tbl .mark { margin-left: 0.5rem; }
+.champion { text-align: center; border: 2px solid var(--ink); margin-bottom: 1.25rem; }
+.champion .k { color: var(--ink-2); font-size: 0.9rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.champion .name { font-size: 2.2rem; font-weight: 700; line-height: 1.2; }
+.champion .name a { color: var(--ink); text-decoration: none; }
+.champion .name a:hover { text-decoration: underline; }
+html.tv .champion .name { font-size: 3.2rem; }
+html.tv .phase p { font-size: 1.5rem; }
+/* The slide title already names these. */
+html.tv .tvbody .round > h2, html.tv .tvbody > .group > h3, html.tv .tvbody .phase .badge { display: none; }
+
 /* ---- TV mode --------------------------------------------------------- */
 
 html.tv { font-size: clamp(16px, 1.3vw, 28px); }
 html.tv .top, html.tv .skip { display: none; }
 html.tv body { overflow: hidden; }
 .tvwrap { min-height: 100vh; padding: 1.2rem 2rem 2rem; display: flex; flex-direction: column; gap: 0.75rem; }
-.tvhead { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.tvhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0.25rem 1rem; }
 .tvhead h1 { font-size: 1.5rem; margin: 0; }
 .tvbody { flex: 1; min-height: 0; }
-.tvdots { display: flex; gap: 0.5rem; align-items: center; }
+.tvdots { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .tvdots span { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--axis); }
 .tvdots span.on { background: var(--ink); }
 .tvbar { height: 4px; background: var(--grid); border-radius: 2px; overflow: hidden; }

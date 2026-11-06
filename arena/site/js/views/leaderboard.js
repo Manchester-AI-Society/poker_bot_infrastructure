@@ -2,7 +2,8 @@ import { ciPlot, axisHeader, describeScore, scoreAxisMax } from '../charts.js';
 import { h } from '../dom.js';
 import { fmtBB, fmtPlain, plural } from '../format.js';
 
-export function kindBadge(kind) {
+export function kindBadge(kind, group = null) {
+  if (kind === 'group') return h('span', { class: 'badge' }, group ? `GROUP ${group}` : 'ROUND 1');
   return kind === 'final'
     ? h('span', { class: 'badge final' }, 'FINAL')
     : h('span', { class: 'badge prov' }, 'PROVISIONAL · ladder');
@@ -18,11 +19,15 @@ export function emptyBoard(kind) {
   );
 }
 
+const DEFAULT_CAPTION = 'Ranking by mean big blinds won per hand, with 95% interval';
+
 /**
  * The ranking: score, interval plot, record and faults. `limit` shows only
- * the top N (used by TV mode).
+ * the top N (used by TV mode). `marks` (team name -> text) adds a badge after
+ * a team's name, for example "Qualified" in a tournament group; `caption` is
+ * the table's screen-reader description.
  */
-export function leaderboardTable(board, { limit = null } = {}) {
+export function leaderboardTable(board, { limit = null, marks = null, caption = DEFAULT_CAPTION } = {}) {
   const teams = limit ? board.teams.slice(0, limit) : board.teams;
   const max = scoreAxisMax(board.teams);
   const body = teams.map((team) => {
@@ -46,6 +51,7 @@ export function leaderboardTable(board, { limit = null } = {}) {
               `≈ #${nextRank}`,
             )
           : null,
+        marks && marks.has(team.team) ? markBadge(marks.get(team.team)) : null,
       ),
       h('td', { class: 'num' }, fmtBB(team.score)),
       h('td', { class: 'num muted' }, team.ci95 == null ? '—' : `± ${fmtPlain(team.ci95)}`),
@@ -69,7 +75,7 @@ export function leaderboardTable(board, { limit = null } = {}) {
     h(
       'table',
       { class: 'tbl' },
-      h('caption', { class: 'sr-only' }, 'Ranking by mean big blinds won per hand, with 95% interval'),
+      h('caption', { class: 'sr-only' }, caption),
       h(
         'thead',
         {},
@@ -87,6 +93,16 @@ export function leaderboardTable(board, { limit = null } = {}) {
       ),
       h('tbody', {}, body),
     ),
+  );
+}
+
+/** Text, not colour alone: "✓ Qualified" or "★ Champion". */
+function markBadge(text) {
+  return h(
+    'span',
+    { class: text === 'Champion' ? 'badge final mark' : 'badge ok mark' },
+    h('span', { 'aria-hidden': 'true' }, text === 'Champion' ? '★' : '✓'),
+    text,
   );
 }
 

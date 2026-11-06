@@ -4,7 +4,8 @@
 
 import { data, refresh } from './api.js';
 import { h } from './dom.js';
-import { ago, parseHash } from './format.js';
+import { parseHash } from './format.js';
+import { isTournament, updatedText } from './tournament-core.js';
 import { guideView } from './views/guide.js';
 import { leaderboardView } from './views/leaderboard.js';
 import { matchesView } from './views/matches.js';
@@ -13,6 +14,7 @@ import { registerView } from './views/register.js';
 import { replayView } from './views/replay.js';
 import { submissionsView } from './views/submissions.js';
 import { teamView } from './views/team.js';
+import { tournamentView } from './views/tournament.js';
 import { tvView } from './views/tv.js';
 
 const POLL_SECONDS = 10;
@@ -48,7 +50,8 @@ function recall(key) {
 // `live` routes are redrawn when new data arrives; the others (a replay being
 // watched, the TV rotation) keep running and read fresh data when they need it.
 const ROUTES = {
-  '': { view: leaderboardView, live: true },
+  // The home page is the leaderboard, or the tournament in that format.
+  '': { view: (ctx) => (isTournament(ctx.data.manifest) ? tournamentView(ctx) : leaderboardView(ctx)), live: true },
   matrix: { view: matrixView, live: true },
   matches: { view: matchesView, live: true },
   team: { view: teamView, live: true },
@@ -59,7 +62,11 @@ const ROUTES = {
   tv: { view: tvView, live: false },
 };
 
+// Pages that exist only for the repository-submission format.
+const LADDER_ONLY = new Set(['register', 'submissions']);
+
 function chooseKind(requested) {
+  if (isTournament(data.manifest)) return 'tournament'; // no Final/Ladder choice
   const available = (data.manifest && data.manifest.kinds) || ['ladder'];
   const preferred = requested || recall('arena-kind');
   if (preferred && available.includes(preferred)) return preferred;
@@ -82,7 +89,12 @@ async function render({ keepScroll = false } = {}) {
     return;
   }
   const token = ++renderToken;
-  const { path, query } = parseHash(location.hash);
+  let { path, query } = parseHash(location.hash);
+  if (isTournament(data.manifest) && LADDER_ONLY.has(path[0])) {
+    // There is no registration or submission page here; bots connect directly.
+    history.replaceState(null, '', '#/');
+    ({ path, query } = parseHash(location.hash));
+  }
   const route = ROUTES[path[0] || ''] || ROUTES[''];
   if (query.kind) remember('arena-kind', query.kind);
   kind = chooseKind(query.kind);
@@ -116,7 +128,7 @@ async function render({ keepScroll = false } = {}) {
     else link.removeAttribute('aria-current');
   }
   paintKindSwitch();
-  paintRegisterTab();
+  paintNav();
   if (keepScroll) window.scrollTo(0, scrollY);
   else {
     window.scrollTo(0, 0);
@@ -126,15 +138,22 @@ async function render({ keepScroll = false } = {}) {
 
 // ---- header controls --------------------------------------------------
 
-function paintRegisterTab() {
+function paintNav() {
+  const tournament = isTournament(data.manifest);
   // The Register tab exists only when the organiser set up a registry.
-  const tab = document.getElementById('nav-register');
-  if (tab) tab.hidden = !(data.manifest && data.manifest.registry_repo);
+  const register = document.getElementById('nav-register');
+  if (register) register.hidden = tournament || !(data.manifest && data.manifest.registry_repo);
+  // A tournament has no repository submissions and no registration form.
+  const submissions = document.getElementById('nav-submissions');
+  if (submissions) submissions.hidden = tournament;
+  const home = document.getElementById('nav-home');
+  if (home) home.textContent = tournament ? 'Tournament' : 'Leaderboard';
 }
 
 function paintKindSwitch() {
   const kinds = (data.manifest && data.manifest.kinds) || [];
-  kindSwitch.hidden = kinds.length < 2;
+  // The Final/Ladder switch is for the ladder format; a tournament shows both rounds at once.
+  kindSwitch.hidden = isTournament(data.manifest) || kinds.length < 2;
   for (const button of kindSwitch.querySelectorAll('button')) {
     button.setAttribute('aria-pressed', String(button.dataset.kind === kind));
   }
@@ -171,14 +190,10 @@ function paintUpdated() {
     return;
   }
   const age = (Date.now() - data.lastOk) / 1000;
-  const changed = ago(Date.now() / 1000 - data.manifest.generated_at);
-  if (data.error && age > STALE_SECONDS) {
-    updated.classList.add('stale');
-    updated.textContent = `Connection lost – showing results from ${changed}`;
-  } else {
-    updated.classList.remove('stale');
-    updated.textContent = `Last result ${changed}`;
-  }
+  const since = Date.now() / 1000 - data.manifest.generated_at;
+  const stale = Boolean(data.error) && age > STALE_SECONDS;
+  updated.classList.toggle('stale', stale);
+  updated.textContent = updatedText(data.manifest, since, { stale });
 }
 
 // ---- start ------------------------------------------------------------

@@ -8,12 +8,27 @@ import { replayView } from './replay.js';
 import { leaderboardTable, kindBadge, emptyBoard } from './leaderboard.js';
 import { matchRow } from './matches.js';
 import { matrixGrid } from './matrix.js';
+import { finalsStage, advanceText, isTournament, phaseInfo, revealedBoards } from '../tournament-core.js';
+import { championBanner, finalsSection, groupCard, phaseBanner, roundOneSection } from './tournament.js';
 
 const SLIDE_SECONDS = 14;
 const REPLAY_SECONDS = 30;
 
 function pick(list) {
   return list[Math.floor(Math.random() * list.length)];
+}
+
+/** The head-to-head grid sized so every team fits the screen, whatever the count. */
+function matrixCard(board) {
+  const n = board.teams.length;
+  const byHeight = Math.floor((window.innerHeight - 360) / (n + 2.5));
+  const byWidth = Math.floor((window.innerWidth - 320) / (n + 1));
+  const cellPx = Math.max(16, Math.min(56, byHeight, byWidth));
+  const { grid, legend } = matrixGrid(board, {
+    numbers: n <= 10,
+    cellPx,
+  });
+  return h('div', { class: 'card' }, grid, legend);
 }
 
 export function tvView(ctx) {
@@ -36,33 +51,10 @@ export function tvView(ctx) {
   let paused = false;
   let child = null;
   let showToken = 0;
+  const tournament = isTournament(ctx.data.manifest);
 
-  const slides = [
-    {
-      name: 'Leaderboard',
-      build() {
-        const board = ctx.data.boards[ctx.kind];
-        if (!board || !board.teams.length) return emptyBoard(ctx.kind);
-        return h('div', { class: 'card' }, leaderboardTable(board, { limit: 10 }));
-      },
-    },
-    {
-      name: 'Head-to-head',
-      build() {
-        const board = ctx.data.boards[ctx.kind];
-        if (!board || board.teams.length < 2) return null;
-        // Size the cells so every team fits the screen, whatever the count.
-        const n = board.teams.length;
-        const byHeight = Math.floor((window.innerHeight - 360) / (n + 2.5));
-        const byWidth = Math.floor((window.innerWidth - 320) / (n + 1));
-        const cellPx = Math.max(16, Math.min(56, byHeight, byWidth));
-        const { grid, legend } = matrixGrid(board, {
-          numbers: n <= 10,
-          cellPx,
-        });
-        return h('div', { class: 'card' }, grid, legend);
-      },
-    },
+  // Shared by both formats: the newest results and a hand to watch.
+  const sharedSlides = () => [
     {
       name: 'Latest results',
       build() {
@@ -89,9 +81,77 @@ export function tvView(ctx) {
     },
   ];
 
+  const ladderSlides = () => [
+    {
+      name: 'Leaderboard',
+      build() {
+        const board = ctx.data.boards[ctx.kind];
+        if (!board || !board.teams.length) return emptyBoard(ctx.kind);
+        return h('div', { class: 'card' }, leaderboardTable(board, { limit: 10 }));
+      },
+    },
+    {
+      name: 'Head-to-head',
+      build() {
+        const board = ctx.data.boards[ctx.kind];
+        if (!board || board.teams.length < 2) return null;
+        return matrixCard(board);
+      },
+    },
+    ...sharedSlides(),
+  ];
+
+  /** Slides for the tournament: what exists, and nothing that is not published. */
+  const tournamentSlides = () => {
+    const t = ctx.data.tournament;
+    const boards = revealedBoards(t, ctx.data.boards.final);
+    return [
+      {
+        name: 'Tournament',
+        build() {
+          return h(
+            'div',
+            { class: 'tvstatus' },
+            phaseBanner(t),
+            championBanner(t),
+            finalsStage(t) === 'unknown' ? h('p', { class: 'note' }, advanceText(t.advance)) : null,
+          );
+        },
+      },
+      {
+        name: 'Round 1: groups',
+        build() {
+          // Before the reveal: the draw. After it, each group has its own slide.
+          return boards.some((b) => b.kind === 'group') || !t.groups.length ? null : roundOneSection(t);
+        },
+      },
+      ...t.groups
+        .filter((g) => g.board)
+        .map((g) => ({
+          name: `Group ${g.name}`,
+          build: () => groupCard(g, t),
+        })),
+      {
+        name: 'Finals',
+        build() {
+          return finalsStage(t) === 'unknown' ? null : finalsSection(t, ctx.data.boards.final);
+        },
+      },
+      ...boards.map((b) => ({
+        name: `Head-to-head: ${b.label}`,
+        build: () => (b.board.teams.length < 2 ? null : matrixCard(b.board)),
+      })),
+      ...sharedSlides(),
+    ];
+  };
+
+  const buildSlides = () => (tournament ? tournamentSlides() : ladderSlides());
+  let slides = [];
+
   async function show(position) {
     const mine = ++showToken;
     clearTimeout(timer);
+    slides = buildSlides(); // the data may have changed since the last slide
     if (child && child.dispose) child.dispose();
     child = null;
     // Skip slides with nothing to show (for example no replays published).
@@ -105,7 +165,11 @@ export function tvView(ctx) {
         return;
       }
       if (content) {
-        title.replaceChildren(slide.name, ' ', kindBadge(ctx.kind));
+        title.replaceChildren(
+          slide.name,
+          ' ',
+          tournament ? h('span', { class: 'badge' }, phaseInfo(ctx.data.tournament.phase).label) : kindBadge(ctx.kind),
+        );
         body.replaceChildren(content);
         dots.replaceChildren(...slides.map((_, i) => h('span', { class: i === index ? 'on' : '' })));
         const seconds = slide.seconds || SLIDE_SECONDS;

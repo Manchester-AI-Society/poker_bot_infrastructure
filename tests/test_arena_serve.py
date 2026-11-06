@@ -160,7 +160,7 @@ def test_export_command_publishes_the_repositorys_submitting_guide(tmp_path):
         encoding="utf-8"
     )
     assert published == DEFAULT_GUIDE.read_text(encoding="utf-8-sig")
-    assert "How to submit your bot" in published
+    assert "How to enter your bot" in published
 
 
 def test_export_command_can_leave_the_guide_out_or_use_another(

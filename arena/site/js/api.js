@@ -2,8 +2,11 @@
 // poll; the bigger files are fetched only when its fingerprint changes, and
 // are keyed by it so a CDN or browser can cache them between changes.
 
+import { isTournament, normalizeTournament, tournamentFiles } from './tournament-core.js';
+
 export const data = {
   manifest: null,
+  tournament: null, // tournament.json, normalised; null in the ladder format
   boards: {},
   pairings: {},
   teams: [],
@@ -18,6 +21,16 @@ async function getJSON(path, bust) {
   const response = await fetch(`${path}?v=${encodeURIComponent(bust)}`, {
     cache: 'no-store',
   });
+  if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+  return response.json();
+}
+
+/** Like getJSON, but a file that is not there (404) is null, not an error. */
+async function getOptionalJSON(path, bust) {
+  const response = await fetch(`${path}?v=${encodeURIComponent(bust)}`, {
+    cache: 'no-store',
+  });
+  if (response.status === 404) return null;
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
   return response.json();
 }
@@ -40,7 +53,41 @@ export async function refresh() {
   }
 }
 
+/**
+ * The tournament format: tournament.json always, and pairings / the final
+ * board only for the rounds the manifest says are published. Nothing else is
+ * requested, so a not-yet-played round costs no 404s.
+ */
+async function loadTournament(manifest) {
+  const bust = manifest.fingerprint;
+  const files = tournamentFiles(manifest);
+  const pairingKinds = Object.keys(files.pairings);
+  const boardKinds = Object.keys(files.boards);
+  const [tournament, teams, ...rest] = await Promise.all([
+    getJSON(files.tournament, bust),
+    getOptionalJSON(files.teams, bust),
+    ...pairingKinds.map((kind) => getOptionalJSON(files.pairings[kind], bust)),
+    ...boardKinds.map((kind) => getOptionalJSON(files.boards[kind], bust)),
+  ]);
+  data.pairings = {};
+  data.boards = {};
+  pairingKinds.forEach((kind, index) => {
+    data.pairings[kind] = rest[index] || [];
+  });
+  boardKinds.forEach((kind, index) => {
+    const board = rest[pairingKinds.length + index];
+    if (board) data.boards[kind] = board;
+  });
+  data.tournament = normalizeTournament(tournament);
+  data.teams = (teams && teams.teams) || [];
+  data.registrations = [];
+  data.manifest = manifest;
+  replayCache.clear();
+}
+
 async function loadAll(manifest) {
+  if (isTournament(manifest)) return loadTournament(manifest);
+  data.tournament = null;
   const bust = manifest.fingerprint;
   const kinds = manifest.kinds || ['ladder'];
   const [teams, ...rest] = await Promise.all([
