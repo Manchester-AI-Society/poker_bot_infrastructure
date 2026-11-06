@@ -499,6 +499,8 @@ def _export_once(args: argparse.Namespace, options: ExportOptions) -> None:
     """One export pass, plus an optional git push; prints one line."""
     summary = export_site(args.root, args.out, options)
     stamp = time.strftime("%H:%M:%S")
+    if summary.warning:
+        print(f"[export {stamp}] warning: {summary.warning}")
     note = "updated" if summary.changed else "no change"
     if summary.phase is not None:
         shown = []
@@ -577,6 +579,8 @@ def cmd_export(args: argparse.Namespace) -> int:
         submit_text=submit_text,
         guide=guide,
         registry_repo=args.registry_repo or "",
+        registrations=args.registrations or "",
+        register_form=args.register_form or "",
     )
     try:
         options.validate()
@@ -816,6 +820,18 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="OWNER/REPO",
         help="show a Register page that opens an issue in this GitHub "
         "repository",
+    )
+    sub.add_argument(
+        "--registrations",
+        metavar="CSV_FILE_OR_URL",
+        help="team names registered on the website (the registration form's "
+        "sheet as a CSV file, or its published-to-the-web CSV address)",
+    )
+    sub.add_argument(
+        "--register-form",
+        metavar="URL",
+        help="the registration Google Form's prefilled link, ending in "
+        "entry.NUMBER= ; turns on the site's Register page",
     )
     sub.add_argument(
         "--no-guide",

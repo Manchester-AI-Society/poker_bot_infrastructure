@@ -33,6 +33,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 from .history import read_hands
 from .jsonutil import dumps, write_atomic
 from .leaderboard import compute
+from .roster import REGISTER_FORM, load_registered, roster
 from .store import Store, Version
 
 SCHEMA_VERSION = 1
@@ -64,6 +65,12 @@ class ExportOptions:
     # OWNER/REPO of the registry (issues are registrations). Empty means
     # the site has no Register page.
     registry_repo: str = ""
+    # Where team names registered on the website are kept: a CSV file
+    # or the https address of a Google Sheet published as CSV.
+    registrations: str = ""
+    # The registration Google Form's prefilled-link address; empty
+    # means the site has no Register page for the tournament.
+    register_form: str = ""
 
     def validate(self) -> None:
         if self.replays not in REPLAY_POLICIES:
@@ -78,6 +85,12 @@ class ExportOptions:
             raise ExportError(
                 "registry_repo must look like OWNER/REPO, "
                 f"not {self.registry_repo!r}"
+            )
+
+        if self.register_form and not REGISTER_FORM.match(self.register_form):
+            raise ExportError(
+                "register_form must be a Google Form's prefilled link ending "
+                "in entry.NUMBER= (see ORGANISER.md)"
             )
 
     def fingerprint(self) -> str:
@@ -98,6 +111,8 @@ class ExportSummary:
     replay_bytes: int
     generated_at: float
     phase: Optional[str] = None  # set in tournament mode
+    # Set when the registration sheet could not be read this time.
+    warning: Optional[str] = None
 
 
 # -- sanitising --------------------------------------------------------
@@ -551,7 +566,11 @@ def _round_progress(store: Store, kind: str, freeze: Optional[int]) -> int:
     return sum(1 for j in store.jobs_of(kind, freeze) if j["status"] == "done")
 
 
-def _tournament_built(store: Store, state: Dict[str, Any]) -> _Built:
+def _tournament_built(
+    store: Store,
+    state: Dict[str, Any],
+    registered: Optional[List[str]] = None,
+) -> _Built:
     """The two-round tournament.
 
     Nothing about how anyone is doing leaves the machine until a round is
@@ -627,19 +646,25 @@ def _tournament_built(store: Store, state: Dict[str, Any]) -> _Built:
             for group in state["groups"]
             for team in group["teams"]
         }
+        qualified = view()["qualified"]
         files["teams.json"] = dumps(
             {
                 "teams": [
                     {
                         "team": team,
+                        # "submitted": a bot with this name has been imported;
+                        # "registered": the name is only in the sheet so far.
+                        "status": status,
                         "group": in_group.get(team),
-                        "finalist": team in view()["qualified"],
+                        "finalist": team in qualified,
                         "current": None,
                         "frozen": None,
                         "sync": None,
                         "versions": [],
                     }
-                    for team in team_names(store)
+                    for team, status in roster(
+                        registered or [], team_names(store)
+                    )
                 ],
                 "registrations": [],
             }
@@ -701,11 +726,12 @@ def export_site(
 
     data = out / "data"
     state = store.tournament()
-    built = (
-        _tournament_built(store, state)
-        if state is not None
-        else _ladder_built(store)
-    )
+    warning: Optional[str] = None
+    if state is not None:
+        registered, warning = load_registered(options.registrations, store)
+        built = _tournament_built(store, state, registered)
+    else:
+        built = _ladder_built(store)
 
     count, size, replays_changed = _export_replays(
         store, out, options, built.pairings, built.rows
@@ -737,6 +763,7 @@ def export_site(
         + options.submit_text.encode()
         + options.guide.encode()
         + options.registry_repo.encode()
+        + options.register_form.encode()
         + json.dumps(built.manifest, sort_keys=True).encode()
     ).hexdigest()[:16]
     generated_at = time.time()
@@ -759,6 +786,7 @@ def export_site(
         "submit_text": options.submit_text,
         "has_guide": bool(options.guide.strip()),
         "registry_repo": options.registry_repo or None,
+        "register_form": options.register_form or None,
         "fingerprint": fingerprint,
         "generated_at": generated_at,
         **built.manifest,
@@ -780,6 +808,7 @@ def export_site(
         replay_bytes=size,
         generated_at=generated_at,
         phase=built.phase,
+        warning=warning,
     )
 
 
