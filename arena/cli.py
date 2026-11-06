@@ -224,8 +224,10 @@ def cmd_live(args: argparse.Namespace) -> int:
                 encoding="utf-8-sig"
             )
         except OSError as exc:
-            print(f"cannot read the info page text: {exc}")
-            return 2
+            if args.guide:
+                print(f"cannot read the info page text: {exc}")
+                return 2
+            print("note: no SUBMITTING.md, so the Info page has no guide")
     event = None
     event_path = args.event_file or (
         str(DEFAULT_EVENT) if DEFAULT_EVENT.exists() else ""

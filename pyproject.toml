@@ -40,7 +40,6 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 # Scripts bootstrap sys.path before importing repo packages.
-"examples/*" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
