@@ -194,6 +194,9 @@ switch ($Command) {
             if ($RegisterForm) { $liveArgs += @('--register-form', $RegisterForm) }
             if ($Registrations) { $liveArgs += @('--registrations', $Registrations) }
             if ($GitPush) { $liveArgs += '--git-push' }
+            # Windows PowerShell 5.1 does not quote arguments for Start-Process, so a
+            # path with a space (D:\code repos\...) would split in two.
+            $liveArgs = @($liveArgs | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } })
             $live = Start-Process -FilePath $Python -WorkingDirectory $Root -WindowStyle Hidden -PassThru `
                 -ArgumentList $liveArgs `
                 -RedirectStandardOutput (Join-Path $State 'live.log') -RedirectStandardError (Join-Path $State 'live.err.log')
