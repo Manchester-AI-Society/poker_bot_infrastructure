@@ -402,3 +402,34 @@ def test_status_reports_who_is_connected_and_how_far_it_is(arena):
     assert report["phase"] == "groups"
     assert all(report["teams"].values())  # all six are connected
     assert report["matches"]["group"] == {"queued": 6}
+
+
+def test_a_match_left_running_by_a_dead_server_is_replayed_on_restart(arena):
+    store, gateway, _ = arena
+    draw(store, group_size=8, seed=1)
+    start_groups(store, deals=2)
+    job = store.jobs_of("group")[0]
+    # A previous `serve` died while this match was running.
+    assert store.claim_job_by_id(job["id"], "scheduler-2147483000")
+    assert store.jobs_of("group")[0]["status"] == "running"
+
+    runner = Runner(
+        store,
+        gateway,
+        TournamentSettings(grace_seconds=60),
+        log=lambda m: None,
+    )
+    assert store.jobs_of("group")[0]["status"] == "queued"
+    run_until(runner, store, "between")  # and the round completes
+    assert all(j["status"] == "done" for j in store.jobs_of("group"))
+    runner.close()
+
+
+def test_the_phase_survives_a_restart_of_everything(arena, tmp_path):
+    store, gateway, _ = arena
+    draw(store, group_size=3, seed=1)
+    start_groups(store, deals=2)
+    reopened = Store(store.root)  # a new process opening the same folder
+    assert state_of(reopened)["phase"] == "groups"
+    assert len(state_of(reopened)["groups"]) == 2
+    assert len(reopened.jobs_of("group")) == 6
