@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Literal, Optional, Tuple
 
-ActionType = Literal["fold", "call", "raise"]
+ActionType = Literal["fold", "call", "raise", "all_in"]
 
 
 @dataclass(frozen=True)
@@ -18,36 +18,68 @@ class ActionRecord:
 
 
 @dataclass(frozen=True)
-class Action:
-    """Represents the action a bot chooses on its turn."""
+class Response:
+    """What your bot does this turn. ``act`` must return one of these.
+
+    Build it with one of the four constructors:
+
+    * ``Response.fold()``
+    * ``Response.call()``: calls, or checks when nothing is owed
+    * ``Response.raise_to(total)``: a bet or a raise; ``total`` is the TOTAL
+      you want to have in the pot this betting round, between
+      ``game_state.min_raise_to`` and ``game_state.max_raise_to``
+    * ``Response.all_in()``: everything you have left
+
+    The arena checks your response against the rules before it is played. An
+    illegal one (an amount outside the allowed range, a raise when you cannot
+    raise, anything that is not a ``Response``) is a fault: a safe default is
+    played instead, and the reason is written to your bot's log.
+    """
 
     action_type: ActionType
     amount: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.action_type == "raise":
-            if self.amount is None or self.amount <= 0:
-                raise ValueError("raise action requires amount > 0")
+            if (
+                isinstance(self.amount, bool)
+                or not isinstance(self.amount, int)
+                or self.amount <= 0
+            ):
+                raise ValueError(
+                    "Response.raise_to needs a whole number of chips above "
+                    f"zero, not {self.amount!r}"
+                )
             return
         if self.amount is not None:
-            raise ValueError("fold/call actions must not include amount")
+            raise ValueError(
+                "fold, call and all_in responses must not include an amount"
+            )
 
     @classmethod
-    def fold(cls) -> "Action":
+    def fold(cls) -> "Response":
         return cls("fold")
 
     @classmethod
-    def call(cls) -> "Action":
+    def call(cls) -> "Response":
         return cls("call")
 
     @classmethod
-    def raise_to(cls, amount: int) -> "Action":
+    def raise_to(cls, amount: int) -> "Response":
         return cls("raise", amount=amount)
+
+    @classmethod
+    def all_in(cls) -> "Response":
+        return cls("all_in")
 
     def to_dict(self) -> Dict[str, Any]:
         if self.action_type == "raise":
             return {"action": "raise", "amount": self.amount}
         return {"action": self.action_type}
+
+
+# The older name for the same type; existing bots keep working.
+Action = Response
 
 
 @dataclass(frozen=True)

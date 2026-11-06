@@ -24,7 +24,7 @@ from collections import Counter
 from typing import Dict, List, Sequence, Tuple
 
 from player_sdk.bot_interface import PokerBot
-from player_sdk.models import Action, GameState
+from player_sdk.models import GameState, Response
 
 RANKS = "23456789TJQKA"
 SUITS = "SHDC"
@@ -123,32 +123,32 @@ class EquityBot(PokerBot):
             score += 1.0 if ours > theirs else 0.5 if ours == theirs else 0.0
         return score / self.SAMPLES
 
-    def act(self, gs: GameState) -> Action:
+    def act(self, gs: GameState) -> Response:
         equity = self.equity(gs.hole_cards, gs.community_cards)
         can_raise = gs.can_raise or gs.can_bet
         bb = gs.big_blind or 20
 
         if gs.call_amount == 0:  # nothing to pay: bet if we are ahead
             if can_raise and equity >= 0.70:
-                return Action.raise_to(sized_raise(gs, 0.75))
+                return Response.raise_to(sized_raise(gs, 0.75))
             if can_raise and equity >= 0.58:
-                return Action.raise_to(sized_raise(gs, 0.45))
-            return Action.call()  # check
+                return Response.raise_to(sized_raise(gs, 0.45))
+            return Response.call()  # check
 
         if gs.is_preflop and gs.call_amount <= bb:
             # Blind versus blind: open-raise anything better than a coin flip.
             if can_raise and equity >= 0.55:
-                return Action.raise_to(
+                return Response.raise_to(
                     max(
                         gs.min_raise_to or 0,
                         min(3 * bb, gs.max_raise_to or 3 * bb),
                     )
                 )
-            return Action.call() if equity >= 0.42 else Action.fold()
+            return Response.call() if equity >= 0.42 else Response.fold()
 
         if can_raise and equity >= 0.78:
-            return Action.raise_to(sized_raise(gs, 0.8))
+            return Response.raise_to(sized_raise(gs, 0.8))
         price = gs.call_amount / (gs.pot_size + gs.call_amount)
         # Equity vs a RANDOM hand overstates our chances against a bettor,
         # so ask for a margin over the pure pot odds.
-        return Action.call() if equity >= price + 0.08 else Action.fold()
+        return Response.call() if equity >= price + 0.08 else Response.fold()

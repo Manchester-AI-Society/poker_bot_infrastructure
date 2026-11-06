@@ -17,7 +17,7 @@ import random
 from typing import Sequence
 
 from player_sdk.bot_interface import PokerBot
-from player_sdk.models import Action, GameState
+from player_sdk.models import GameState, Response
 
 RANKS = "23456789TJQKA"
 
@@ -80,7 +80,7 @@ class LooseAggressiveBot(PokerBot):
     def __init__(self) -> None:
         self.rng = random.Random(11)
 
-    def act(self, gs: GameState) -> Action:
+    def act(self, gs: GameState) -> Response:
         hole = gs.hole_cards
         can_raise = gs.can_raise or gs.can_bet
         bb = gs.big_blind or 20
@@ -91,13 +91,17 @@ class LooseAggressiveBot(PokerBot):
                 if can_raise and (
                     strength >= 0.30 or self.rng.random() < 0.25
                 ):
-                    return Action.raise_to(sized_raise(gs, 1.0))
-                return Action.call()
+                    return Response.raise_to(sized_raise(gs, 1.0))
+                return Response.call()
             # Facing a raise: fight back with a wide range.
             if can_raise and strength >= 0.50:
-                return Action.raise_to(sized_raise(gs, 0.9))
+                return Response.raise_to(sized_raise(gs, 0.9))
             price = gs.call_amount / (gs.pot_size + gs.call_amount)
-            return Action.call() if strength >= price - 0.05 else Action.fold()
+            return (
+                Response.call()
+                if strength >= price - 0.05
+                else Response.fold()
+            )
 
         strength = postflop_strength(hole, gs.community_cards)
         bet_before = self._i_have_bet_this_hand(gs)
@@ -106,19 +110,19 @@ class LooseAggressiveBot(PokerBot):
             # Bet any decent hand, bluff often, and keep firing if we started.
             bluff = 0.55 if bet_before else 0.40
             if can_raise and (strength >= 0.40 or self.rng.random() < bluff):
-                return Action.raise_to(sized_raise(gs, 0.65))
-            return Action.call()
+                return Response.raise_to(sized_raise(gs, 0.65))
+            return Response.call()
 
         # Facing a bet.
         if can_raise and strength >= 0.80:
-            return Action.raise_to(sized_raise(gs, 0.8))
+            return Response.raise_to(sized_raise(gs, 0.8))
         price = gs.call_amount / (gs.pot_size + gs.call_amount)
         if strength >= price - 0.02:
-            return Action.call()
+            return Response.call()
         # Occasionally raise as a bluff instead of folding.
         if can_raise and self.rng.random() < 0.08:
-            return Action.raise_to(sized_raise(gs, 0.8))
-        return Action.fold()
+            return Response.raise_to(sized_raise(gs, 0.8))
+        return Response.fold()
 
     @staticmethod
     def _i_have_bet_this_hand(gs: GameState) -> bool:

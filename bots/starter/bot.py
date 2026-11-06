@@ -4,8 +4,8 @@ How a bot works
 ---------------
 * Your file must define exactly ONE subclass of ``PokerBot``.
 * ``act(game_state)`` is called each time it is your turn and must
-  return ``Action.fold()``, ``Action.call()`` (this checks when nothing
-  is owed) or ``Action.raise_to(total)`` (a bet or raise; ``total`` is
+  return ``Response.fold()``, ``Response.call()`` (this checks when nothing
+  is owed) or ``Response.raise_to(total)`` (a bet or raise; ``total`` is
   the TOTAL you want to have in this betting round, between
   ``game_state.min_raise_to`` and ``game_state.max_raise_to``).
 * Do heavy set-up (loading files, building tables) at import time or in
@@ -31,7 +31,7 @@ from __future__ import annotations
 from typing import Sequence
 
 from player_sdk.bot_interface import PokerBot
-from player_sdk.models import Action, GameState
+from player_sdk.models import GameState, Response
 
 RANKS = "23456789TJQKA"
 
@@ -84,7 +84,7 @@ def postflop_strength(hole: Sequence[str], board: Sequence[str]) -> float:
 
 
 class StarterBot(PokerBot):
-    def act(self, game_state: GameState) -> Action:
+    def act(self, game_state: GameState) -> Response:
         hole = game_state.hole_cards
         board = game_state.community_cards
         strength = (
@@ -93,17 +93,17 @@ class StarterBot(PokerBot):
 
         can_raise = game_state.can_raise or game_state.can_bet
         if can_raise and strength >= 0.75:
-            return Action.raise_to(self._size(game_state, strength))
+            return Response.raise_to(self._size(game_state, strength))
 
         to_call = game_state.call_amount
         if to_call == 0:
-            return Action.call()  # free: check
+            return Response.call()  # free: check
 
         # Pot odds: call when our strength beats the price we are given.
         price = to_call / (game_state.pot_size + to_call)
         if strength >= price + 0.1:
-            return Action.call()
-        return Action.fold()
+            return Response.call()
+        return Response.fold()
 
     @staticmethod
     def _size(game_state: GameState, strength: float) -> int:

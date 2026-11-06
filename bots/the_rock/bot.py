@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Sequence
 
 from player_sdk.bot_interface import PokerBot
-from player_sdk.models import Action, GameState
+from player_sdk.models import GameState, Response
 
 RANKS = "23456789TJQKA"
 
@@ -71,7 +71,7 @@ def sized_raise(game_state: GameState, fraction: float) -> int:
 
 
 class RockBot(PokerBot):
-    def act(self, gs: GameState) -> Action:
+    def act(self, gs: GameState) -> Response:
         can_raise = gs.can_raise or gs.can_bet
         free = gs.call_amount == 0
         bb = gs.big_blind or 20
@@ -79,18 +79,18 @@ class RockBot(PokerBot):
         if gs.is_preflop:
             strength = preflop_strength(gs.hole_cards)
             if can_raise and strength >= 0.80:
-                return Action.raise_to(sized_raise(gs, 1.0))
+                return Response.raise_to(sized_raise(gs, 1.0))
             if free:
-                return Action.call()  # check the big blind option
+                return Response.call()  # check the big blind option
             # Call a small raise with a good hand, fold the rest.
             if strength >= 0.62 and gs.call_amount <= 4 * bb:
-                return Action.call()
-            return Action.fold()
+                return Response.call()
+            return Response.fold()
 
         strength = postflop_strength(gs.hole_cards, gs.community_cards)
         if can_raise and strength >= 0.78:
-            return Action.raise_to(sized_raise(gs, 0.75))
+            return Response.raise_to(sized_raise(gs, 0.75))
         if free:
-            return Action.call()  # check
+            return Response.call()  # check
         # Only continue against a bet with a real hand.
-        return Action.call() if strength >= 0.60 else Action.fold()
+        return Response.call() if strength >= 0.60 else Response.fold()

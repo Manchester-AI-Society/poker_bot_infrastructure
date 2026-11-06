@@ -10,7 +10,7 @@ import random
 from typing import Callable, Dict, Optional
 
 from player_sdk.bot_interface import PokerBot
-from player_sdk.models import Action, GameState
+from player_sdk.models import GameState, Response
 
 from .agents import LocalAgent
 from .contestant import Contestant
@@ -19,26 +19,26 @@ from .contestant import Contestant
 class FoldBot(PokerBot):
     """Folds every hand (what a disabled bot is replaced with)."""
 
-    def act(self, game_state: GameState) -> Action:
-        return Action.fold()
+    def act(self, game_state: GameState) -> Response:
+        return Response.fold()
 
 
 class CallBot(PokerBot):
     """Checks or calls everything: the classic calling station."""
 
-    def act(self, game_state: GameState) -> Action:
-        return Action.call()
+    def act(self, game_state: GameState) -> Response:
+        return Response.call()
 
 
 class ShoveBot(PokerBot):
     """Goes all-in whenever it can, otherwise calls."""
 
-    def act(self, game_state: GameState) -> Action:
+    def act(self, game_state: GameState) -> Response:
         if game_state.max_raise_to and game_state.can_raise:
-            return Action.raise_to(game_state.max_raise_to)
+            return Response.raise_to(game_state.max_raise_to)
         if game_state.can_bet and game_state.max_raise_to:
-            return Action.raise_to(game_state.max_raise_to)
-        return Action.call()
+            return Response.raise_to(game_state.max_raise_to)
+        return Response.call()
 
 
 class RandomBot(PokerBot):
@@ -47,7 +47,7 @@ class RandomBot(PokerBot):
     def __init__(self, seed: Optional[int] = None):
         self._rng = random.Random(seed)
 
-    def act(self, game_state: GameState) -> Action:
+    def act(self, game_state: GameState) -> Response:
         rng = self._rng
         roll = rng.random()
         can_raise = game_state.can_raise or game_state.can_bet
@@ -55,11 +55,11 @@ class RandomBot(PokerBot):
             low = game_state.min_raise_to or 1
             high = game_state.max_raise_to or low
             if rng.random() < 0.2:
-                return Action.raise_to(high)
-            return Action.raise_to(rng.randint(min(low, high), high))
+                return Response.raise_to(high)
+            return Response.raise_to(rng.randint(min(low, high), high))
         if roll < 0.45 and game_state.can_fold and not game_state.can_check:
-            return Action.fold()
-        return Action.call()
+            return Response.fold()
+        return Response.call()
 
 
 BASELINES: Dict[str, Callable[[], PokerBot]] = {

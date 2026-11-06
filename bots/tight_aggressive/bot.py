@@ -18,7 +18,7 @@ import random
 from typing import Sequence
 
 from player_sdk.bot_interface import PokerBot
-from player_sdk.models import Action, GameState
+from player_sdk.models import GameState, Response
 
 RANKS = "23456789TJQKA"
 
@@ -84,7 +84,7 @@ class TightAggressiveBot(PokerBot):
     def __init__(self) -> None:
         self.rng = random.Random(7)
 
-    def act(self, game_state: GameState) -> Action:
+    def act(self, game_state: GameState) -> Response:
         hole = game_state.hole_cards
         if game_state.is_preflop:
             return self._preflop(game_state, preflop_strength(hole))
@@ -93,7 +93,7 @@ class TightAggressiveBot(PokerBot):
 
     # -- preflop --------------------------------------------------------
 
-    def _preflop(self, gs: GameState, strength: float) -> Action:
+    def _preflop(self, gs: GameState, strength: float) -> Response:
         bb = gs.big_blind or 20
         can_raise = gs.can_raise or gs.can_bet
         # The button acts last after the flop, so it plays a bit wider.
@@ -101,42 +101,42 @@ class TightAggressiveBot(PokerBot):
 
         if gs.call_amount <= bb:  # nobody has raised yet
             if can_raise and strength >= open_at:
-                return Action.raise_to(
+                return Response.raise_to(
                     max(
                         gs.min_raise_to or 0,
                         min(3 * bb, gs.max_raise_to or 3 * bb),
                     )
                 )
             if gs.call_amount == 0:
-                return Action.call()  # free option
-            return Action.call() if strength >= 0.36 else Action.fold()
+                return Response.call()  # free option
+            return Response.call() if strength >= 0.36 else Response.fold()
 
         # Facing a raise: re-raise the best hands, call at the right price.
         if can_raise and strength >= 0.86:
-            return Action.raise_to(sized_raise(gs, 0.9))
+            return Response.raise_to(sized_raise(gs, 0.9))
         price = gs.call_amount / (gs.pot_size + gs.call_amount)
-        return Action.call() if strength >= price + 0.14 else Action.fold()
+        return Response.call() if strength >= price + 0.14 else Response.fold()
 
     # -- postflop -------------------------------------------------------
 
-    def _postflop(self, gs: GameState, strength: float) -> Action:
+    def _postflop(self, gs: GameState, strength: float) -> Response:
         can_raise = gs.can_raise or gs.can_bet
         free = gs.call_amount == 0
 
         if strength >= 0.78:  # strong: bet or raise for value
             if can_raise:
-                return Action.raise_to(sized_raise(gs, 0.7))
-            return Action.call()
+                return Response.raise_to(sized_raise(gs, 0.7))
+            return Response.call()
 
         if free:
             if can_raise and strength >= 0.55:
-                return Action.raise_to(sized_raise(gs, 0.45))  # thin value
+                return Response.raise_to(sized_raise(gs, 0.45))  # thin value
             # A small continuation bet now and then, mostly on the flop.
             if can_raise and gs.is_flop and self.rng.random() < 0.30:
-                return Action.raise_to(sized_raise(gs, 0.5))
-            return Action.call()  # check
+                return Response.raise_to(sized_raise(gs, 0.5))
+            return Response.call()  # check
 
         price = gs.call_amount / (gs.pot_size + gs.call_amount)
         if strength >= price + 0.12:
-            return Action.call()
-        return Action.fold()
+            return Response.call()
+        return Response.fold()

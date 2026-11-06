@@ -22,7 +22,7 @@ import random
 from typing import Sequence
 
 from player_sdk.bot_interface import PokerBot
-from player_sdk.models import Action, GameState
+from player_sdk.models import GameState, Response
 
 RANKS = "23456789TJQKA"
 AGGRESSIVE = ("bet", "raise_to", "raise")
@@ -134,7 +134,7 @@ class AdaptiveBot(PokerBot):
 
     # -- decisions ------------------------------------------------------
 
-    def act(self, gs: GameState) -> Action:
+    def act(self, gs: GameState) -> Response:
         self._learn(gs)
         can_raise = gs.can_raise or gs.can_bet
         bb = gs.big_blind or 20
@@ -147,31 +147,33 @@ class AdaptiveBot(PokerBot):
             open_at = 0.38 if folder else (0.60 if maniac else 0.50)
             if gs.call_amount <= bb:
                 if can_raise and strength >= open_at:
-                    return Action.raise_to(sized_raise(gs, 1.0))
+                    return Response.raise_to(sized_raise(gs, 1.0))
                 return (
-                    Action.call()
+                    Response.call()
                     if (gs.call_amount == 0 or strength >= 0.34)
-                    else Action.fold()
+                    else Response.fold()
                 )
             if can_raise and strength >= 0.84:
-                return Action.raise_to(sized_raise(gs, 0.9))
+                return Response.raise_to(sized_raise(gs, 0.9))
             price = gs.call_amount / (gs.pot_size + gs.call_amount)
             margin = 0.04 if maniac else 0.14
             return (
-                Action.call() if strength >= price + margin else Action.fold()
+                Response.call()
+                if strength >= price + margin
+                else Response.fold()
             )
 
         strength = postflop_strength(gs.hole_cards, gs.community_cards)
         if gs.call_amount == 0:
             if can_raise and strength >= (0.45 if passive else 0.62):
-                return Action.raise_to(sized_raise(gs, 0.6))
+                return Response.raise_to(sized_raise(gs, 0.6))
             # Against a folder, bet with nothing: they give up anyway.
             if can_raise and folder and self.rng.random() < 0.55:
-                return Action.raise_to(sized_raise(gs, 0.5))
-            return Action.call()
+                return Response.raise_to(sized_raise(gs, 0.5))
+            return Response.call()
 
         if can_raise and strength >= 0.80:
-            return Action.raise_to(sized_raise(gs, 0.8))
+            return Response.raise_to(sized_raise(gs, 0.8))
         price = gs.call_amount / (gs.pot_size + gs.call_amount)
         if maniac:
             margin = -0.05  # they bet wide, so call down lighter
@@ -179,4 +181,6 @@ class AdaptiveBot(PokerBot):
             margin = 0.22  # a passive player betting usually has it
         else:
             margin = 0.10
-        return Action.call() if strength >= price + margin else Action.fold()
+        return (
+            Response.call() if strength >= price + margin else Response.fold()
+        )

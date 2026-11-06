@@ -26,8 +26,8 @@ from typing import Any, Dict, Mapping
 from player_sdk._run import load_bot_from_file
 from player_sdk.bot_interface import PokerBot
 from player_sdk.client import translate_action
-from player_sdk.models import Action
 from player_sdk.parser import GameStateParser
+from player_sdk.response import validate_response
 
 
 def resolve_bot_file(target: Path) -> Path:
@@ -63,12 +63,8 @@ def act_on_message(
     game_state = parser.parse(
         {"state": state_payload}, hero_index=int(message["hero_index"])
     )
-    action = bot.act(game_state)
-    if not isinstance(action, Action):
-        raise TypeError(
-            f"PokerBot.act must return an Action, got {type(action).__name__}"
-        )
-    engine_action, amount = translate_action(action, game_state)
+    response = validate_response(bot.act(game_state), game_state)
+    engine_action, amount = translate_action(response, game_state)
     return {"type": "action", "action": engine_action, "amount": amount}
 
 

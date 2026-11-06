@@ -33,6 +33,16 @@ def translate_action(
     if action.action_type == "fold":
         return "fold", None
 
+    if action.action_type == "all_in":
+        biggest = state.max_raise_to
+        if biggest and (
+            "bet" in state.legal_actions or "raise_to" in state.legal_actions
+        ):
+            name = "bet" if "bet" in state.legal_actions else "raise_to"
+            return name, biggest
+        # Nothing left to raise with: the most you can do is call.
+        return ("check", None) if state.call_amount == 0 else ("call", None)
+
     if action.action_type == "call":
         if state.call_amount == 0:
             return "check", None

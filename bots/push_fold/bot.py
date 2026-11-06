@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Sequence
 
 from player_sdk.bot_interface import PokerBot
-from player_sdk.models import Action, GameState
+from player_sdk.models import GameState, Response
 
 RANKS = "23456789TJQKA"
 SHOVE_AT = 0.72  # roughly the top 15% of starting hands
@@ -42,7 +42,7 @@ def preflop_strength(hole: Sequence[str]) -> float:
 
 
 class PushFoldBot(PokerBot):
-    def act(self, gs: GameState) -> Action:
+    def act(self, gs: GameState) -> Response:
         can_raise = gs.can_raise or gs.can_bet
         strength = preflop_strength(gs.hole_cards)
 
@@ -52,21 +52,25 @@ class PushFoldBot(PokerBot):
             facing_shove = to_call > 0 and to_call >= (gs.my_stack or 0)
             if facing_shove:
                 return (
-                    Action.call()
+                    Response.call()
                     if strength >= CALL_SHOVE_AT
-                    else Action.fold()
+                    else Response.fold()
                 )
             if can_raise and strength >= SHOVE_AT:
-                return Action.raise_to(gs.max_raise_to or gs.min_raise_to or 1)
+                return Response.raise_to(
+                    gs.max_raise_to or gs.min_raise_to or 1
+                )
             if to_call == 0:
-                return Action.call()  # check the big blind option
+                return Response.call()  # check the big blind option
             # Facing an ordinary raise: only the very best hands continue.
             return (
-                Action.call() if strength >= CALL_SHOVE_AT else Action.fold()
+                Response.call()
+                if strength >= CALL_SHOVE_AT
+                else Response.fold()
             )
 
         # After the flop: check when free, never call big bets without much.
         if gs.call_amount == 0:
-            return Action.call()
+            return Response.call()
         price = gs.call_amount / (gs.pot_size + gs.call_amount)
-        return Action.call() if price <= 0.25 else Action.fold()
+        return Response.call() if price <= 0.25 else Response.fold()

@@ -7,7 +7,7 @@ from ._run import load_bot_from_file, play, run_bot
 from .bot_interface import PokerBot
 from .client import PokerEngineClient, translate_action
 from .config import PlayerConfig
-from .models import Action, ActionRecord, GameState
+from .models import Action, ActionRecord, GameState, Response
 from .parser import GameStateParser
 
 __version__ = "0.1.0"
@@ -19,6 +19,7 @@ __all__ = [
     "GameStateParser",
     "PokerBot",
     "PokerEngineClient",
+    "Response",
     "PlayerConfig",
     "PlayerSDKAuthError",
     "PlayerSDKBadRequestError",
